@@ -323,6 +323,23 @@ Each model in the catalog includes:
 | `capabilities` | Flags: attachment, reasoning, temperature, tool_call, streaming |
 | `knowledge` | Training data cutoff date |
 
+## Why llm-kernel?
+
+| | llm-kernel | [rig] | [langchain-rust] |
+|--|-----------|-------|-------------------|
+| Provider catalog | ✅ 16 providers, 114 models built-in | Manual config | Manual config |
+| Feature gates | ✅ 17 independent modules | Monolithic | Monolithic |
+| MCP server | ✅ JSON-RPC 2.0 | ❌ | ❌ |
+| Knowledge graph | ✅ SQLite + FTS5 + smart recall | ❌ | ❌ |
+| Mandatory deps | `serde` only | `reqwest`, `tokio`, … | Many |
+| Chains / agents | ❌ | ✅ | ✅ |
+| RAG pipelines | ❌ | ✅ | ✅ |
+
+[rig]: https://github.com/0xPlaygrounds/rig
+[langchain-rust]: https://github.com/Abraxas-365/langchain-rust
+
+llm-kernel is a **lightweight foundation layer** — compose it with rig or langchain-rust when you need chains, agents, or RAG.
+
 ## Architecture
 
 ```
