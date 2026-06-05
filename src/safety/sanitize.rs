@@ -34,6 +34,35 @@ pub fn mask_secrets(input: &str) -> String {
     result
 }
 
+/// Remove ANSI escape sequences from text.
+pub fn strip_ansi(input: &str) -> String {
+    let mut result = String::with_capacity(input.len());
+    let mut chars = input.chars().peekable();
+    while let Some(ch) = chars.next() {
+        if ch == '\x1B' {
+            // Skip ESC and the following sequence
+            if chars.peek() == Some(&'[') {
+                chars.next(); // consume '['
+                // Skip parameter bytes (0x30-0x3F), intermediate bytes (0x20-0x2F), final byte (0x40-0x7E)
+                while let Some(&next) = chars.peek() {
+                    let cp = next as u32;
+                    if (0x30..=0x3F).contains(&cp) || (0x20..=0x2F).contains(&cp) {
+                        chars.next();
+                    } else if (0x40..=0x7E).contains(&cp) {
+                        chars.next(); // consume final byte
+                        break;
+                    } else {
+                        break;
+                    }
+                }
+            }
+            continue;
+        }
+        result.push(ch);
+    }
+    result
+}
+
 /// Sanitize output for safe display by removing:
 ///
 /// - Bidi override characters (U+202A–U+202E) — invisible text direction attacks
@@ -151,5 +180,26 @@ mod tests {
     fn sanitize_removes_c1_controls() {
         let clean = sanitize_output("a\u{0080}b\u{009F}c");
         assert_eq!(clean, "abc");
+    }
+
+    #[test]
+    fn strip_ansi_removes_color_codes() {
+        let input = "\x1B[31mHello\x1B[0m \x1B[1;32mWorld\x1B[0m";
+        let clean = strip_ansi(input);
+        assert_eq!(clean, "Hello World");
+    }
+
+    #[test]
+    fn strip_ansi_preserves_plain_text() {
+        let input = "Hello, 世界! 🎉";
+        assert_eq!(strip_ansi(input), input);
+    }
+
+    #[test]
+    fn strip_ansi_handles_complex_sequence() {
+        // 256-color and RGB sequences
+        let input = "\x1B[38;5;196mRed\x1B[0m \x1B[38;2;0;255;0mGreen\x1B[0m";
+        let clean = strip_ansi(input);
+        assert_eq!(clean, "Red Green");
     }
 }

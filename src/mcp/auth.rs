@@ -8,7 +8,10 @@ fn constant_time_eq(a: &str, b: &str) -> bool {
     if a.len() != b.len() {
         return false;
     }
-    a.bytes().zip(b.bytes()).fold(0, |acc, (x, y)| acc | (x ^ y)) == 0
+    a.bytes()
+        .zip(b.bytes())
+        .fold(0, |acc, (x, y)| acc | (x ^ y))
+        == 0
 }
 
 /// Bearer token authenticator for MCP HTTP transport.
@@ -20,10 +23,20 @@ pub struct BearerAuth {
 impl BearerAuth {
     /// Create a new bearer auth with the given token.
     pub fn new(token: impl Into<String>) -> Self {
-        Self { token: token.into() }
+        Self {
+            token: token.into(),
+        }
     }
 
     /// Generate a random bearer token.
+    ///
+    /// # Security Note
+    ///
+    /// Uses xorshift PRNG seeded from system time + atomic counter.
+    /// This is **not** cryptographically secure — tokens are predictable
+    /// if the seed can be guessed. Suitable for local MCP server auth
+    /// (localhost-only transport). For production/remote servers, use
+    /// externally generated tokens via [`BearerAuth::new`].
     pub fn generate() -> Self {
         use std::sync::atomic::{AtomicU64, Ordering};
         use std::time::{SystemTime, UNIX_EPOCH};
@@ -42,7 +55,11 @@ impl BearerAuth {
             s ^= s >> 7;
             s ^= s << 17;
             let nibble = (s & 0xF) as u8;
-            token.push(if nibble < 10 { b'0' + nibble } else { b'a' + nibble - 10 } as char);
+            token.push(if nibble < 10 {
+                b'0' + nibble
+            } else {
+                b'a' + nibble - 10
+            } as char);
         }
         Self { token }
     }

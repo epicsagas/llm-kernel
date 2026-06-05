@@ -10,27 +10,20 @@
 //! assert!(count > 0);
 //! ```
 
-/// Characters-per-token ratios by Unicode script.
-///
-/// Derived from empirical measurements against cl100k_base encoding.
-/// CJK characters are ~1.5 chars/token, while Latin text is ~4 chars/token.
-type ScriptRule = (fn(char) -> bool, f32);
-
-#[allow(clippy::type_complexity)]
-const CPT_TABLE: &[ScriptRule] = &[
-    (|c| (0x1F600..=0x1F64F).contains(&(c as u32)), 1.0),   // Emoji emoticons
-    (|c| (0x1F300..=0x1F5FF).contains(&(c as u32)), 1.0),   // Misc symbols
-    (|c| (0x1F680..=0x1F6FF).contains(&(c as u32)), 1.0),   // Transport
-    (|c| (0x2600..=0x26FF).contains(&(c as u32)),   1.0),   // Misc symbols
-    (|c| ('\u{3040}'..='\u{309F}').contains(&c)               // Hiragana
-        || ('\u{30A0}'..='\u{30FF}').contains(&c),            // Katakana
-     1.5),
-    (|c| ('\u{4E00}'..='\u{9FFF}').contains(&c), 1.5),       // CJK Unified
-    (|c| ('\u{AC00}'..='\u{D7AF}').contains(&c), 1.5),       // Hangul Syllables
-    (|c| ('\u{0600}'..='\u{06FF}').contains(&c), 2.0),       // Arabic
-    (|c| ('\u{0900}'..='\u{097F}').contains(&c), 2.0),       // Devanagari
-    (|c| ('\u{0E00}'..='\u{0E7F}').contains(&c), 2.0),       // Thai
-];
+/// Characters-per-token ratio lookup using match on Unicode code point ranges.
+/// Compiles to a jump table — O(1) per character instead of linear scan.
+fn char_cpt(ch: char) -> f32 {
+    let cp = ch as u32;
+    match cp {
+        // Emoji emoticons, Misc symbols, Transport, Misc symbols
+        0x1F600..=0x1F64F | 0x1F300..=0x1F5FF | 0x1F680..=0x1F6FF | 0x2600..=0x26FF => 1.0,
+        // Hiragana, Katakana, CJK Unified, Hangul Syllables
+        0x3040..=0x30FF | 0x4E00..=0x9FFF | 0xAC00..=0xD7AF => 1.5,
+        // Arabic, Devanagari, Thai
+        0x0600..=0x06FF | 0x0900..=0x097F | 0x0E00..=0x0E7F => 2.0,
+        _ => DEFAULT_CPT,
+    }
+}
 
 /// Default chars-per-token for Latin/basic ASCII text.
 const DEFAULT_CPT: f32 = 4.0;
@@ -38,7 +31,6 @@ const DEFAULT_CPT: f32 = 4.0;
 /// Estimate the number of tokens in a string using Unicode-script heuristics.
 ///
 /// This is a rough estimate (±20%) suitable for budget management.
-/// For exact counts, enable the `tiktoken` feature.
 pub fn estimate_tokens(text: &str) -> usize {
     if text.is_empty() {
         return 0;
@@ -50,12 +42,7 @@ pub fn estimate_tokens(text: &str) -> usize {
         if ch.is_whitespace() || ch.is_ascii_control() {
             continue;
         }
-        let cpt = CPT_TABLE
-            .iter()
-            .find(|(pred, _)| pred(ch))
-            .map(|(_, cpt)| *cpt)
-            .unwrap_or(DEFAULT_CPT);
-        total_weight += 1.0 / cpt;
+        total_weight += 1.0 / char_cpt(ch);
     }
 
     if total_weight == 0.0 {

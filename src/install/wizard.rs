@@ -70,13 +70,12 @@ pub struct McpConfig {
 ///
 /// Returns a JSON string that can be written to the agent's config file
 /// or appended to an existing config.
-pub fn generate_mcp_config(agent: &AgentKind, config: &McpConfig) -> String {
-    match agent {
-        AgentKind::ClaudeDesktop => generate_claude_desktop(config),
-        AgentKind::Cursor | AgentKind::Copilot => generate_vscode_style(config),
-        AgentKind::OpenCode => generate_opencode_style(config),
-        AgentKind::Cline => generate_cline_style(config),
-    }
+///
+/// All agent types share the same `mcpServers` JSON format; the `agent`
+/// parameter is kept for forward-compatibility with format divergence.
+pub fn generate_mcp_config(_agent: &AgentKind, config: &McpConfig) -> String {
+    let entry = mcp_server_entry(config);
+    make_mcp_json(&config.server_name, entry)
 }
 
 /// Generate the `mcpServers` JSON block (common format).
@@ -92,7 +91,10 @@ fn mcp_server_entry(config: &McpConfig) -> serde_json::Value {
             .iter()
             .map(|(k, v)| (k.clone(), serde_json::Value::String(v.clone())))
             .collect();
-        server.as_object_mut().unwrap().insert("env".into(), serde_json::Value::Object(env_obj));
+        server
+            .as_object_mut()
+            .unwrap()
+            .insert("env".into(), serde_json::Value::Object(env_obj));
     }
 
     server
@@ -103,26 +105,6 @@ fn make_mcp_json(server_name: &str, entry: serde_json::Value) -> String {
     map.insert(server_name.to_string(), entry);
     let json = serde_json::json!({ "mcpServers": map });
     serde_json::to_string_pretty(&json).unwrap_or_default()
-}
-
-fn generate_claude_desktop(config: &McpConfig) -> String {
-    let entry = mcp_server_entry(config);
-    make_mcp_json(&config.server_name, entry)
-}
-
-fn generate_vscode_style(config: &McpConfig) -> String {
-    let entry = mcp_server_entry(config);
-    make_mcp_json(&config.server_name, entry)
-}
-
-fn generate_opencode_style(config: &McpConfig) -> String {
-    let entry = mcp_server_entry(config);
-    make_mcp_json(&config.server_name, entry)
-}
-
-fn generate_cline_style(config: &McpConfig) -> String {
-    let entry = mcp_server_entry(config);
-    make_mcp_json(&config.server_name, entry)
 }
 
 #[cfg(test)]
@@ -144,7 +126,11 @@ mod tests {
         for agent in AgentKind::all() {
             let config = test_config();
             let json = generate_mcp_config(agent, &config);
-            assert!(json.contains("test-server"), "missing server name for {:?}", agent);
+            assert!(
+                json.contains("test-server"),
+                "missing server name for {:?}",
+                agent
+            );
             assert!(json.contains("TEST_API_KEY"), "missing env for {:?}", agent);
         }
     }
@@ -154,7 +140,10 @@ mod tests {
         let json = generate_mcp_config(&AgentKind::ClaudeDesktop, &test_config());
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
         assert!(parsed["mcpServers"]["test-server"].is_object());
-        assert_eq!(parsed["mcpServers"]["test-server"]["command"], "test-server");
+        assert_eq!(
+            parsed["mcpServers"]["test-server"]["command"],
+            "test-server"
+        );
     }
 
     #[test]

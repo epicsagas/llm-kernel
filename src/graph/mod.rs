@@ -12,7 +12,7 @@
 //!
 //! All functions take `&rusqlite::Connection` — no hardcoded paths.
 //!
-//! ```ignore
+//! ```no_run
 //! use rusqlite::Connection;
 //! use llm_kernel::graph::{init_graph_schema, upsert_node, smart_recall, GraphNode};
 //!
