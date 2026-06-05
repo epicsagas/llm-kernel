@@ -7,4 +7,4 @@ pub mod schema_version;
 pub mod sqlite;
 
 pub use schema_version::SchemaVersion;
-pub use sqlite::{init_in_memory, init_schema};
+pub use sqlite::{MigrationFn, init_in_memory, init_schema, init_schema_with_migrations};

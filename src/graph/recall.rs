@@ -8,7 +8,7 @@ use crate::error::{KernelError, Result};
 
 use super::lifecycle::{parse_iso_to_secs, touch_nodes};
 use super::search::search_nodes;
-use super::types::{NODE_COLUMNS, ScoredNode};
+use super::types::{NODE_COLUMNS, ScoredNode, escape_like};
 
 /// Composite relevance score weights.
 pub const W_RECENCY: f64 = 0.20;
@@ -52,8 +52,8 @@ pub fn smart_recall(
     let mut conditions: Vec<&str> = vec!["',' || tags || ',' NOT LIKE '%,stale,%'"];
     let mut param_vals: Vec<Box<dyn rusqlite::ToSql>> = vec![];
     if let Some(p) = project {
-        conditions.push("(',' || projects || ',' LIKE '%,' || ? || ',%')");
-        param_vals.push(Box::new(p.to_string()));
+        conditions.push("(',' || projects || ',' LIKE '%,' || ? || ',%' ESCAPE '\\')");
+        param_vals.push(Box::new(escape_like(p)));
     }
     let where_clause = format!("WHERE {}", conditions.join(" AND "));
     let sql = format!(
@@ -285,5 +285,16 @@ mod tests {
         let results = smart_recall(&conn, None, None, 10).unwrap();
         assert_eq!(results.len(), 2);
         // Both should have graph boost applied (score > base importance)
+    }
+
+    #[test]
+    fn recall_project_wildcard_is_escaped() {
+        let conn = mem_db();
+        let mut n1 = test_node("n1", 0.7, vec![]);
+        n1.projects = vec!["myproj".to_string()];
+        upsert_node(&conn, &n1).unwrap();
+        // "my%" would match "myproj" as a LIKE wildcard, but escape_like prevents it
+        let results = smart_recall(&conn, Some("my%"), None, 10).unwrap();
+        assert!(results.is_empty());
     }
 }

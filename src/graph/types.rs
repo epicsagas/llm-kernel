@@ -121,6 +121,42 @@ pub(crate) fn split_csv(s: &str) -> Vec<String> {
         .collect()
 }
 
+/// Escape SQL LIKE wildcards (`%`, `_`, `\`) in a bound value.
+///
+/// Used with `LIKE '%,' || ? ESCAPE '\' || ',%'` patterns to prevent
+/// project names or tags containing `%` or `_` from matching unintended rows.
+pub(crate) fn escape_like(value: &str) -> String {
+    let mut out = String::with_capacity(value.len());
+    for ch in value.chars() {
+        match ch {
+            '%' | '_' | '\\' => {
+                out.push('\\');
+                out.push(ch);
+            }
+            _ => out.push(ch),
+        }
+    }
+    out
+}
+
+/// Validate a UUID v4 string (strict format: `xxxxxxxx-xxxx-4xxx-[89ab]xxx-xxxxxxxxxxxx`).
+///
+/// Pure byte inspection — zero dependencies. Useful for validating node and edge IDs
+/// before writing to the graph.
+pub fn validate_uuid(id: &str) -> bool {
+    let b = id.as_bytes();
+    b.len() == 36
+        && b[8] == b'-'
+        && b[13] == b'-'
+        && b[18] == b'-'
+        && b[23] == b'-'
+        && b[14] == b'4'
+        && matches!(b[19], b'8'..=b'9' | b'a'..=b'b' | b'A'..=b'B')
+        && b.iter()
+            .enumerate()
+            .all(|(i, &c)| matches!(i, 8 | 13 | 18 | 23) || c.is_ascii_hexdigit())
+}
+
 // ── Row mapping ───────────────────────────────────────
 
 /// Standard SELECT columns for node queries.
@@ -147,4 +183,69 @@ pub(crate) fn row_to_node(row: &rusqlite::Row<'_>) -> rusqlite::Result<GraphNode
         access_count: row.get::<_, i64>(10).unwrap_or(0),
         accessed_at: row.get(11).unwrap_or_default(),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn escape_like_escapes_percent() {
+        assert_eq!(escape_like("100%"), r"100\%");
+    }
+
+    #[test]
+    fn escape_like_escapes_underscore() {
+        assert_eq!(escape_like("a_b"), r"a\_b");
+    }
+
+    #[test]
+    fn escape_like_passthrough_normal() {
+        assert_eq!(escape_like("hello"), "hello");
+    }
+
+    #[test]
+    fn escape_like_escapes_backslash() {
+        assert_eq!(escape_like(r"\"), r"\\");
+    }
+
+    #[test]
+    fn escape_like_empty() {
+        assert_eq!(escape_like(""), "");
+    }
+
+    #[test]
+    fn validate_uuid_accepts_valid_v4() {
+        assert!(validate_uuid("550e8400-e29b-41d4-a716-446655440000"));
+        assert!(validate_uuid("00000000-0000-4000-8000-000000000000"));
+        assert!(validate_uuid("ffffffff-ffff-4fff-bfff-ffffffffffff"));
+    }
+
+    #[test]
+    fn validate_uuid_rejects_wrong_version() {
+        // version byte (position 14) is '3', not '4'
+        assert!(!validate_uuid("550e8400-e29b-31d4-a716-446655440000"));
+    }
+
+    #[test]
+    fn validate_uuid_rejects_wrong_variant() {
+        // variant byte (position 19) is 'c', not in [89abAB]
+        assert!(!validate_uuid("550e8400-e29b-41d4-c716-446655440000"));
+    }
+
+    #[test]
+    fn validate_uuid_rejects_short() {
+        assert!(!validate_uuid(""));
+        assert!(!validate_uuid("550e8400"));
+    }
+
+    #[test]
+    fn validate_uuid_rejects_missing_dashes() {
+        assert!(!validate_uuid("550e8400e29b41d4a716446655440000"));
+    }
+
+    #[test]
+    fn validate_uuid_rejects_non_hex() {
+        assert!(!validate_uuid("550g8400-e29b-41d4-a716-446655440000"));
+    }
 }

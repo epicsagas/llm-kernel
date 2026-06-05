@@ -40,6 +40,7 @@
 //! }
 //! ```
 
+pub mod dedup;
 pub mod lifecycle;
 pub mod recall;
 pub mod schema;
@@ -51,13 +52,21 @@ pub mod types;
 #[cfg(feature = "graph-async")]
 pub mod async_graph;
 
+#[cfg(feature = "graph-pool")]
+pub mod async_pool;
+#[cfg(feature = "graph-pool")]
+pub use async_pool::AsyncPoolGraph;
+
 // Re-export primary types and functions
+pub use dedup::{find_duplicate, upsert_node_dedup};
 pub use lifecycle::{compute_stats, decay_importance, tag_stale_nodes, touch_node, touch_nodes};
 pub use recall::smart_recall;
-pub use schema::init_graph_schema;
+pub use schema::{GRAPH_SCHEMA_VERSION, init_graph_schema, migrate_graph};
 pub use search::{query_nodes, search_nodes};
 pub use store::{
     append_edge, delete_edge, delete_node, read_edges, read_node, read_nodes, upsert_node,
 };
 pub use traversal::{build_graph, graph_neighbors, related_nodes};
-pub use types::{Graph, GraphEdge, GraphNode, GraphNodeSummary, GraphStats, ScoredNode};
+pub use types::{
+    Graph, GraphEdge, GraphNode, GraphNodeSummary, GraphStats, ScoredNode, validate_uuid,
+};

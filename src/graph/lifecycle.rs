@@ -122,7 +122,7 @@ fn compute_cutoff_timestamp(days: u64) -> String {
     format!("{y:04}-{m:02}-{d:02}T{hh:02}:{mm:02}:{ss:02}Z")
 }
 
-fn days_to_ymd(mut days: u64) -> (u64, u64, u64) {
+pub(crate) fn days_to_ymd(mut days: u64) -> (u64, u64, u64) {
     let mut year = 1970u64;
     loop {
         let leap = is_leap(year);
