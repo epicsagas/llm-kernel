@@ -63,8 +63,7 @@ impl AsyncGraph {
     pub async fn open(path: impl Into<String>) -> Result<Self> {
         let path = path.into();
         task::spawn_blocking(move || {
-            let conn = Connection::open(&path)
-                .map_err(|e| KernelError::Store(e.to_string()))?;
+            let conn = Connection::open(&path).map_err(|e| KernelError::Store(e.to_string()))?;
             crate::graph::schema::init_graph_schema(&conn)?;
             Ok(Self::new(conn))
         })
@@ -132,12 +131,7 @@ impl AsyncGraph {
         limit: usize,
     ) -> Result<Vec<ScoredNode>> {
         self.with_conn(move |c| {
-            crate::graph::recall::smart_recall(
-                c,
-                project.as_deref(),
-                hint.as_deref(),
-                limit,
-            )
+            crate::graph::recall::smart_recall(c, project.as_deref(), hint.as_deref(), limit)
         })
         .await
         .map_err(|e| KernelError::Store(e.to_string()))?
