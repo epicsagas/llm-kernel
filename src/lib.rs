@@ -65,7 +65,7 @@ pub mod install;
 #[cfg(feature = "search")]
 pub mod search;
 
-#[cfg(feature = "embedding")]
+#[cfg(any(feature = "embedding", feature = "embedding-openai"))]
 pub mod embedding;
 
 #[cfg(feature = "telemetry")]

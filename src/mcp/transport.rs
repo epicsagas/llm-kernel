@@ -18,6 +18,26 @@ impl<'a> JsonRpcDispatcher<'a> {
         Self { server }
     }
 
+    /// Dispatch a request, checking the `Authorization` header if auth is configured.
+    ///
+    /// Returns a JSON-RPC `-32001` error response when auth fails.
+    /// Pass `None` for `auth_header` when no header is present (stdio transport).
+    pub fn dispatch_authenticated(
+        &self,
+        request: &str,
+        auth_header: Option<&str>,
+    ) -> Option<String> {
+        let provided = auth_header.unwrap_or("");
+        if !self.server.check_auth(provided) {
+            // Return an error for every request id we can parse, else a fixed-id error.
+            let id = serde_json::from_str::<serde_json::Value>(request.trim())
+                .ok()
+                .and_then(|v| v.get("id").and_then(|id| id.as_i64()));
+            return Some(self.error_response(id, -32001, "Unauthorized"));
+        }
+        self.dispatch(request)
+    }
+
     /// Dispatch a JSON-RPC request (single or batch) and return the response.
     pub fn dispatch(&self, request: &str) -> Option<String> {
         let trimmed = request.trim();
@@ -282,5 +302,49 @@ mod tests {
         let arr = parsed.as_array().unwrap();
         assert_eq!(arr[0]["result"]["serverInfo"]["name"], "test-server");
         assert_eq!(arr[1]["error"]["code"], -32601);
+    }
+
+    #[test]
+    fn dispatch_authenticated_passes_with_no_auth_configured() {
+        let server = test_server();
+        let dispatcher = JsonRpcDispatcher::new(&server);
+        let req = r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#;
+        let resp = dispatcher.dispatch_authenticated(req, None).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&resp).unwrap();
+        assert!(parsed["result"]["serverInfo"].is_object());
+    }
+
+    #[test]
+    fn dispatch_authenticated_rejects_missing_token() {
+        let server = McpServer::new("secured", "1.0").with_bearer_auth("secret-token");
+        let dispatcher = JsonRpcDispatcher::new(&server);
+        let req = r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#;
+        let resp = dispatcher.dispatch_authenticated(req, None).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&resp).unwrap();
+        assert_eq!(parsed["error"]["code"], -32001);
+    }
+
+    #[test]
+    fn dispatch_authenticated_rejects_wrong_token() {
+        let server = McpServer::new("secured", "1.0").with_bearer_auth("correct-token");
+        let dispatcher = JsonRpcDispatcher::new(&server);
+        let req = r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#;
+        let resp = dispatcher
+            .dispatch_authenticated(req, Some("Bearer wrong-token"))
+            .unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&resp).unwrap();
+        assert_eq!(parsed["error"]["code"], -32001);
+    }
+
+    #[test]
+    fn dispatch_authenticated_passes_with_correct_token() {
+        let server = McpServer::new("secured", "1.0").with_bearer_auth("correct-token");
+        let dispatcher = JsonRpcDispatcher::new(&server);
+        let req = r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#;
+        let resp = dispatcher
+            .dispatch_authenticated(req, Some("Bearer correct-token"))
+            .unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&resp).unwrap();
+        assert!(parsed["result"]["serverInfo"].is_object());
     }
 }

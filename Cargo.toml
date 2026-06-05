@@ -56,6 +56,12 @@ search = ["dep:serde_json"]
 # Embedding provider trait + cosine similarity
 embedding = []
 
+# OpenAI text-embedding provider (requires ureq for sync HTTP)
+embedding-openai = ["embedding", "dep:ureq", "dep:serde_json"]
+
+# Knowledge graph with async wrappers (requires tokio)
+graph-async = ["graph", "dep:tokio"]
+
 # Telemetry framework (enum-gated events)
 telemetry = ["dep:serde_json"]
 
@@ -63,7 +69,7 @@ telemetry = ["dep:serde_json"]
 safety = ["dep:regex"]
 
 # Everything
-full = ["provider", "discovery", "client-async", "secrets", "store", "config", "graph", "mcp", "tokens", "install", "search", "embedding", "telemetry", "safety"]
+full = ["provider", "discovery", "client-async", "secrets", "store", "config", "graph", "graph-async", "mcp", "tokens", "install", "search", "embedding", "embedding-openai", "telemetry", "safety"]
 
 [dependencies]
 # Always required

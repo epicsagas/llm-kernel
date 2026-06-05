@@ -22,3 +22,47 @@ pub fn fetch_openai_compatible_models(base_url: &str) -> anyhow::Result<Vec<Stri
     let payload: OpenAIResponse = resp.body_mut().read_json()?;
     Ok(payload.data.into_iter().map(|m| m.id).collect())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_openai_response_multiple_models() {
+        let raw = r#"{"object":"list","data":[{"id":"gpt-4o","object":"model"},{"id":"gpt-4o-mini","object":"model"}]}"#;
+        let resp: OpenAIResponse = serde_json::from_str(raw).unwrap();
+        assert_eq!(resp.data.len(), 2);
+        assert_eq!(resp.data[0].id, "gpt-4o");
+        assert_eq!(resp.data[1].id, "gpt-4o-mini");
+    }
+
+    #[test]
+    fn parse_openai_response_empty() {
+        let raw = r#"{"data":[]}"#;
+        let resp: OpenAIResponse = serde_json::from_str(raw).unwrap();
+        assert!(resp.data.is_empty());
+    }
+
+    #[test]
+    fn parse_model_entry_only_id_required() {
+        let raw = r#"{"id":"mistral-7b-instruct"}"#;
+        let entry: OpenAIModelEntry = serde_json::from_str(raw).unwrap();
+        assert_eq!(entry.id, "mistral-7b-instruct");
+    }
+
+    #[test]
+    fn url_construction_no_double_slash() {
+        let base = "http://localhost:1234/";
+        let expected = "http://localhost:1234/v1/models";
+        let url = format!("{}/v1/models", base.trim_end_matches('/'));
+        assert_eq!(url, expected);
+    }
+
+    #[test]
+    fn parse_lmstudio_style_response() {
+        let raw = r#"{"data":[{"id":"lmstudio-community/gemma-3-4b-it-GGUF"},{"id":"bartowski/Phi-4-mini-instruct-GGUF"}]}"#;
+        let resp: OpenAIResponse = serde_json::from_str(raw).unwrap();
+        assert_eq!(resp.data.len(), 2);
+        assert!(resp.data[0].id.contains('/'));
+    }
+}

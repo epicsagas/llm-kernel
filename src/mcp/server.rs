@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 
+use crate::mcp::auth::BearerAuth;
 use crate::mcp::schema::{ResourceDescription, ToolDescription};
 
 /// Handler function type for MCP tool calls.
@@ -16,10 +17,11 @@ pub struct McpServer {
     resources: Vec<ResourceDescription>,
     handlers: HashMap<String, Handler>,
     resource_handlers: HashMap<String, Handler>,
+    auth: Option<BearerAuth>,
 }
 
 impl McpServer {
-    /// Create a new MCP server.
+    /// Create a new MCP server with no authentication.
     pub fn new(name: impl Into<String>, version: impl Into<String>) -> Self {
         Self {
             server_name: name.into(),
@@ -28,7 +30,37 @@ impl McpServer {
             resources: Vec::new(),
             handlers: HashMap::new(),
             resource_handlers: HashMap::new(),
+            auth: None,
         }
+    }
+
+    /// Require bearer token authentication for all requests.
+    pub fn with_bearer_auth(mut self, token: impl Into<String>) -> Self {
+        self.auth = Some(BearerAuth::new(token));
+        self
+    }
+
+    /// Generate and attach a random bearer token.
+    ///
+    /// Returns the generated token so the caller can distribute it.
+    pub fn with_generated_auth(mut self) -> (Self, String) {
+        let bearer = BearerAuth::generate();
+        let token = bearer.token().to_string();
+        self.auth = Some(bearer);
+        (self, token)
+    }
+
+    /// Validate an `Authorization` header value. Always returns `true` when no auth is configured.
+    pub fn check_auth(&self, authorization_header: &str) -> bool {
+        match &self.auth {
+            None => true,
+            Some(bearer) => bearer.validate(authorization_header),
+        }
+    }
+
+    /// Returns `true` if bearer authentication is enabled on this server.
+    pub fn auth_enabled(&self) -> bool {
+        self.auth.is_some()
     }
 
     /// Register a tool with the server.
@@ -204,5 +236,31 @@ mod tests {
         let server = McpServer::new("test", "0.1.0");
         let result = server.read_resource("missing://uri", serde_json::json!({}));
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn no_auth_by_default() {
+        let server = McpServer::new("test", "0.1.0");
+        assert!(!server.auth_enabled());
+        assert!(server.check_auth(""));
+        assert!(server.check_auth("Bearer whatever"));
+    }
+
+    #[test]
+    fn with_bearer_auth_validates_correctly() {
+        let server = McpServer::new("test", "0.1.0").with_bearer_auth("my-token");
+        assert!(server.auth_enabled());
+        assert!(server.check_auth("Bearer my-token"));
+        assert!(!server.check_auth("Bearer wrong"));
+        assert!(!server.check_auth(""));
+    }
+
+    #[test]
+    fn with_generated_auth_returns_token() {
+        let (server, token) = McpServer::new("test", "0.1.0").with_generated_auth();
+        assert!(server.auth_enabled());
+        assert_eq!(token.len(), 32);
+        assert!(server.check_auth(&format!("Bearer {token}")));
+        assert!(!server.check_auth("Bearer bad"));
     }
 }
