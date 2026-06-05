@@ -20,6 +20,7 @@ llm-kernel provides the foundational layer for working with LLM providers in Rus
 - **Model discovery** — dynamic model discovery from models.dev, Ollama, OpenAI-compatible endpoints
 - **Credential vault** — dotenv-style API key management with atomic writes
 - **Config loader** — TOML config with auto-create from template
+- **Knowledge graph** — SQLite-backed graph with FTS5 search, smart recall, and BFS traversal
 
 ## Feature flags
 
@@ -32,6 +33,7 @@ Each module is gated behind a feature flag so you only pay for what you use.
 | `discovery` | Dynamic model discovery | |
 | `secrets` | SecretVault credential management | |
 | `store` | SQLite init helpers (WAL, FTS5, schema versioning) | |
+| `graph` | Knowledge graph — SQLite, FTS5, smart recall, BFS traversal | |
 | `config` | TOML config loader | |
 | `full` | All features | |
 
@@ -41,14 +43,21 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-llm-kernel = "0.3"
+llm-kernel = "0.1"
 ```
 
 The `provider` feature is enabled by default. For the async client:
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.3", features = ["client-async"] }
+llm-kernel = { version = "0.4", features = ["client-async"] }
+```
+
+For the knowledge graph:
+
+```toml
+[dependencies]
+llm-kernel = { version = "0.4", features = ["graph"] }
 ```
 
 ## Usage
@@ -175,6 +184,54 @@ let conn = init_schema(&db_path, ddl, 1)?;
 // WAL mode, busy timeout, and schema versioning applied automatically
 ```
 
+### Knowledge graph
+
+```rust
+use llm_kernel::prelude::*;
+use rusqlite::Connection;
+
+let conn = Connection::open_in_memory().unwrap();
+init_graph_schema(&conn).unwrap();
+
+// Create nodes
+upsert_node(&conn, &GraphNode {
+    id: "rust-ownership".into(),
+    node_type: "concept".into(),
+    title: "Rust Ownership Model".into(),
+    body: "Ownership, borrowing, and lifetimes...".into(),
+    tags: vec!["rust".into(), "memory-safety".into()],
+    projects: vec!["my-project".into()],
+    agents: vec![],
+    created: "2026-01-01T00:00:00Z".into(),
+    updated: "2026-01-01T00:00:00Z".into(),
+    importance: 0.8,
+    access_count: 0,
+    accessed_at: String::new(),
+}).unwrap();
+
+// Connect with edges
+append_edge(&conn, &GraphEdge {
+    id: "e1".into(),
+    source: "rust-ownership".into(),
+    target: "borrow-checker".into(),
+    relation: "related".into(),
+    weight: 1.5,
+    ts: "2026-01-01T00:00:00Z".into(),
+}).unwrap();
+
+// Smart recall with composite scoring
+let results = smart_recall(&conn, Some("my-project"), Some("ownership"), 5).unwrap();
+for scored in &results {
+    println!("{:.2} — {}", scored.score, scored.node.title);
+}
+
+// Lifecycle management
+decay_importance(&conn, 30, 0.9, 0.05).unwrap();
+tag_stale_nodes(&conn, 90).unwrap();
+let stats = compute_stats(&conn).unwrap();
+println!("{} nodes, {} edges", stats.total_nodes, stats.total_edges);
+```
+
 ## Model metadata
 
 Each model in the catalog includes:
@@ -198,13 +255,16 @@ Each model in the catalog includes:
 │   provider  │   client   │  ← trait LLMClient { complete, stream_complete }
 │   catalog   │   async    │
 ├─────────────┴────────────┤
-│ secrets │ config │ store │  ← infrastructure modules
+│ graph  │ secrets │ config │  ← knowledge graph, credential vault, config
+├──────────────────────────┤
+│          store           │  ← SQLite infrastructure (WAL, FTS5, schema)
 └──────────────────────────┘
 ```
 
 - **`LLMClient` trait** — unified interface for `OpenAIClient` and `AnthropicClient`
 - **`ProviderIndex`** — zero-copy access to embedded catalog, queryable by provider or model
 - **`SecretVault`** — `HashMap<String, String>` with dotenv load/save and symlink guards
+- **`graph`** — SQLite knowledge graph with FTS5 search, composite scoring recall, BFS traversal, importance decay
 
 ## Examples
 

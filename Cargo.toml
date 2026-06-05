@@ -1,6 +1,6 @@
 [package]
 name         = "llm-kernel"
-version      = "0.3.0"
+version      = "0.1.0"
 edition      = "2024"
 description  = "LLM provider catalog, discovery, secrets, and async client library"
 license      = "Apache-2.0"
@@ -38,8 +38,11 @@ store = ["dep:rusqlite"]
 # TOML config loader
 config = ["dep:toml"]
 
+# Knowledge graph (SQLite + FTS5 + smart recall + BFS traversal)
+graph = ["store", "dep:serde_json"]
+
 # Everything
-full = ["provider", "discovery", "client-async", "secrets", "store", "config"]
+full = ["provider", "discovery", "client-async", "secrets", "store", "config", "graph"]
 
 [dependencies]
 # Always required

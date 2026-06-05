@@ -12,6 +12,7 @@
 //! | `secrets`     | [`secrets`]   | SecretVault — dotenv-style credential management |
 //! | `store`       | [`store`]     | SQLite init helpers (WAL, PRAGMA, schema versioning) |
 //! | `config`      | [`config`]    | TOML config loader with auto-create from template |
+//! | `graph`       | [`graph`]     | Knowledge graph — SQLite, FTS5, smart recall, BFS traversal |
 //!
 //! ## Quick start
 //!
@@ -87,6 +88,9 @@ pub mod store;
 
 #[cfg(feature = "config")]
 pub mod config;
+
+#[cfg(feature = "graph")]
+pub mod graph;
 
 pub mod prelude;
 
