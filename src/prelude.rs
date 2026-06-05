@@ -20,6 +20,8 @@ pub use crate::provider::{
 pub use crate::llm::{
     AnthropicClient, ChatMessage, LLMClient, LLMRequest, LLMResponse, LLMStream, ModelConfig,
     OpenAIClient, StreamEvent, TokenUsage,
+    json_extract::{extract_json, parse_json, JsonExtractor},
+    prompt::render_prompt,
 };
 
 // --- Secrets ---
@@ -36,3 +38,38 @@ pub use crate::graph::{
     query_nodes, read_node, related_nodes, search_nodes, smart_recall, tag_stale_nodes,
     upsert_node,
 };
+
+// --- MCP ---
+
+#[cfg(feature = "mcp")]
+pub use crate::mcp::{BearerAuth, Handler, JsonRpcDispatcher, McpServer, ResourceDescription, ToolDescription};
+
+// --- Tokens ---
+
+#[cfg(feature = "tokens")]
+pub use crate::tokens::estimate_tokens;
+
+// --- Search ---
+
+#[cfg(feature = "search")]
+pub use crate::search::{SearchResult, rrf_fuse};
+
+// --- Embedding ---
+
+#[cfg(feature = "embedding")]
+pub use crate::embedding::{cosine_similarity, EmbeddingProvider, EmbeddingResult};
+
+// --- Telemetry ---
+
+#[cfg(feature = "telemetry")]
+pub use crate::telemetry::{ConsoleSink, FailureClass, TelemetryEvent, TelemetrySink};
+
+// --- Safety ---
+
+#[cfg(feature = "safety")]
+pub use crate::safety::{classify_failure, mask_secrets, sanitize_output, FailureCategory};
+
+// --- Install ---
+
+#[cfg(feature = "install")]
+pub use crate::install::{generate_mcp_config, AgentKind, McpConfig};

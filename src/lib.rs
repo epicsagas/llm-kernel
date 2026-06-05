@@ -1,10 +1,11 @@
 //! # llm-kernel
 //!
-//! LLM provider catalog, async client, and model discovery for Rust applications.
+//! Foundation library for Rust AI-native applications.
 //!
-//! ## Modules
+//! Provides a composable, feature-gated set of modules for building
+//! LLM-powered tools, agents, and servers:
 //!
-//! | Feature       | Module      | Description                                         |
+//! | Feature       | Module       | Description                                         |
 //! |---------------|-------------|-----------------------------------------------------|
 //! | `provider`    | [`provider`]  | Provider catalog, model descriptors, pricing — **default** |
 //! | `client-async`| [`llm`]       | Async LLM client (OpenAI, Anthropic) with SSE streaming |
@@ -13,6 +14,13 @@
 //! | `store`       | [`store`]     | SQLite init helpers (WAL, PRAGMA, schema versioning) |
 //! | `config`      | [`config`]    | TOML config loader with auto-create from template |
 //! | `graph`       | [`graph`]     | Knowledge graph — SQLite, FTS5, smart recall, BFS traversal |
+//! | `mcp`         | [`mcp`]       | MCP server framework — JSON-RPC 2.0, stdio transport |
+//! | `tokens`      | [`tokens`]    | Token estimation with Unicode-script heuristics |
+//! | `install`     | [`install`]   | AI tool installation wizard (Claude, Cursor, Copilot, etc.) |
+//! | `search`      | [`search`]    | Hybrid search with Reciprocal Rank Fusion |
+//! | `embedding`   | [`embedding`] | Embedding provider trait + cosine similarity |
+//! | `telemetry`   | [`telemetry`] | Telemetry framework — enum-gated events, no PII |
+//! | `safety`      | [`safety`]    | Secret masking, error classification, output sanitization |
 //!
 //! ## Quick start
 //!
@@ -20,53 +28,6 @@
 //!
 //! ```ignore
 //! use llm_kernel::prelude::*;
-//!
-//! // Browse the embedded provider catalog
-//! let catalog = ProviderIndex::embedded();
-//! for id in catalog.ids() {
-//!     let provider = catalog.get(&id).unwrap();
-//!     println!("{}", provider.display_name);
-//! }
-//!
-//! // Query models with pricing and capabilities
-//! for model in catalog.models_for("openai") {
-//!     if let Some(cost) = &model.cost {
-//!         println!("{} — ${:.2}/1M in, ${:.2}/1M out", model.id, cost.input, cost.output);
-//!     }
-//! }
-//! ```
-//!
-//! ## Async client
-//!
-//! ```ignore
-//! use llm_kernel::prelude::*;
-//!
-//! let config = ModelConfig {
-//!     provider: "openai".into(),
-//!     model: "gpt-4o".into(),
-//!     api_key_env: "OPENAI_API_KEY".into(),
-//!     base_url: None,
-//!     temperature: 0.7,
-//!     max_tokens: Some(1024),
-//! };
-//!
-//! let client = OpenAIClient::new(&config)?;
-//! let response = client.complete(LLMRequest {
-//!     system: Some("You are a helpful assistant.".into()),
-//!     messages: vec![ChatMessage::user("Hello!")],
-//!     temperature: 0.7,
-//!     max_tokens: Some(1024),
-//!     model: None,
-//! }).await?;
-//! println!("{}", response.content);
-//! ```
-//!
-//! ## Streaming
-//!
-//! ```ignore
-//! let client = AnthropicClient::new(&config)?;
-//! let stream = client.stream_complete(request).await?;
-//! // Yields StreamEvent::Delta, StreamEvent::Usage, StreamEvent::Done
 //! ```
 
 pub mod error;
@@ -91,6 +52,27 @@ pub mod config;
 
 #[cfg(feature = "graph")]
 pub mod graph;
+
+#[cfg(feature = "mcp")]
+pub mod mcp;
+
+#[cfg(feature = "tokens")]
+pub mod tokens;
+
+#[cfg(feature = "install")]
+pub mod install;
+
+#[cfg(feature = "search")]
+pub mod search;
+
+#[cfg(feature = "embedding")]
+pub mod embedding;
+
+#[cfg(feature = "telemetry")]
+pub mod telemetry;
+
+#[cfg(feature = "safety")]
+pub mod safety;
 
 pub mod prelude;
 

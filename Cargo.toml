@@ -1,8 +1,8 @@
 [package]
 name         = "llm-kernel"
-version      = "0.1.0"
+version      = "0.2.0"
 edition      = "2024"
-description  = "LLM provider catalog, discovery, secrets, and async client library"
+description  = "Foundation library for Rust AI-native apps — provider catalog, LLM client, MCP server, search, telemetry, and safety"
 license      = "Apache-2.0"
 repository   = "https://github.com/epicsagas/llm-kernel"
 homepage     = "https://github.com/epicsagas/llm-kernel"
@@ -26,7 +26,7 @@ provider = ["dep:serde_json"]
 # Dynamic model discovery (models.dev, Ollama, OpenAI-compatible)
 discovery = ["provider", "dep:ureq"]
 
-# Asynchronous LLM client (reqwest-based)
+# Asynchronous LLM client (reqwest-based) with JSON extraction
 client-async = ["dep:reqwest", "dep:serde_json", "dep:async-trait", "dep:tokio", "dep:tokio-stream", "dep:futures-core"]
 
 # Secret vault (dotenv-style credential management)
@@ -41,14 +41,36 @@ config = ["dep:toml"]
 # Knowledge graph (SQLite + FTS5 + smart recall + BFS traversal)
 graph = ["store", "dep:serde_json"]
 
+# MCP server framework (JSON-RPC 2.0, stdio transport)
+mcp = ["dep:serde_json"]
+
+# Token estimation (zero-dep heuristic)
+tokens = []
+
+# AI tool installation wizard
+install = ["dep:serde_json"]
+
+# Hybrid search with Reciprocal Rank Fusion
+search = ["dep:serde_json"]
+
+# Embedding provider trait + cosine similarity
+embedding = []
+
+# Telemetry framework (enum-gated events)
+telemetry = ["dep:serde_json"]
+
+# Safety utilities (secret masking, error classification)
+safety = ["dep:regex"]
+
 # Everything
-full = ["provider", "discovery", "client-async", "secrets", "store", "config", "graph"]
+full = ["provider", "discovery", "client-async", "secrets", "store", "config", "graph", "mcp", "tokens", "install", "search", "embedding", "telemetry", "safety"]
 
 [dependencies]
 # Always required
 serde       = { version = "1", features = ["derive"] }
 thiserror   = "2"
 anyhow      = "1"
+tracing     = "0.1"
 
 # Feature-gated
 serde_json  = { version = "1", optional = true }
@@ -61,7 +83,7 @@ tokio       = { version = "1", features = ["rt-multi-thread", "macros"], optiona
 tokio-stream = { version = "0.1", optional = true }
 futures-core = { version = "0.3", optional = true }
 async-trait = { version = "0.1", optional = true }
-tracing     = "0.1"
+regex       = { version = "1", optional = true }
 
 [dev-dependencies]
 tempfile = "3"
