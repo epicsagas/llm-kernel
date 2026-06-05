@@ -27,7 +27,7 @@ provider = ["dep:serde_json"]
 discovery = ["provider", "dep:ureq"]
 
 # Asynchronous LLM client (reqwest-based)
-client-async = ["dep:reqwest", "dep:async-trait", "dep:tokio", "dep:tokio-stream", "dep:futures-core"]
+client-async = ["dep:reqwest", "dep:serde_json", "dep:async-trait", "dep:tokio", "dep:tokio-stream", "dep:futures-core"]
 
 # Secret vault (dotenv-style credential management)
 secrets = ["dep:tempfile"]

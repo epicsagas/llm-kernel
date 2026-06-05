@@ -13,10 +13,7 @@ pub enum KernelError {
 
     /// An HTTP error occurred (non-200 status with code).
     #[error("HTTP {status}: {message}")]
-    Http {
-        status: u16,
-        message: String,
-    },
+    Http { status: u16, message: String },
 
     /// A request timed out.
     #[error("Request timed out after {0}s")]
