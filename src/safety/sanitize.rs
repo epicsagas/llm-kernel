@@ -2,32 +2,55 @@
 
 /// Mask known secret patterns in a string.
 ///
-/// Handles `Bearer` tokens, `sk-*` API keys, and `password=`, `token=`, `key=`, `secret=` values.
+/// Handles `Bearer` tokens, `sk-*` API keys, and `password=`, `token=`,
+/// `key=`, `secret=` values. All occurrences are masked.
 pub fn mask_secrets(input: &str) -> String {
     let mut result = input.to_string();
 
-    // Mask Bearer tokens
-    if let Some(pos) = result.find("Bearer ") {
-        let value_start = pos + "Bearer ".len();
-        if value_start < result.len() {
+    // Mask all Bearer tokens
+    let mut search_from = 0;
+    while let Some(rel_pos) = result[search_from..].find("Bearer ") {
+        let value_start = search_from + rel_pos + "Bearer ".len();
+        if value_start >= result.len() {
+            break;
+        }
+        if let Some(value_end) = result[value_start..].find(|c: char| c.is_whitespace()) {
+            result.replace_range(value_start..value_start + value_end, "****");
+            search_from = value_start + 4;
+        } else {
+            result.replace_range(value_start.., "****");
+            break;
+        }
+    }
+
+    // Mask all password=, token=, key=, secret= values
+    for prefix in &["password=", "token=", "key=", "secret="] {
+        let mut search_from = 0;
+        while let Some(rel_pos) = result[search_from..].find(prefix) {
+            let value_start = search_from + rel_pos + prefix.len();
             if let Some(value_end) = result[value_start..].find(|c: char| c.is_whitespace()) {
-                result.replace_range(value_start..value_start + value_end, "****");
-            } else {
+                let end = value_start + value_end;
+                result.replace_range(value_start..end, "****");
+                search_from = value_start + 4;
+            } else if value_start < result.len() {
                 result.replace_range(value_start.., "****");
+                break;
+            } else {
+                break;
             }
         }
     }
 
-    // Mask password=, token=, key=, secret= values
-    for prefix in &["password=", "token=", "key=", "secret="] {
-        if let Some(pos) = result.find(prefix) {
-            let value_start = pos + prefix.len();
-            if let Some(value_end) = result[value_start..].find(|c: char| c.is_whitespace()) {
-                let end = value_start + value_end;
-                result.replace_range(value_start..end, "****");
-            } else if value_start < result.len() {
-                result.replace_range(value_start.., "****");
-            }
+    // Mask standalone sk-* API keys
+    let mut search_from = 0;
+    while let Some(rel_pos) = result[search_from..].find("sk-") {
+        let value_start = search_from + rel_pos;
+        if let Some(value_end) = result[value_start..].find(|c: char| c.is_whitespace()) {
+            result.replace_range(value_start..value_start + value_end, "****");
+            search_from = value_start + 4;
+        } else {
+            result.replace_range(value_start.., "****");
+            break;
         }
     }
 
@@ -142,6 +165,25 @@ mod tests {
     fn no_secrets_unchanged() {
         let input = "hello world 123";
         assert_eq!(mask_secrets(input), input);
+    }
+
+    #[test]
+    fn mask_multiple_passwords() {
+        let masked = mask_secrets("password=a password=b");
+        assert!(masked.contains("password=****"), "got: {masked}");
+    }
+
+    #[test]
+    fn mask_multiple_bearer() {
+        let masked = mask_secrets("Bearer token1 and Bearer token2");
+        assert_eq!(masked, "Bearer **** and Bearer ****");
+    }
+
+    #[test]
+    fn mask_standalone_sk_key() {
+        let masked = mask_secrets("key is sk-proj-abc123 here");
+        assert!(masked.contains("****"), "got: {masked}");
+        assert!(!masked.contains("sk-proj"), "got: {masked}");
     }
 
     #[test]

@@ -65,8 +65,8 @@ pub use crate::embedding::{EmbeddingProvider, EmbeddingResult, cosine_similarity
 
 #[cfg(feature = "telemetry")]
 pub use crate::telemetry::{
-    ConsoleSink, FailureClass, FeatureName, ProviderCategory, TelemetryEvent, TelemetrySink,
-    ToolName,
+    ConsoleSink, FailureClass, FeatureName, NoopSink, ProviderCategory, TelemetryEvent,
+    TelemetrySink, ToolName,
 };
 
 // --- Safety ---

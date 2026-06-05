@@ -3,7 +3,7 @@
 use crate::telemetry::events::TelemetryEvent;
 
 /// Trait for telemetry event sinks.
-pub trait TelemetrySink {
+pub trait TelemetrySink: Send + Sync {
     /// Track a telemetry event.
     fn track(&mut self, event: TelemetryEvent);
 

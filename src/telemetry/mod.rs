@@ -14,4 +14,4 @@ pub mod events;
 pub mod sink;
 
 pub use events::{FailureClass, FeatureName, ProviderCategory, TelemetryEvent, ToolName};
-pub use sink::{ConsoleSink, TelemetrySink};
+pub use sink::{ConsoleSink, NoopSink, TelemetrySink};
