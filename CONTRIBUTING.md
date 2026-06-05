@@ -1,12 +1,12 @@
-# Contributing to ec-kernel
+# Contributing to llm-kernel
 
 Thank you for your interest in contributing! This project follows the [EpicCounty contribution guidelines](https://github.com/epicsagas).
 
 ## Development Setup
 
 ```bash
-git clone https://github.com/epicsagas/ec-kernel.git
-cd ec-kernel
+git clone https://github.com/epicsagas/llm-kernel.git
+cd llm-kernel
 cargo build
 cargo test
 ```
@@ -42,7 +42,7 @@ We use [Conventional Commits](https://www.conventionalcommits.org/):
 
 ## Reporting Issues
 
-- Use [GitHub Issues](https://github.com/epicsagas/ec-kernel/issues)
+- Use [GitHub Issues](https://github.com/epicsagas/llm-kernel/issues)
 - Include reproduction steps
 - Specify Rust version (`rustc --version`)
 
