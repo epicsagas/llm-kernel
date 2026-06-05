@@ -1,6 +1,6 @@
 //! Multi-connection async pool for the knowledge graph.
 //!
-//! Unlike [`async_graph::AsyncGraph`] (single `Arc<Mutex<Connection>>`),
+//! Unlike `AsyncGraph` (single `Arc<Mutex<Connection>>`),
 //! this module maintains a bounded pool of rusqlite connections gated by a
 //! tokio `Semaphore`. Multiple read queries can execute concurrently in WAL
 //! mode, while the semaphore bounds total concurrency.
