@@ -59,6 +59,15 @@ embedding = []
 # OpenAI text-embedding provider (requires ureq for sync HTTP)
 embedding-openai = ["embedding", "dep:ureq", "dep:serde_json"]
 
+# Local ONNX embedding via fastembed-rs (downloads models from HuggingFace)
+embedding-fastembed = ["embedding", "dep:fastembed"]
+
+# Qwen3 embedding via fastembed-rs candle backend
+embedding-fastembed-qwen3 = ["embedding-fastembed", "fastembed/qwen3", "dep:candle-core"]
+
+# Nomic V2 MoE embedding via fastembed-rs candle backend
+embedding-fastembed-nomic-moe = ["embedding-fastembed", "fastembed/nomic-v2-moe", "dep:candle-core"]
+
 # Knowledge graph with async wrappers (requires tokio)
 graph-async = ["graph", "dep:tokio"]
 
@@ -73,7 +82,7 @@ telemetry = ["dep:serde_json"]
 safety = ["dep:regex"]
 
 # Everything
-full = ["provider", "discovery", "client-async", "secrets", "store", "config", "graph", "graph-async", "graph-pool", "mcp", "tokens", "install", "search", "embedding", "embedding-openai", "telemetry", "safety"]
+full = ["provider", "discovery", "client-async", "secrets", "store", "config", "graph", "graph-async", "graph-pool", "mcp", "tokens", "install", "search", "embedding", "embedding-openai", "embedding-fastembed", "embedding-fastembed-qwen3", "embedding-fastembed-nomic-moe", "telemetry", "safety"]
 
 [dependencies]
 # Always required
@@ -94,6 +103,8 @@ tokio-stream = { version = "0.1", optional = true }
 futures-core = { version = "0.3", optional = true }
 async-trait = { version = "0.1", optional = true }
 regex       = { version = "1", optional = true }
+fastembed   = { version = "5", default-features = false, features = ["hf-hub-native-tls", "ort-download-binaries-native-tls"], optional = true }
+candle-core = { version = "0.10", optional = true }
 
 [dev-dependencies]
 tempfile = "3"
