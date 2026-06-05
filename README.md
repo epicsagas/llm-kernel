@@ -255,7 +255,7 @@ Each model in the catalog includes:
 │   provider  │   client   │  ← trait LLMClient { complete, stream_complete }
 │   catalog   │   async    │
 ├─────────────┴────────────┤
-│ graph  │ secrets │ config │  ← knowledge graph, credential vault, config
+│ graph │ secrets │ config │  ← knowledge graph, credential vault, config
 ├──────────────────────────┤
 │          store           │  ← SQLite infrastructure (WAL, FTS5, schema)
 └──────────────────────────┘
