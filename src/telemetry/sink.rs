@@ -3,7 +3,7 @@
 use crate::telemetry::events::TelemetryEvent;
 
 /// Trait for telemetry event sinks.
-pub trait TelemetrySink {
+pub trait TelemetrySink: Send + Sync {
     /// Track a telemetry event.
     fn track(&mut self, event: TelemetryEvent);
 
@@ -20,7 +20,9 @@ pub struct ConsoleSink {
 impl ConsoleSink {
     /// Create a new console sink with the given app name.
     pub fn new(app_name: impl Into<String>) -> Self {
-        Self { app_name: app_name.into() }
+        Self {
+            app_name: app_name.into(),
+        }
     }
 }
 
@@ -46,8 +48,11 @@ mod tests {
 
     #[test]
     fn console_sink_does_not_panic() {
+        use crate::telemetry::events::ToolName;
         let mut sink = ConsoleSink::new("test");
-        sink.track(TelemetryEvent::ToolInvoked { tool: "search" });
+        sink.track(TelemetryEvent::ToolInvoked {
+            tool: ToolName::Search,
+        });
         sink.track(TelemetryEvent::Error {
             class: FailureClass::Network,
         });
@@ -56,8 +61,11 @@ mod tests {
 
     #[test]
     fn noop_sink_discards() {
+        use crate::telemetry::events::ToolName;
         let mut sink = NoopSink;
-        sink.track(TelemetryEvent::ToolInvoked { tool: "anything" });
+        sink.track(TelemetryEvent::ToolInvoked {
+            tool: ToolName::Search,
+        });
         sink.flush();
     }
 }

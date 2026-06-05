@@ -1,6 +1,6 @@
 //! Re-exports of the most commonly used types.
 //!
-//! ```ignore
+//! ```no_run
 //! use llm_kernel::prelude::*;
 //! ```
 
@@ -20,7 +20,7 @@ pub use crate::provider::{
 pub use crate::llm::{
     AnthropicClient, ChatMessage, LLMClient, LLMRequest, LLMResponse, LLMStream, ModelConfig,
     OpenAIClient, StreamEvent, TokenUsage,
-    json_extract::{extract_json, parse_json, JsonExtractor},
+    json_extract::{JsonExtractor, extract_json, parse_json},
     prompt::render_prompt,
 };
 
@@ -42,7 +42,9 @@ pub use crate::graph::{
 // --- MCP ---
 
 #[cfg(feature = "mcp")]
-pub use crate::mcp::{BearerAuth, Handler, JsonRpcDispatcher, McpServer, ResourceDescription, ToolDescription};
+pub use crate::mcp::{
+    BearerAuth, Handler, JsonRpcDispatcher, McpServer, ResourceDescription, ToolDescription,
+};
 
 // --- Tokens ---
 
@@ -57,19 +59,24 @@ pub use crate::search::{SearchResult, rrf_fuse};
 // --- Embedding ---
 
 #[cfg(feature = "embedding")]
-pub use crate::embedding::{cosine_similarity, EmbeddingProvider, EmbeddingResult};
+pub use crate::embedding::{EmbeddingProvider, EmbeddingResult, cosine_similarity};
 
 // --- Telemetry ---
 
 #[cfg(feature = "telemetry")]
-pub use crate::telemetry::{ConsoleSink, FailureClass, TelemetryEvent, TelemetrySink};
+pub use crate::telemetry::{
+    ConsoleSink, FailureClass, FeatureName, NoopSink, ProviderCategory, TelemetryEvent,
+    TelemetrySink, ToolName,
+};
 
 // --- Safety ---
 
 #[cfg(feature = "safety")]
-pub use crate::safety::{classify_failure, mask_secrets, sanitize_output, FailureCategory};
+pub use crate::safety::{
+    FailureCategory, classify_failure, mask_secrets, sanitize_output, strip_ansi,
+};
 
 // --- Install ---
 
 #[cfg(feature = "install")]
-pub use crate::install::{generate_mcp_config, AgentKind, McpConfig};
+pub use crate::install::{AgentKind, McpConfig, generate_mcp_config};

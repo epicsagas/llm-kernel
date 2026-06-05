@@ -87,7 +87,9 @@ fn extract_fenced(text: &str, lang: &str) -> Option<String> {
     let after_open = start + opener.len();
 
     // Skip to end of opening line
-    let body_start = text[after_open..].find('\n').map_or(after_open, |i| after_open + i + 1);
+    let body_start = text[after_open..]
+        .find('\n')
+        .map_or(after_open, |i| after_open + i + 1);
 
     // Find closing ```
     let closer = text[body_start..].find("```")?;
@@ -167,7 +169,13 @@ mod tests {
         let input = "Here is the result:\n```json\n{\"name\":\"test\",\"value\":42}\n```\nDone.";
         let json = extract_json(input).unwrap();
         let parsed: TestOutput = serde_json::from_str(&json).unwrap();
-        assert_eq!(parsed, TestOutput { name: "test".into(), value: 42 });
+        assert_eq!(
+            parsed,
+            TestOutput {
+                name: "test".into(),
+                value: 42
+            }
+        );
     }
 
     #[test]
@@ -182,7 +190,13 @@ mod tests {
         let input = "The answer is {\"name\":\"raw\",\"value\":7} as shown.";
         let json = extract_json(input).unwrap();
         let parsed: TestOutput = serde_json::from_str(&json).unwrap();
-        assert_eq!(parsed, TestOutput { name: "raw".into(), value: 7 });
+        assert_eq!(
+            parsed,
+            TestOutput {
+                name: "raw".into(),
+                value: 7
+            }
+        );
     }
 
     #[test]

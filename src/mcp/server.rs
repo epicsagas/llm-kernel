@@ -5,7 +5,8 @@ use std::collections::HashMap;
 use crate::mcp::schema::{ResourceDescription, ToolDescription};
 
 /// Handler function type for MCP tool calls.
-pub type Handler = Box<dyn Fn(serde_json::Value) -> crate::error::Result<serde_json::Value> + Send + Sync>;
+pub type Handler =
+    Box<dyn Fn(serde_json::Value) -> crate::error::Result<serde_json::Value> + Send + Sync>;
 
 /// An MCP server that manages tools, resources, and dispatches calls.
 pub struct McpServer {
@@ -14,6 +15,7 @@ pub struct McpServer {
     tools: Vec<ToolDescription>,
     resources: Vec<ResourceDescription>,
     handlers: HashMap<String, Handler>,
+    resource_handlers: HashMap<String, Handler>,
 }
 
 impl McpServer {
@@ -25,6 +27,7 @@ impl McpServer {
             tools: Vec::new(),
             resources: Vec::new(),
             handlers: HashMap::new(),
+            resource_handlers: HashMap::new(),
         }
     }
 
@@ -42,9 +45,13 @@ impl McpServer {
     pub fn set_handler(
         &mut self,
         tool_name: &str,
-        handler: impl Fn(serde_json::Value) -> crate::error::Result<serde_json::Value> + Send + Sync + 'static,
+        handler: impl Fn(serde_json::Value) -> crate::error::Result<serde_json::Value>
+        + Send
+        + Sync
+        + 'static,
     ) {
-        self.handlers.insert(tool_name.to_string(), Box::new(handler));
+        self.handlers
+            .insert(tool_name.to_string(), Box::new(handler));
     }
 
     /// Get the server name.
@@ -65,6 +72,32 @@ impl McpServer {
     /// List all registered resources.
     pub fn resources(&self) -> &[ResourceDescription] {
         &self.resources
+    }
+
+    /// Set the handler for a resource by URI.
+    pub fn set_resource_handler(
+        &mut self,
+        uri: &str,
+        handler: impl Fn(serde_json::Value) -> crate::error::Result<serde_json::Value>
+        + Send
+        + Sync
+        + 'static,
+    ) {
+        self.resource_handlers
+            .insert(uri.to_string(), Box::new(handler));
+    }
+
+    /// Read a resource by URI with the given parameters.
+    pub fn read_resource(
+        &self,
+        uri: &str,
+        params: serde_json::Value,
+    ) -> crate::error::Result<serde_json::Value> {
+        let handler = self
+            .resource_handlers
+            .get(uri)
+            .ok_or_else(|| crate::error::KernelError::Config(format!("unknown resource: {uri}")))?;
+        handler(params)
     }
 
     /// Call a tool by name with the given parameters.
@@ -110,7 +143,9 @@ mod tests {
         });
         server.set_handler("echo", |params| Ok(params));
 
-        let result = server.call_tool("echo", serde_json::json!({"msg": "hi"})).unwrap();
+        let result = server
+            .call_tool("echo", serde_json::json!({"msg": "hi"}))
+            .unwrap();
         assert_eq!(result["msg"], "hi");
     }
 
@@ -143,5 +178,31 @@ mod tests {
             input_schema: serde_json::json!({}),
         });
         assert_eq!(server.tools().len(), 2);
+    }
+
+    #[test]
+    fn read_resource() {
+        let mut server = McpServer::new("test", "0.1.0");
+        server.register_resource(ResourceDescription {
+            uri: "docs://readme".into(),
+            name: "README".into(),
+            description: Some("Project readme".into()),
+            mime_type: Some("text/markdown".into()),
+        });
+        server.set_resource_handler("docs://readme", |_params| {
+            Ok(serde_json::json!("# Hello World"))
+        });
+
+        let result = server
+            .read_resource("docs://readme", serde_json::json!({}))
+            .unwrap();
+        assert_eq!(result, serde_json::json!("# Hello World"));
+    }
+
+    #[test]
+    fn unknown_resource_returns_error() {
+        let server = McpServer::new("test", "0.1.0");
+        let result = server.read_resource("missing://uri", serde_json::json!({}));
+        assert!(result.is_err());
     }
 }

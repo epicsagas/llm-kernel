@@ -16,5 +16,5 @@
 pub mod classify;
 pub mod sanitize;
 
-pub use classify::{classify_failure, FailureCategory};
-pub use sanitize::{mask_secrets, sanitize_output};
+pub use classify::{FailureCategory, classify_failure};
+pub use sanitize::{mask_secrets, sanitize_output, strip_ansi};

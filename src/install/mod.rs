@@ -19,5 +19,4 @@
 
 pub mod wizard;
 
-pub use wizard::{generate_mcp_config, AgentKind, McpConfig};
-
+pub use wizard::{AgentKind, McpConfig, generate_mcp_config};

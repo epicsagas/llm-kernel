@@ -18,18 +18,41 @@ impl<'a> JsonRpcDispatcher<'a> {
         Self { server }
     }
 
-    /// Dispatch a single JSON-RPC request and return the response.
+    /// Dispatch a JSON-RPC request (single or batch) and return the response.
     pub fn dispatch(&self, request: &str) -> Option<String> {
-        let req: serde_json::Value = match serde_json::from_str(request) {
-            Ok(v) => v,
-            Err(e) => {
-                return Some(self.error_response(
-                    None,
-                    -32700,
-                    &format!("Parse error: {e}"),
-                ));
+        let trimmed = request.trim();
+        if trimmed.starts_with('[') {
+            // Batch request
+            let reqs: Vec<serde_json::Value> = match serde_json::from_str(trimmed) {
+                Ok(v) => v,
+                Err(e) => {
+                    return Some(self.error_response(None, -32700, &format!("Parse error: {e}")));
+                }
+            };
+            let responses: Vec<String> = reqs
+                .iter()
+                .filter_map(|req| self.dispatch_single(req))
+                .collect();
+            if responses.is_empty() {
+                None
+            } else {
+                Some(format!("[{}]", responses.join(",")))
             }
-        };
+        } else {
+            let req: serde_json::Value = match serde_json::from_str(trimmed) {
+                Ok(v) => v,
+                Err(e) => {
+                    return Some(self.error_response(None, -32700, &format!("Parse error: {e}")));
+                }
+            };
+            self.dispatch_single(&req)
+        }
+    }
+
+    /// Dispatch a single pre-parsed JSON-RPC request.
+    fn dispatch_single(&self, req: &serde_json::Value) -> Option<String> {
+        // Notifications (no id) don't get responses
+        req.get("id")?;
 
         let id = req.get("id").and_then(|v| v.as_i64());
         let method = req.get("method").and_then(|v| v.as_str()).unwrap_or("");
@@ -42,7 +65,8 @@ impl<'a> JsonRpcDispatcher<'a> {
             "resources/list" => Ok(serde_json::json!({
                 "resources": self.server.resources()
             })),
-            "tools/call" => self.handle_tool_call(&req),
+            "tools/call" => self.handle_tool_call(req),
+            "resources/read" => self.handle_resource_read(req),
             _ => Err((-32601, format!("Method not found: {method}"))),
         };
 
@@ -71,7 +95,10 @@ impl<'a> JsonRpcDispatcher<'a> {
         Ok(())
     }
 
-    fn handle_tool_call(&self, req: &serde_json::Value) -> std::result::Result<serde_json::Value, (i32, String)> {
+    fn handle_tool_call(
+        &self,
+        req: &serde_json::Value,
+    ) -> std::result::Result<serde_json::Value, (i32, String)> {
         let tool_name = req
             .get("params")
             .and_then(|p| p.get("name"))
@@ -91,6 +118,28 @@ impl<'a> JsonRpcDispatcher<'a> {
                     "content": [{
                         "type": "text",
                         "text": result.to_string()
+                    }]
+                })
+            })
+            .map_err(|e| (-32603, e.to_string()))
+    }
+
+    fn handle_resource_read(
+        &self,
+        req: &serde_json::Value,
+    ) -> std::result::Result<serde_json::Value, (i32, String)> {
+        let uri = req
+            .get("params")
+            .and_then(|p| p.get("uri"))
+            .and_then(|u| u.as_str())
+            .unwrap_or("");
+        self.server
+            .read_resource(uri, serde_json::json!({}))
+            .map(|content| {
+                serde_json::json!({
+                    "contents": [{
+                        "uri": uri,
+                        "text": content.to_string()
                     }]
                 })
             })
@@ -143,7 +192,9 @@ mod tests {
     fn dispatch_initialize() {
         let server = test_server();
         let dispatcher = JsonRpcDispatcher::new(&server);
-        let resp = dispatcher.dispatch(r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#).unwrap();
+        let resp = dispatcher
+            .dispatch(r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#)
+            .unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&resp).unwrap();
         assert_eq!(parsed["result"]["serverInfo"]["name"], "test-server");
     }
@@ -152,7 +203,9 @@ mod tests {
     fn dispatch_tools_list() {
         let server = test_server();
         let dispatcher = JsonRpcDispatcher::new(&server);
-        let resp = dispatcher.dispatch(r#"{"jsonrpc":"2.0","id":2,"method":"tools/list"}"#).unwrap();
+        let resp = dispatcher
+            .dispatch(r#"{"jsonrpc":"2.0","id":2,"method":"tools/list"}"#)
+            .unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&resp).unwrap();
         assert_eq!(parsed["result"]["tools"].as_array().unwrap().len(), 1);
     }
@@ -172,7 +225,9 @@ mod tests {
     fn dispatch_unknown_method() {
         let server = test_server();
         let dispatcher = JsonRpcDispatcher::new(&server);
-        let resp = dispatcher.dispatch(r#"{"jsonrpc":"2.0","id":4,"method":"nonexistent"}"#).unwrap();
+        let resp = dispatcher
+            .dispatch(r#"{"jsonrpc":"2.0","id":4,"method":"nonexistent"}"#)
+            .unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&resp).unwrap();
         assert_eq!(parsed["error"]["code"], -32601);
     }
@@ -194,5 +249,38 @@ mod tests {
         let resp = dispatcher.dispatch(req).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&resp).unwrap();
         assert_eq!(parsed["error"]["code"], -32603);
+    }
+
+    #[test]
+    fn dispatch_batch_request() {
+        let server = test_server();
+        let dispatcher = JsonRpcDispatcher::new(&server);
+        let batch = r#"[
+            {"jsonrpc":"2.0","id":1,"method":"initialize","params":{}},
+            {"jsonrpc":"2.0","id":2,"method":"tools/list"}
+        ]"#;
+        let resp = dispatcher.dispatch(batch).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&resp).unwrap();
+        let arr = parsed.as_array().unwrap();
+        assert_eq!(arr.len(), 2);
+        // First response: initialize
+        assert_eq!(arr[0]["result"]["serverInfo"]["name"], "test-server");
+        // Second response: tools/list
+        assert_eq!(arr[1]["result"]["tools"].as_array().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn dispatch_batch_with_error() {
+        let server = test_server();
+        let dispatcher = JsonRpcDispatcher::new(&server);
+        let batch = r#"[
+            {"jsonrpc":"2.0","id":1,"method":"initialize","params":{}},
+            {"jsonrpc":"2.0","id":2,"method":"nonexistent"}
+        ]"#;
+        let resp = dispatcher.dispatch(batch).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&resp).unwrap();
+        let arr = parsed.as_array().unwrap();
+        assert_eq!(arr[0]["result"]["serverInfo"]["name"], "test-server");
+        assert_eq!(arr[1]["error"]["code"], -32601);
     }
 }

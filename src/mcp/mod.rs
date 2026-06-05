@@ -5,7 +5,7 @@
 //!
 //! ## Quick start
 //!
-//! ```ignore
+//! ```no_run
 //! use llm_kernel::mcp::{McpServer, ToolDescription, JsonRpcDispatcher};
 //!
 //! let mut server = McpServer::new("my-server", "1.0.0");
@@ -35,3 +35,48 @@ pub use auth::BearerAuth;
 pub use schema::{ResourceDescription, ToolDescription};
 pub use server::{Handler, McpServer};
 pub use transport::JsonRpcDispatcher;
+
+/// MCP notification types for server-initiated messages.
+#[derive(Debug, Clone)]
+pub enum McpNotification {
+    /// The list of available tools has changed.
+    ToolsListChanged,
+    /// The list of available resources has changed.
+    ResourcesListChanged,
+    /// Progress notification for a long-running operation.
+    Progress {
+        progress_token: String,
+        progress: u64,
+        total: Option<u64>,
+    },
+}
+
+impl McpServer {
+    /// Format a notification as a JSON-RPC message string.
+    pub fn format_notification(&self, notification: McpNotification) -> String {
+        let method = match &notification {
+            McpNotification::ToolsListChanged => "notifications/tools/list_changed",
+            McpNotification::ResourcesListChanged => "notifications/resources/list_changed",
+            McpNotification::Progress { .. } => "notifications/progress",
+        };
+        let mut params = serde_json::json!({});
+        if let McpNotification::Progress {
+            progress_token,
+            progress,
+            total,
+        } = &notification
+        {
+            params["progressToken"] = serde_json::json!(progress_token);
+            params["progress"] = serde_json::json!(progress);
+            if let Some(t) = total {
+                params["total"] = serde_json::json!(t);
+            }
+        }
+        serde_json::to_string(&serde_json::json!({
+            "jsonrpc": "2.0",
+            "method": method,
+            "params": params,
+        }))
+        .unwrap_or_default()
+    }
+}

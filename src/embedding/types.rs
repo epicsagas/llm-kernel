@@ -5,13 +5,16 @@
 pub struct EmbeddingResult {
     /// The embedding vector.
     pub vector: Vec<f32>,
-    /// Dimensionality of the vector.
-    pub dim: usize,
     /// Source text (for debugging).
     pub text_preview: String,
 }
 
 impl EmbeddingResult {
+    /// Dimensionality of the embedding vector.
+    pub fn dim(&self) -> usize {
+        self.vector.len()
+    }
+
     /// Compute cosine similarity between two embedding results.
     pub fn cosine_similarity(&self, other: &EmbeddingResult) -> f32 {
         cosine_similarity(&self.vector, &other.vector)
@@ -19,17 +22,21 @@ impl EmbeddingResult {
 }
 
 /// Compute cosine similarity between two f32 vectors.
+///
+/// Single-pass accumulation: dot product and both squared norms
+/// are computed simultaneously to avoid three separate iterations.
 pub fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
     if a.len() != b.len() || a.is_empty() {
         return 0.0;
     }
-    let dot: f32 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum();
-    let norm_a: f32 = a.iter().map(|x| x * x).sum::<f32>().sqrt();
-    let norm_b: f32 = b.iter().map(|x| x * x).sum::<f32>().sqrt();
-    if norm_a == 0.0 || norm_b == 0.0 {
-        return 0.0;
-    }
-    dot / (norm_a * norm_b)
+    let (dot, sum_a, sum_b) = a
+        .iter()
+        .zip(b.iter())
+        .fold((0.0f32, 0.0f32, 0.0f32), |(dot, sa, sb), (&x, &y)| {
+            (dot + x * y, sa + x * x, sb + y * y)
+        });
+    let denom = sum_a.sqrt() * sum_b.sqrt();
+    if denom == 0.0 { 0.0 } else { dot / denom }
 }
 
 /// Trait for embedding providers.
@@ -43,6 +50,11 @@ pub trait EmbeddingProvider: Send + Sync {
     fn embed(&self, text: &str) -> anyhow::Result<EmbeddingResult>;
 
     /// Embed multiple texts in batch.
+    ///
+    /// The default implementation calls [`embed`](Self::embed) for each text.
+    /// Returns an error on the **first** failure — successful results up to
+    /// that point are discarded. For fine-grained error handling, call
+    /// [`embed`](Self::embed) individually and collect results manually.
     fn embed_batch(&self, texts: &[&str]) -> anyhow::Result<Vec<EmbeddingResult>> {
         texts.iter().map(|t| self.embed(t)).collect()
     }
@@ -89,14 +101,21 @@ mod tests {
     fn embedding_result_similarity() {
         let a = EmbeddingResult {
             vector: vec![1.0, 0.0],
-            dim: 2,
             text_preview: "a".into(),
         };
         let b = EmbeddingResult {
             vector: vec![0.0, 1.0],
-            dim: 2,
             text_preview: "b".into(),
         };
         assert!((a.cosine_similarity(&b)).abs() < 1e-6);
+    }
+
+    #[test]
+    fn embedding_result_dim() {
+        let e = EmbeddingResult {
+            vector: vec![1.0, 0.0, 0.5],
+            text_preview: "test".into(),
+        };
+        assert_eq!(e.dim(), 3);
     }
 }

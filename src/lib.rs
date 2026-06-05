@@ -26,7 +26,7 @@
 //!
 //! The [`prelude`] module re-exports the most commonly used types:
 //!
-//! ```ignore
+//! ```no_run
 //! use llm_kernel::prelude::*;
 //! ```
 

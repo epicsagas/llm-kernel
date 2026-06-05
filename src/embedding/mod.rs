@@ -9,4 +9,4 @@
 
 pub mod types;
 
-pub use types::{cosine_similarity, EmbeddingProvider, EmbeddingResult};
+pub use types::{EmbeddingProvider, EmbeddingResult, cosine_similarity};
