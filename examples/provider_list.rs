@@ -11,10 +11,7 @@ fn main() {
         "llm-kernel v{} — builtin providers\n",
         llm_kernel::version()
     );
-    println!(
-        "{:<20} {:<25} {:<15} {}\n",
-        "ID", "NAME", "CATEGORY", "MODELS"
-    );
+    println!("{:<20} {:<25} {:<15} MODELS\n", "ID", "NAME", "CATEGORY");
 
     for id in catalog.ids() {
         let provider = catalog.get(&id).unwrap();

@@ -2,7 +2,7 @@
 
 # llm-kernel
 
-> LLM provider catalog, async client, and model discovery for Rust applications
+> Foundation library for Rust AI-native apps — provider catalog, LLM client, MCP server, search, telemetry, and safety
 
 [![CI](https://github.com/epicsagas/llm-kernel/actions/workflows/ci.yml/badge.svg)](https://github.com/epicsagas/llm-kernel/actions/workflows/ci.yml)
 [![crates.io](https://img.shields.io/crates/v/llm-kernel)](https://crates.io/crates/llm-kernel)
@@ -13,14 +13,21 @@
 
 ## Overview
 
-llm-kernel provides the foundational layer for working with LLM providers in Rust:
+llm-kernel provides the foundational layer for building LLM-powered tools, agents, and servers in Rust:
 
-- **Provider catalog** — 16 built-in providers with model metadata, pricing, and capabilities
+- **Provider catalog** — 16 built-in providers, 114 models with metadata, pricing, and capabilities
 - **Async client** — trait-based client for OpenAI and Anthropic with SSE streaming
 - **Model discovery** — dynamic model discovery from models.dev, Ollama, OpenAI-compatible endpoints
 - **Credential vault** — dotenv-style API key management with atomic writes
 - **Config loader** — TOML config with auto-create from template
-- **Knowledge graph** — SQLite-backed graph with FTS5 search, smart recall, and BFS traversal
+- **Knowledge graph** — SQLite-backed graph with FTS5 search, smart recall, BFS traversal, async wrappers
+- **MCP server** — JSON-RPC 2.0 server framework with stdio transport and Bearer auth
+- **Embedding** — provider trait + cosine similarity with OpenAI text-embedding client
+- **Search** — Reciprocal Rank Fusion for hybrid search result merging
+- **Token estimation** — zero-dependency Unicode-script heuristic token counting
+- **Telemetry** — enum-gated events with no PII, console and noop sinks
+- **Safety** — secret masking, error classification, output sanitization
+- **Install wizard** — MCP config generation for Claude Desktop, Cursor, Copilot, OpenCode, Cline
 
 ## Feature flags
 
@@ -30,11 +37,20 @@ Each module is gated behind a feature flag so you only pay for what you use.
 |---------|-------------|---------|
 | `provider` | Provider catalog, model descriptors, pricing | ✅ |
 | `client-async` | Async LLM client (reqwest) with streaming | |
-| `discovery` | Dynamic model discovery | |
+| `discovery` | Dynamic model discovery (models.dev, Ollama, OpenAI-compat) | |
 | `secrets` | SecretVault credential management | |
 | `store` | SQLite init helpers (WAL, FTS5, schema versioning) | |
-| `graph` | Knowledge graph — SQLite, FTS5, smart recall, BFS traversal | |
 | `config` | TOML config loader | |
+| `graph` | Knowledge graph — SQLite, FTS5, smart recall, BFS traversal | |
+| `graph-async` | Async graph wrappers (requires tokio) | |
+| `mcp` | MCP server — JSON-RPC 2.0, stdio transport, Bearer auth | |
+| `tokens` | Token estimation with Unicode-script heuristics | |
+| `install` | AI tool installation wizard | |
+| `search` | Hybrid search with Reciprocal Rank Fusion | |
+| `embedding` | Embedding provider trait + cosine similarity | |
+| `embedding-openai` | OpenAI text-embedding client (sync HTTP) | |
+| `telemetry` | Enum-gated telemetry events, no PII | |
+| `safety` | Secret masking, error classification, output sanitization | |
 | `full` | All features | |
 
 ## Quick start
@@ -53,18 +69,18 @@ The `provider` feature is enabled by default. For the async client:
 llm-kernel = { version = "0.1", features = ["client-async"] }
 ```
 
-For the knowledge graph:
+For the knowledge graph with async wrappers:
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.1", features = ["graph"] }
+llm-kernel = { version = "0.1", features = ["graph", "graph-async"] }
 ```
 
 ## Usage
 
 ### Provider catalog
 
-The embedded catalog contains 16 providers with model metadata aligned to the [models.dev](https://github.com/anomalyco/models.dev) schema.
+The embedded catalog contains 16 providers with 114 models aligned to the [models.dev](https://github.com/anomalyco/models.dev) schema.
 
 ```rust
 use llm_kernel::prelude::*;
@@ -232,6 +248,69 @@ let stats = compute_stats(&conn).unwrap();
 println!("{} nodes, {} edges", stats.total_nodes, stats.total_edges);
 ```
 
+### MCP server
+
+```rust
+use llm_kernel::mcp::{McpServer, Tool, JsonRpcRequest};
+use serde_json::json;
+
+let mut server = McpServer::new("my-server", "1.0.0");
+server.register_tool(Tool {
+    name: "greet".into(),
+    description: "Say hello".into(),
+    input_schema: json!({
+        "type": "object",
+        "properties": { "name": { "type": "string" } },
+        "required": ["name"]
+    }),
+});
+
+// Runs JSON-RPC 2.0 over stdio with Bearer auth
+server.run_stdio().await?;
+```
+
+### Token estimation
+
+```rust
+use llm_kernel::tokens::estimate_tokens;
+
+let tokens = estimate_tokens("Hello, world! こんにちは世界 🌍");
+println!("Estimated tokens: {}", tokens);
+```
+
+### Embedding + search
+
+```rust
+use llm_kernel::embedding::{EmbeddingProvider, cosine_similarity};
+use llm_kernel::search::rrf_fuse;
+
+// Cosine similarity between vectors
+let sim = cosine_similarity(&[0.1, 0.2, 0.3], &[0.4, 0.5, 0.6]);
+
+// Reciprocal Rank Fusion for hybrid search
+let merged = rrf_fuse(&[
+    vec!["doc-a".into(), "doc-b".into()],
+    vec!["doc-b".into(), "doc-c".into()],
+], 60);
+```
+
+### Safety utilities
+
+```rust
+use llm_kernel::safety::{mask_secrets, classify_failure, sanitize_output};
+
+// Mask secrets in logs
+let safe = mask_secrets("Authorization: Bearer sk-abcdef123456");
+// → "Authorization: Bearer [REDACTED]"
+
+// Classify errors
+let category = classify_failure("connection timed out after 30s");
+// → ErrorCategory::Timeout
+
+// Sanitize untrusted output
+let clean = sanitize_output(user_input)?;
+```
+
 ## Model metadata
 
 Each model in the catalog includes:
@@ -247,24 +326,39 @@ Each model in the catalog includes:
 ## Architecture
 
 ```
-┌──────────────────────────┐
-│         Your app         │
-├──────────────────────────┤
-│          prelude         │  ← use llm_kernel::prelude::*;
-├─────────────┬────────────┤
-│   provider  │   client   │  ← trait LLMClient { complete, stream_complete }
-│   catalog   │   async    │
-├─────────────┴────────────┤
-│ graph │ secrets │ config │  ← knowledge graph, credential vault, config
-├──────────────────────────┤
-│          store           │  ← SQLite infrastructure (WAL, FTS5, schema)
-└──────────────────────────┘
+┌──────────────────────────────────────────┐
+│              Your app                    │
+├──────────────────────────────────────────┤
+│               prelude                    │  ← use llm_kernel::prelude::*;
+├───────────────┬──────────┬───────────────┤
+│   provider    │  client  │   discovery   │  ← catalog, async LLM, model discovery
+│   catalog     │  async   │               │
+├───────────────┴──────────┴───────────────┤
+│  graph  │  mcp  │  embedding  │  search  │  ← graph, MCP server, embeddings, RRF
+├──────────────────────────────────────────┤
+│ tokens │ telemetry │ safety │ install    │  ← token est., events, masking, wizard
+├──────────────────────────────────────────┤
+│    secrets    │   config   │   store     │  ← vault, TOML, SQLite infra
+└──────────────────────────────────────────┘
 ```
 
 - **`LLMClient` trait** — unified interface for `OpenAIClient` and `AnthropicClient`
 - **`ProviderIndex`** — zero-copy access to embedded catalog, queryable by provider or model
+- **`McpServer`** — JSON-RPC 2.0 server with stdio transport, Bearer auth, tool registration
 - **`SecretVault`** — `HashMap<String, String>` with dotenv load/save and symlink guards
 - **`graph`** — SQLite knowledge graph with FTS5 search, composite scoring recall, BFS traversal, importance decay
+- **`TelemetryEvent`** — enum-gated variants for structured observability (no PII)
+- **`safety`** — secret masking, error classification, bidi/ANSI/null sanitization
+
+## Benchmarks
+
+Criterion benchmarks under `benches/`:
+
+```bash
+cargo bench                          # Run all benchmarks
+cargo bench -- graph_bench           # Graph: smart_recall, BFS, neighbors
+cargo bench -- compute_bench         # Token estimation, RRF fusion
+```
 
 ## Examples
 
