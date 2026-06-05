@@ -9,4 +9,10 @@
 
 pub mod types;
 
+#[cfg(feature = "embedding-openai")]
+pub mod openai;
+
 pub use types::{EmbeddingProvider, EmbeddingResult, cosine_similarity};
+
+#[cfg(feature = "embedding-openai")]
+pub use openai::OpenAIEmbeddingClient;

@@ -48,6 +48,9 @@ pub mod store;
 pub mod traversal;
 pub mod types;
 
+#[cfg(feature = "graph-async")]
+pub mod async_graph;
+
 // Re-export primary types and functions
 pub use lifecycle::{compute_stats, decay_importance, tag_stale_nodes, touch_node, touch_nodes};
 pub use recall::smart_recall;

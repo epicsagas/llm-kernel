@@ -46,6 +46,24 @@ impl OpenAIClient {
             client: reqwest::Client::new(),
         }
     }
+
+    /// Create from an explicit key and a shared `reqwest::Client`.
+    ///
+    /// Prefer this over [`from_key`](Self::from_key) when constructing multiple
+    /// clients in a hot path — the shared client reuses the underlying TCP
+    /// connection pool.
+    pub fn from_key_with_client(
+        model: impl Into<String>,
+        api_key: impl Into<String>,
+        client: reqwest::Client,
+    ) -> Self {
+        Self {
+            api_key: api_key.into(),
+            model: model.into(),
+            base_url: "https://api.openai.com/v1".into(),
+            client,
+        }
+    }
 }
 
 #[derive(serde::Serialize)]
@@ -361,6 +379,20 @@ impl AnthropicClient {
             model: model.into(),
             base_url: "https://api.anthropic.com/v1".into(),
             client: reqwest::Client::new(),
+        }
+    }
+
+    /// Create from an explicit key and a shared `reqwest::Client`.
+    pub fn from_key_with_client(
+        model: impl Into<String>,
+        api_key: impl Into<String>,
+        client: reqwest::Client,
+    ) -> Self {
+        Self {
+            api_key: api_key.into(),
+            model: model.into(),
+            base_url: "https://api.anthropic.com/v1".into(),
+            client,
         }
     }
 }
