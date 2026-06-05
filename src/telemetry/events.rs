@@ -2,18 +2,51 @@
 
 use serde::{Deserialize, Serialize};
 
+/// Known tool names for telemetry.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub enum ToolName {
+    Search,
+    Recall,
+    Embed,
+    GraphQuery,
+    LlmComplete,
+    LlmStream,
+    ConfigLoad,
+    SecretRead,
+}
+
+/// Known feature names for telemetry.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub enum FeatureName {
+    SmartRecall,
+    GraphTraversal,
+    HybridSearch,
+    TokenEstimation,
+    SafetyClassification,
+    OutputSanitization,
+}
+
+/// Provider categories for telemetry.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub enum ProviderCategory {
+    CloudFirstParty,
+    CloudThirdParty,
+    Local,
+    Proxy,
+}
+
 /// A telemetry event. All fields use controlled vocabularies — no free strings.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum TelemetryEvent {
     /// A tool was invoked.
     ToolInvoked {
         /// Tool identifier (from a fixed set).
-        tool: &'static str,
+        tool: ToolName,
     },
 
     /// A tool invocation completed.
     ToolCompleted {
-        tool: &'static str,
+        tool: ToolName,
         /// Milliseconds elapsed.
         duration_ms: u64,
         /// Whether the invocation succeeded.
@@ -42,14 +75,12 @@ pub enum TelemetryEvent {
     },
 
     /// A feature was used.
-    FeatureUsed {
-        feature: &'static str,
-    },
+    FeatureUsed { feature: FeatureName },
 
     /// Provider routing decision.
     ProviderRouted {
         /// Provider category (not the exact provider name).
-        category: &'static str,
+        category: ProviderCategory,
     },
 }
 
@@ -82,9 +113,11 @@ mod tests {
 
     #[test]
     fn event_serializes_no_pii() {
-        let event = TelemetryEvent::ToolInvoked { tool: "search" };
+        let event = TelemetryEvent::ToolInvoked {
+            tool: ToolName::Search,
+        };
         let json = serde_json::to_string(&event).unwrap();
-        assert!(json.contains("search"));
+        assert!(json.contains("Search"));
         assert!(!json.contains("password"));
         assert!(!json.contains("email"));
     }

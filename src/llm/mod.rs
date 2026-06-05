@@ -16,7 +16,7 @@ pub mod types;
 
 #[cfg(feature = "client-async")]
 pub use client::{AnthropicClient, LLMClient, OpenAIClient};
-pub use json_extract::{extract_json, parse_json, JsonExtractor};
+pub use json_extract::{JsonExtractor, extract_json, parse_json};
 pub use prompt::render_prompt;
 #[cfg(feature = "client-async")]
 pub use types::LLMStream;

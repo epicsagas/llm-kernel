@@ -2,35 +2,87 @@
 
 /// Mask known secret patterns in a string.
 ///
-/// Handles `Bearer` tokens, `sk-*` API keys, and `password=`, `token=`, `key=`, `secret=` values.
+/// Handles `Bearer` tokens, `sk-*` API keys, and `password=`, `token=`,
+/// `key=`, `secret=` values. All occurrences are masked.
 pub fn mask_secrets(input: &str) -> String {
     let mut result = input.to_string();
 
-    // Mask Bearer tokens
-    if let Some(pos) = result.find("Bearer ") {
-        let value_start = pos + "Bearer ".len();
-        if value_start < result.len() {
-            if let Some(value_end) = result[value_start..].find(|c: char| c.is_whitespace()) {
-                result.replace_range(value_start..value_start + value_end, "****");
-            } else {
-                result.replace_range(value_start.., "****");
-            }
+    // Mask all Bearer tokens
+    let mut search_from = 0;
+    while let Some(rel_pos) = result[search_from..].find("Bearer ") {
+        let value_start = search_from + rel_pos + "Bearer ".len();
+        if value_start >= result.len() {
+            break;
+        }
+        if let Some(value_end) = result[value_start..].find(|c: char| c.is_whitespace()) {
+            result.replace_range(value_start..value_start + value_end, "****");
+            search_from = value_start + 4;
+        } else {
+            result.replace_range(value_start.., "****");
+            break;
         }
     }
 
-    // Mask password=, token=, key=, secret= values
+    // Mask all password=, token=, key=, secret= values
     for prefix in &["password=", "token=", "key=", "secret="] {
-        if let Some(pos) = result.find(prefix) {
-            let value_start = pos + prefix.len();
+        let mut search_from = 0;
+        while let Some(rel_pos) = result[search_from..].find(prefix) {
+            let value_start = search_from + rel_pos + prefix.len();
             if let Some(value_end) = result[value_start..].find(|c: char| c.is_whitespace()) {
                 let end = value_start + value_end;
                 result.replace_range(value_start..end, "****");
+                search_from = value_start + 4;
             } else if value_start < result.len() {
                 result.replace_range(value_start.., "****");
+                break;
+            } else {
+                break;
             }
         }
     }
 
+    // Mask standalone sk-* API keys
+    let mut search_from = 0;
+    while let Some(rel_pos) = result[search_from..].find("sk-") {
+        let value_start = search_from + rel_pos;
+        if let Some(value_end) = result[value_start..].find(|c: char| c.is_whitespace()) {
+            result.replace_range(value_start..value_start + value_end, "****");
+            search_from = value_start + 4;
+        } else {
+            result.replace_range(value_start.., "****");
+            break;
+        }
+    }
+
+    result
+}
+
+/// Remove ANSI escape sequences from text.
+pub fn strip_ansi(input: &str) -> String {
+    let mut result = String::with_capacity(input.len());
+    let mut chars = input.chars().peekable();
+    while let Some(ch) = chars.next() {
+        if ch == '\x1B' {
+            // Skip ESC and the following sequence
+            if chars.peek() == Some(&'[') {
+                chars.next(); // consume '['
+                // Skip parameter bytes (0x30-0x3F), intermediate bytes (0x20-0x2F), final byte (0x40-0x7E)
+                while let Some(&next) = chars.peek() {
+                    let cp = next as u32;
+                    if (0x30..=0x3F).contains(&cp) || (0x20..=0x2F).contains(&cp) {
+                        chars.next();
+                    } else if (0x40..=0x7E).contains(&cp) {
+                        chars.next(); // consume final byte
+                        break;
+                    } else {
+                        break;
+                    }
+                }
+            }
+            continue;
+        }
+        result.push(ch);
+    }
     result
 }
 
@@ -116,6 +168,25 @@ mod tests {
     }
 
     #[test]
+    fn mask_multiple_passwords() {
+        let masked = mask_secrets("password=a password=b");
+        assert!(masked.contains("password=****"), "got: {masked}");
+    }
+
+    #[test]
+    fn mask_multiple_bearer() {
+        let masked = mask_secrets("Bearer token1 and Bearer token2");
+        assert_eq!(masked, "Bearer **** and Bearer ****");
+    }
+
+    #[test]
+    fn mask_standalone_sk_key() {
+        let masked = mask_secrets("key is sk-proj-abc123 here");
+        assert!(masked.contains("****"), "got: {masked}");
+        assert!(!masked.contains("sk-proj"), "got: {masked}");
+    }
+
+    #[test]
     fn sanitize_removes_bidi() {
         let input = "hello\u{202E}world";
         let clean = sanitize_output(input);
@@ -151,5 +222,26 @@ mod tests {
     fn sanitize_removes_c1_controls() {
         let clean = sanitize_output("a\u{0080}b\u{009F}c");
         assert_eq!(clean, "abc");
+    }
+
+    #[test]
+    fn strip_ansi_removes_color_codes() {
+        let input = "\x1B[31mHello\x1B[0m \x1B[1;32mWorld\x1B[0m";
+        let clean = strip_ansi(input);
+        assert_eq!(clean, "Hello World");
+    }
+
+    #[test]
+    fn strip_ansi_preserves_plain_text() {
+        let input = "Hello, 世界! 🎉";
+        assert_eq!(strip_ansi(input), input);
+    }
+
+    #[test]
+    fn strip_ansi_handles_complex_sequence() {
+        // 256-color and RGB sequences
+        let input = "\x1B[38;5;196mRed\x1B[0m \x1B[38;2;0;255;0mGreen\x1B[0m";
+        let clean = strip_ansi(input);
+        assert_eq!(clean, "Red Green");
     }
 }

@@ -64,22 +64,28 @@ pub fn graph_neighbors(conn: &Connection, seed_ids: &[String]) -> Vec<(String, f
 ///
 /// Returns all reachable node IDs (excluding start), capped at 500.
 /// Follows edges in both directions.
-pub fn related_nodes(conn: &Connection, start_id: &str, _depth: usize) -> Vec<String> {
+pub fn related_nodes(conn: &Connection, start_id: &str, depth: usize) -> Vec<String> {
     let sql = "
-        WITH RECURSIVE bfs(node_id) AS (
-            SELECT target FROM edges WHERE source = ?1
-            UNION SELECT source FROM edges WHERE target = ?1
-            UNION SELECT e.target FROM edges e JOIN bfs ON e.source = bfs.node_id WHERE e.target != ?1
-            UNION SELECT e.source FROM edges e JOIN bfs ON e.target = bfs.node_id WHERE e.source != ?1
+        WITH RECURSIVE bfs(node_id, lvl) AS (
+            SELECT target, 1 FROM edges WHERE source = ?1
+            UNION SELECT source, 1 FROM edges WHERE target = ?1
+            UNION SELECT e.target, bfs.lvl + 1 FROM edges e
+                JOIN bfs ON e.source = bfs.node_id
+                WHERE e.target != ?1 AND bfs.lvl < ?2
+            UNION SELECT e.source, bfs.lvl + 1 FROM edges e
+                JOIN bfs ON e.target = bfs.node_id
+                WHERE e.source != ?1 AND bfs.lvl < ?2
         )
-        SELECT node_id FROM bfs
+        SELECT DISTINCT node_id FROM bfs
         LIMIT 500
     ";
 
     conn.prepare(sql)
         .and_then(|mut stmt| {
-            stmt.query_map(params![start_id], |row| row.get::<_, String>(0))
-                .map(|rows| rows.flatten().collect())
+            stmt.query_map(params![start_id, depth as i64], |row| {
+                row.get::<_, String>(0)
+            })
+            .map(|rows| rows.flatten().collect())
         })
         .unwrap_or_default()
 }

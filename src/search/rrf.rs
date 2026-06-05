@@ -19,7 +19,9 @@ pub fn rrf_fuse(result_sets: &[Vec<SearchResult>], k: u32) -> Vec<SearchResult> 
         for (rank, result) in results.iter().enumerate() {
             let entry = scores.entry(result.id.clone()).or_insert(0.0);
             *entry += 1.0 / (k as f32 + rank as f32 + 1.0);
-            texts.entry(result.id.clone()).or_insert_with(|| result.text.clone());
+            texts
+                .entry(result.id.clone())
+                .or_insert_with(|| result.text.clone());
         }
     }
 
@@ -32,7 +34,11 @@ pub fn rrf_fuse(result_sets: &[Vec<SearchResult>], k: u32) -> Vec<SearchResult> 
         })
         .collect();
 
-    fused.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+    fused.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     fused
 }
 
