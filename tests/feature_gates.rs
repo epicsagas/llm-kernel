@@ -51,3 +51,13 @@ fn test_catalog_has_models() {
     let found = catalog.find_model("glm-5");
     assert!(found.is_some(), "should find glm-5 model");
 }
+
+#[cfg(feature = "graph-pool")]
+#[tokio::test]
+async fn test_graph_pool_feature() {
+    let graph = llm_kernel::graph::AsyncPoolGraph::open_in_memory(2)
+        .await
+        .expect("open_in_memory should work");
+    let stats = graph.stats().await.expect("stats on empty db");
+    assert_eq!(stats.total_nodes, 0);
+}

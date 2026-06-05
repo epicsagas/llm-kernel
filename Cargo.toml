@@ -62,6 +62,10 @@ embedding-openai = ["embedding", "dep:ureq", "dep:serde_json"]
 # Knowledge graph with async wrappers (requires tokio)
 graph-async = ["graph", "dep:tokio"]
 
+# Knowledge graph with multi-connection async pool (rusqlite + tokio semaphore).
+# Provides higher read concurrency than `graph-async` for WAL-mode workloads.
+graph-pool = ["graph", "dep:tokio"]
+
 # Telemetry framework (enum-gated events)
 telemetry = ["dep:serde_json"]
 
@@ -69,7 +73,7 @@ telemetry = ["dep:serde_json"]
 safety = ["dep:regex"]
 
 # Everything
-full = ["provider", "discovery", "client-async", "secrets", "store", "config", "graph", "graph-async", "mcp", "tokens", "install", "search", "embedding", "embedding-openai", "telemetry", "safety"]
+full = ["provider", "discovery", "client-async", "secrets", "store", "config", "graph", "graph-async", "graph-pool", "mcp", "tokens", "install", "search", "embedding", "embedding-openai", "telemetry", "safety"]
 
 [dependencies]
 # Always required
@@ -85,7 +89,7 @@ tempfile    = { version = "3", optional = true }
 reqwest     = { version = "0.13", features = ["json", "rustls", "stream"], default-features = false, optional = true }
 rusqlite    = { version = "0.40", features = ["bundled"], optional = true }
 toml        = { version = "1", optional = true }
-tokio       = { version = "1", features = ["rt-multi-thread", "macros"], optional = true }
+tokio       = { version = "1", features = ["rt-multi-thread", "macros", "sync"], optional = true }
 tokio-stream = { version = "0.1", optional = true }
 futures-core = { version = "0.3", optional = true }
 async-trait = { version = "0.1", optional = true }

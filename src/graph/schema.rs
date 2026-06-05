@@ -4,6 +4,25 @@ use rusqlite::Connection;
 
 use crate::error::{KernelError, Result};
 
+/// Current graph schema version. Increment when adding migrations.
+pub const GRAPH_SCHEMA_VERSION: u32 = 1;
+
+/// Incremental migration callback for the knowledge graph schema.
+///
+/// Apply version-to-version migrations. When no migrations exist yet, simply
+/// returns the current version. Add `if current < N { ... }` blocks as the
+/// schema evolves.
+pub fn migrate_graph(conn: &Connection, current: u32) -> Result<u32> {
+    // Future migrations go here:
+    // if current < 2 {
+    //     conn.execute_batch("ALTER TABLE nodes ADD COLUMN ...")
+    //         .map_err(|e| KernelError::Store(e.to_string()))?;
+    // }
+    let _ = conn;
+    let _ = current;
+    Ok(GRAPH_SCHEMA_VERSION)
+}
+
 /// Apply the full knowledge graph schema (tables, indexes, FTS5 triggers) to a connection.
 ///
 /// Idempotent — uses `IF NOT EXISTS` for all DDL. Safe to call on every startup.

@@ -4,7 +4,7 @@ use rusqlite::{Connection, params};
 
 use crate::error::{KernelError, Result};
 
-use super::types::{GraphNode, NODE_COLUMNS_PREFIXED, row_to_node};
+use super::types::{GraphNode, NODE_COLUMNS_PREFIXED, escape_like, row_to_node};
 
 /// Search nodes using FTS5 MATCH. Results ranked by importance DESC.
 pub fn search_nodes(conn: &Connection, query: &str, limit: usize) -> Result<Vec<GraphNode>> {
@@ -41,16 +41,16 @@ pub fn query_nodes(
     let mut param_vals: Vec<Box<dyn rusqlite::ToSql>> = vec![];
 
     if let Some(t) = tag {
-        condition_strs.push("(',' || tags || ',' LIKE '%,' || ? || ',%')");
-        param_vals.push(Box::new(t.to_string()));
+        condition_strs.push("(',' || tags || ',' LIKE '%,' || ? || ',%' ESCAPE '\\')");
+        param_vals.push(Box::new(escape_like(t)));
     }
     if let Some(nt) = node_type {
         condition_strs.push("type = ?");
         param_vals.push(Box::new(nt.to_string()));
     }
     if let Some(p) = project {
-        condition_strs.push("(',' || projects || ',' LIKE '%,' || ? || ',%')");
-        param_vals.push(Box::new(p.to_string()));
+        condition_strs.push("(',' || projects || ',' LIKE '%,' || ? || ',%' ESCAPE '\\')");
+        param_vals.push(Box::new(escape_like(p)));
     }
 
     let where_clause = if condition_strs.is_empty() {
@@ -152,5 +152,24 @@ mod tests {
         upsert_node(&conn, &n1).unwrap();
         let results = query_nodes(&conn, None, Some("decision"), None, 10).unwrap();
         assert_eq!(results.len(), 1);
+    }
+
+    #[test]
+    fn query_tag_wildcard_is_escaped() {
+        let conn = mem_db();
+        upsert_node(&conn, &test_node("n1", "A", "body", vec!["rust"])).unwrap();
+        // "ru%t" would match "rust" as a LIKE wildcard, but escape_like prevents it
+        let results = query_nodes(&conn, Some("ru%t"), None, None, 10).unwrap();
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn query_project_wildcard_is_escaped() {
+        let conn = mem_db();
+        let mut n1 = test_node("n1", "A", "body", vec![]);
+        n1.projects = vec!["myproj".to_string()];
+        upsert_node(&conn, &n1).unwrap();
+        let results = query_nodes(&conn, None, None, Some("my%"), 10).unwrap();
+        assert!(results.is_empty());
     }
 }
