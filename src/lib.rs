@@ -1,28 +1,71 @@
 //! # llm-kernel
 //!
-//! Shared LLM provider catalog, model discovery, credential management,
-//! and async client library for Rust applications.
+//! LLM provider catalog, async client, and model discovery for Rust applications.
 //!
-//! ## Feature flags
+//! ## Modules
 //!
-//! | Feature       | Description                                    |
-//! |---------------|------------------------------------------------|
-//! | `provider`    | Provider catalog (ProviderIndex, ServiceDescriptor) — **default** |
-//! | `discovery`   | Dynamic model discovery (models.dev, Ollama, OpenAI-compat) |
-//! | `client-async`| Async LLM client (OpenAI, Anthropic) with streaming |
-//! | `secrets`     | SecretVault — dotenv-style credential management |
-//! | `store`       | SQLite init helpers (WAL, PRAGMA, schema versioning) |
-//! | `config`      | TOML config loader with auto-create |
-//! | `full`        | All features                                   |
+//! | Feature       | Module      | Description                                         |
+//! |---------------|-------------|-----------------------------------------------------|
+//! | `provider`    | [`provider`]  | Provider catalog, model descriptors, pricing — **default** |
+//! | `client-async`| [`llm`]       | Async LLM client (OpenAI, Anthropic) with SSE streaming |
+//! | `discovery`   | [`discovery`] | Dynamic model discovery (models.dev, Ollama, OpenAI-compat) |
+//! | `secrets`     | [`secrets`]   | SecretVault — dotenv-style credential management |
+//! | `store`       | [`store`]     | SQLite init helpers (WAL, PRAGMA, schema versioning) |
+//! | `config`      | [`config`]    | TOML config loader with auto-create from template |
 //!
 //! ## Quick start
+//!
+//! The [`prelude`] module re-exports the most commonly used types:
 //!
 //! ```ignore
 //! use llm_kernel::prelude::*;
 //!
+//! // Browse the embedded provider catalog
 //! let catalog = ProviderIndex::embedded();
-//! let zai = catalog.get("zai").expect("zai provider");
-//! println!("{}: {}", zai.display_name, zai.description);
+//! for id in catalog.ids() {
+//!     let provider = catalog.get(&id).unwrap();
+//!     println!("{}", provider.display_name);
+//! }
+//!
+//! // Query models with pricing and capabilities
+//! for model in catalog.models_for("openai") {
+//!     if let Some(cost) = &model.cost {
+//!         println!("{} — ${:.2}/1M in, ${:.2}/1M out", model.id, cost.input, cost.output);
+//!     }
+//! }
+//! ```
+//!
+//! ## Async client
+//!
+//! ```ignore
+//! use llm_kernel::prelude::*;
+//!
+//! let config = ModelConfig {
+//!     provider: "openai".into(),
+//!     model: "gpt-4o".into(),
+//!     api_key_env: "OPENAI_API_KEY".into(),
+//!     base_url: None,
+//!     temperature: 0.7,
+//!     max_tokens: Some(1024),
+//! };
+//!
+//! let client = OpenAIClient::new(&config)?;
+//! let response = client.complete(LLMRequest {
+//!     system: Some("You are a helpful assistant.".into()),
+//!     messages: vec![ChatMessage::user("Hello!")],
+//!     temperature: 0.7,
+//!     max_tokens: Some(1024),
+//!     model: None,
+//! }).await?;
+//! println!("{}", response.content);
+//! ```
+//!
+//! ## Streaming
+//!
+//! ```ignore
+//! let client = AnthropicClient::new(&config)?;
+//! let stream = client.stream_complete(request).await?;
+//! // Yields StreamEvent::Delta, StreamEvent::Usage, StreamEvent::Done
 //! ```
 
 pub mod error;

@@ -1,3 +1,8 @@
+//! SQLite initialization helpers.
+//!
+//! Provides [`init_schema`] for creating a database with WAL mode, busy timeout,
+//! and schema versioning built in.
+
 pub mod schema_version;
 pub mod sqlite;
 

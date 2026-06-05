@@ -1,3 +1,10 @@
+//! Async LLM client with OpenAI and Anthropic backends.
+//!
+//! The [`LLMClient`] trait provides a unified interface for chat completion
+//! and SSE streaming. Implementations: [`OpenAIClient`], [`AnthropicClient`].
+//!
+//! Requires the `client-async` feature.
+
 #[cfg(feature = "client-async")]
 pub mod client;
 pub mod prompt;
