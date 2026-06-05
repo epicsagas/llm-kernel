@@ -50,14 +50,14 @@ The `provider` feature is enabled by default. For the async client:
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.4", features = ["client-async"] }
+llm-kernel = { version = "0.1", features = ["client-async"] }
 ```
 
 For the knowledge graph:
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.4", features = ["graph"] }
+llm-kernel = { version = "0.1", features = ["graph"] }
 ```
 
 ## Usage
