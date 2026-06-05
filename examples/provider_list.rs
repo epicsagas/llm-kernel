@@ -2,9 +2,10 @@
 //!
 //! Run: `cargo run --example provider_list`
 
-use llm_kernel::provider::ProviderIndex;
-
+#[cfg(feature = "provider")]
 fn main() {
+    use llm_kernel::provider::ProviderIndex;
+
     let catalog = ProviderIndex::embedded();
 
     println!(
@@ -32,4 +33,9 @@ fn main() {
             println!("  {:<18} {}", model.id, cost_info);
         }
     }
+}
+
+#[cfg(not(feature = "provider"))]
+fn main() {
+    println!("Enable the `provider` feature to run this example.");
 }

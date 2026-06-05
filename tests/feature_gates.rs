@@ -1,5 +1,6 @@
 //! Integration tests verifying that each feature flag compiles independently.
 
+#[cfg(feature = "provider")]
 #[test]
 fn test_provider_feature() {
     let catalog = llm_kernel::provider::ProviderIndex::embedded();
