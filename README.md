@@ -22,7 +22,7 @@ llm-kernel provides the foundational layer for building LLM-powered tools, agent
 - **Config loader** — TOML config with auto-create from template
 - **Knowledge graph** — SQLite-backed graph with FTS5 search, smart recall, BFS traversal, async wrappers
 - **MCP server** — JSON-RPC 2.0 server framework with stdio transport and Bearer auth
-- **Embedding** — provider trait + cosine similarity with OpenAI text-embedding client
+- **Embedding** — provider trait + cosine similarity, local ONNX (44 models), Qwen3 candle, Nomic V2 MoE candle, OpenAI remote
 - **Search** — Reciprocal Rank Fusion for hybrid search result merging
 - **Token estimation** — zero-dependency Unicode-script heuristic token counting
 - **Telemetry** — enum-gated events with no PII, console and noop sinks
@@ -43,12 +43,16 @@ Each module is gated behind a feature flag so you only pay for what you use.
 | `config` | TOML config loader | |
 | `graph` | Knowledge graph — SQLite, FTS5, smart recall, BFS traversal | |
 | `graph-async` | Async graph wrappers (requires tokio) | |
+| `graph-pool` | Multi-connection async graph pool (WAL concurrency) | |
 | `mcp` | MCP server — JSON-RPC 2.0, stdio transport, Bearer auth | |
 | `tokens` | Token estimation with Unicode-script heuristics | |
 | `install` | AI tool installation wizard | |
 | `search` | Hybrid search with Reciprocal Rank Fusion | |
 | `embedding` | Embedding provider trait + cosine similarity | |
 | `embedding-openai` | OpenAI text-embedding client (sync HTTP) | |
+| `embedding-fastembed` | Local ONNX embedding via fastembed-rs (44 models) | |
+| `embedding-fastembed-qwen3` | Qwen3 embedding via candle backend | |
+| `embedding-fastembed-nomic-moe` | Nomic V2 MoE embedding via candle backend | |
 | `telemetry` | Enum-gated telemetry events, no PII | |
 | `safety` | Secret masking, error classification, output sanitization | |
 | `full` | All features | |
@@ -74,6 +78,13 @@ For the knowledge graph with async wrappers:
 ```toml
 [dependencies]
 llm-kernel = { version = "0.0.1", features = ["graph", "graph-async"] }
+```
+
+For local embedding (ONNX, no API key):
+
+```toml
+[dependencies]
+llm-kernel = { version = "0.0.1", features = ["embedding-fastembed"] }
 ```
 
 ## Usage
@@ -317,6 +328,41 @@ let merged = rrf_fuse(&[
 ], 60);
 ```
 
+#### Local ONNX embedding (fastembed-rs)
+
+44 models via ONNX Runtime — no API key, no network after first download.
+
+```rust
+use llm_kernel::embedding::{EmbeddingModel, FastembedProvider, EmbeddingProvider};
+
+let provider = FastembedProvider::new(EmbeddingModel::BGESmallENV15, None)?;
+let result = provider.embed("hello world")?;
+assert_eq!(result.vector.len(), 384);
+```
+
+#### Qwen3 embedding (candle)
+
+Pure Rust GPU/CPU inference via candle-nn — no ONNX Runtime.
+
+```rust
+use llm_kernel::embedding::{Qwen3Provider, EmbeddingProvider};
+
+let provider = Qwen3Provider::new("Qwen/Qwen3-Embedding-0.6B")?;
+let result = provider.embed("hello world")?;
+```
+
+#### Nomic V2 MoE embedding (candle)
+
+Lightweight MoE model — 8 experts, top-2 routing, 305M active params.
+
+```rust
+use llm_kernel::embedding::{NomicMoeProvider, EmbeddingProvider};
+
+let provider = NomicMoeProvider::new()?;
+let result = provider.embed("hello world")?;
+assert_eq!(result.vector.len(), 768);
+```
+
 ### Safety utilities
 
 ```rust
@@ -351,7 +397,8 @@ Each model in the catalog includes:
 | | llm-kernel | [rig] | [langchain-rust] |
 |--|-----------|-------|-------------------|
 | Provider catalog | ✅ 16 providers, 114 models built-in | Manual config | Manual config |
-| Feature gates | ✅ 17 independent modules | Monolithic | Monolithic |
+| Feature gates | ✅ 21 independent modules | Monolithic | Monolithic |
+| Local embedding | ✅ 44 ONNX + Qwen3 + Nomic MoE | ❌ | ❌ |
 | MCP server | ✅ JSON-RPC 2.0 | ❌ | ❌ |
 | Knowledge graph | ✅ SQLite + FTS5 + smart recall | ❌ | ❌ |
 | Mandatory deps | `serde` only | `reqwest`, `tokio`, … | Many |
@@ -374,7 +421,7 @@ llm-kernel is a **lightweight foundation layer** — compose it with rig or lang
 │   provider    │  client  │   discovery   │  ← catalog, async LLM, model discovery
 │   catalog     │  async   │               │
 ├───────────────┴──────────┴───────────────┤
-│  graph  │  mcp  │  embedding  │  search  │  ← graph, MCP server, embeddings, RRF
+│  graph  │  mcp  │  embedding  │  search  │  ← graph, MCP, ONNX/Qwen3/Nomic embed, RRF
 ├──────────────────────────────────────────┤
 │ tokens │ telemetry │ safety │ install    │  ← token est., events, masking, wizard
 ├──────────────────────────────────────────┤
@@ -383,6 +430,7 @@ llm-kernel is a **lightweight foundation layer** — compose it with rig or lang
 ```
 
 - **`LLMClient` trait** — unified interface for `OpenAIClient` and `AnthropicClient`
+- **`EmbeddingProvider` trait** — unified interface for `FastembedProvider` (ONNX), `Qwen3Provider` (candle), `NomicMoeProvider` (candle), `OpenAIEmbeddingClient` (remote)
 - **`ProviderIndex`** — zero-copy access to embedded catalog, queryable by provider or model
 - **`McpServer`** — JSON-RPC 2.0 server with stdio transport, Bearer auth, tool registration
 - **`SecretVault`** — `HashMap<String, String>` with dotenv load/save and symlink guards
