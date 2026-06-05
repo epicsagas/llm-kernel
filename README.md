@@ -190,16 +190,16 @@ Each model in the catalog includes:
 ## Architecture
 
 ```
-┌─────────────┐
-│  Your app   │
-├─────────────┤
-│   prelude   │  ← use llm_kernel::prelude::*;
-├──────┬──────┤
-│provider│client│  ← trait LLMClient { complete, stream_complete }
-│catalog │async │
-├──────┴──────┤
-│  secrets │ config │ store │  ← infrastructure modules
-└─────────────┘
+┌──────────────────────────┐
+│         Your app         │
+├──────────────────────────┤
+│          prelude         │  ← use llm_kernel::prelude::*;
+├─────────────┬────────────┤
+│   provider  │   client   │  ← trait LLMClient { complete, stream_complete }
+│   catalog   │   async    │
+├─────────────┴────────────┤
+│ secrets │ config │ store │  ← infrastructure modules
+└──────────────────────────┘
 ```
 
 - **`LLMClient` trait** — unified interface for `OpenAIClient` and `AnthropicClient`
