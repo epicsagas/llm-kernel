@@ -1,8 +1,8 @@
 [package]
 name         = "ec-kernel"
-version      = "0.1.0"
+version      = "0.2.0"
 edition      = "2024"
-description  = "Shared utilities for EpicCounty Knowledge Creation Platform products"
+description  = "Shared LLM provider library for EpicCounty products and external developers"
 license      = "Apache-2.0"
 repository   = "https://github.com/epicsagas/ec-kernel"
 homepage     = "https://github.com/epicsagas/ec-kernel"
@@ -12,39 +12,49 @@ rust-version = "1.92"
 name = "ec_kernel"
 path = "src/lib.rs"
 
+[features]
+default = ["provider"]
+
+# Core provider catalog (ProviderIndex, ServiceDescriptor, catalog.json)
+provider = ["dep:serde_json"]
+
+# Dynamic model discovery (models.dev, Ollama, OpenAI-compatible)
+discovery = ["provider", "dep:ureq"]
+
+# Synchronous LLM client (ureq-based, like claudy)
+client-sync = ["dep:ureq"]
+
+# Asynchronous LLM client (reqwest-based)
+client-async = ["dep:reqwest", "dep:async-trait", "dep:tokio"]
+
+# Secret vault (dotenv-style credential management)
+secrets = ["dep:tempfile"]
+
+# SQLite store helpers (init_schema, PRAGMA, FTS5)
+store = ["dep:rusqlite"]
+
+# TOML config loader
+config = ["dep:toml"]
+
+# Everything
+full = ["provider", "discovery", "client-sync", "client-async", "secrets", "store", "config"]
+
 [dependencies]
-# Serialization
+# Always required
 serde       = { version = "1", features = ["derive"] }
-serde_json  = "1"
+thiserror   = "2"
+anyhow      = "1"
 
-# Config
-toml = "1"
-
-# Database
-rusqlite = { version = "0.40", features = ["bundled"] }
-
-# Error handling
-thiserror = "2"
-anyhow    = "1"
-
-# Async
-tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
-
-# HTTP client (LLM API calls)
-reqwest = { version = "0.13", features = ["json", "rustls"], default-features = false }
-
-# Logging
-tracing            = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-
-# Time
-chrono = { version = "0.4", features = ["clock"] }
-
-# UUID
-uuid = { version = "1", features = ["v4"] }
-
-# Async trait
-async-trait = "0.1"
+# Feature-gated
+serde_json  = { version = "1", optional = true }
+ureq        = { version = "3", features = ["json"], optional = true }
+tempfile    = { version = "3", optional = true }
+reqwest     = { version = "0.13", features = ["json", "rustls"], default-features = false, optional = true }
+rusqlite    = { version = "0.40", features = ["bundled"], optional = true }
+toml        = { version = "1", optional = true }
+tokio       = { version = "1", features = ["rt-multi-thread", "macros"], optional = true }
+async-trait = { version = "0.1", optional = true }
+tracing     = "0.1"
 
 [dev-dependencies]
 tempfile = "3"

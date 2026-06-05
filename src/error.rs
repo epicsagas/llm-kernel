@@ -17,6 +17,7 @@ pub enum KernelError {
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
 
+    #[cfg(feature = "provider")]
     #[error("Serialization error: {0}")]
     Serialization(#[from] serde_json::Error),
 }
