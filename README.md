@@ -59,21 +59,21 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-llm-kernel = "0.1"
+llm-kernel = "0.0.1"
 ```
 
 The `provider` feature is enabled by default. For the async client:
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.1", features = ["client-async"] }
+llm-kernel = { version = "0.0.1", features = ["client-async"] }
 ```
 
 For the knowledge graph with async wrappers:
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.1", features = ["graph", "graph-async"] }
+llm-kernel = { version = "0.0.1", features = ["graph", "graph-async"] }
 ```
 
 ## Usage
@@ -156,6 +156,29 @@ let stream = client.stream_complete(LLMRequest {
 }).await?;
 
 // Stream yields Delta, Usage, and Done events
+```
+
+### Model discovery
+
+```rust
+use llm_kernel::discovery::{fetch_and_cache, load_cache, fetch_ollama_models};
+
+// Fetch from models.dev (caches to disk)
+let payload = fetch_and_cache("~/.cache/llm-kernel/models-dev.json")?;
+for model in &payload.models {
+    println!("{} — {} (ctx: {:?})", model.id, model.provider_id, model.limits);
+}
+
+// Load from cache (no network)
+if let Some(cached) = load_cache("~/.cache/llm-kernel/models-dev.json")? {
+    println!("{} models cached", cached.models.len());
+}
+
+// Discover local Ollama models
+let ollama_models = fetch_ollama_models("http://localhost:11434")?;
+for name in &ollama_models {
+    println!("Ollama: {}", name);
+}
 ```
 
 ### Credential vault
@@ -400,4 +423,4 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). PRs welcome.
 
 ## License
 
-[Apache-2.0](LICENSE) © 2025 EpicCounty
+[Apache-2.0](LICENSE) © 2026 EpicCounty
