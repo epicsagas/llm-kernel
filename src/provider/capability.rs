@@ -73,6 +73,10 @@ mod tests {
             test_url: String::new(),
             setup: vec![],
             usage: vec![],
+            api_base_url: None,
+            npm_package: None,
+            doc_url: None,
+            models: vec![],
         }
     }
 

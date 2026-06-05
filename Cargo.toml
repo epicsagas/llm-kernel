@@ -1,15 +1,20 @@
 [package]
-name         = "ec-kernel"
-version      = "0.2.0"
+name         = "llm-kernel"
+version      = "0.3.0"
 edition      = "2024"
-description  = "Shared LLM provider library for EpicCounty products and external developers"
+description  = "LLM provider catalog, discovery, secrets, and async client library"
 license      = "Apache-2.0"
-repository   = "https://github.com/epicsagas/ec-kernel"
-homepage     = "https://github.com/epicsagas/ec-kernel"
+repository   = "https://github.com/epicsagas/llm-kernel"
+homepage     = "https://github.com/epicsagas/llm-kernel"
 rust-version = "1.92"
+keywords     = ["llm", "ai", "provider", "openai", "anthropic"]
+categories   = ["api-bindings", "development-tools"]
+documentation = "https://docs.rs/llm-kernel"
+readme       = "README.md"
+exclude      = [".github/", "target/"]
 
 [lib]
-name = "ec_kernel"
+name = "llm_kernel"
 path = "src/lib.rs"
 
 [features]
@@ -21,11 +26,8 @@ provider = ["dep:serde_json"]
 # Dynamic model discovery (models.dev, Ollama, OpenAI-compatible)
 discovery = ["provider", "dep:ureq"]
 
-# Synchronous LLM client (ureq-based, like claudy)
-client-sync = ["dep:ureq"]
-
 # Asynchronous LLM client (reqwest-based)
-client-async = ["dep:reqwest", "dep:async-trait", "dep:tokio"]
+client-async = ["dep:reqwest", "dep:async-trait", "dep:tokio", "dep:tokio-stream", "dep:futures-core"]
 
 # Secret vault (dotenv-style credential management)
 secrets = ["dep:tempfile"]
@@ -37,7 +39,7 @@ store = ["dep:rusqlite"]
 config = ["dep:toml"]
 
 # Everything
-full = ["provider", "discovery", "client-sync", "client-async", "secrets", "store", "config"]
+full = ["provider", "discovery", "client-async", "secrets", "store", "config"]
 
 [dependencies]
 # Always required
@@ -49,10 +51,12 @@ anyhow      = "1"
 serde_json  = { version = "1", optional = true }
 ureq        = { version = "3", features = ["json"], optional = true }
 tempfile    = { version = "3", optional = true }
-reqwest     = { version = "0.13", features = ["json", "rustls"], default-features = false, optional = true }
+reqwest     = { version = "0.13", features = ["json", "rustls", "stream"], default-features = false, optional = true }
 rusqlite    = { version = "0.40", features = ["bundled"], optional = true }
 toml        = { version = "1", optional = true }
 tokio       = { version = "1", features = ["rt-multi-thread", "macros"], optional = true }
+tokio-stream = { version = "0.1", optional = true }
+futures-core = { version = "0.3", optional = true }
 async-trait = { version = "0.1", optional = true }
 tracing     = "0.1"
 

@@ -1,4 +1,4 @@
-/// Returns a default config template for ec-kernel based products.
+/// Returns a default config template for llm-kernel based products.
 /// Products should override this with their own template.
 pub fn default_config_template(product_name: &str) -> String {
     format!(

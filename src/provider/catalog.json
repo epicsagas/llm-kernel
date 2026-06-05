@@ -13,7 +13,45 @@
       "model_choices": [],
       "test_url": "https://api.anthropic.com",
       "setup": [],
-      "usage": []
+      "usage": [],
+      "api_base_url": "https://api.anthropic.com",
+      "npm_package": "@ai-sdk/anthropic",
+      "doc_url": "https://docs.anthropic.com",
+      "models": [
+        {
+          "id": "claude-sonnet-4-20250514",
+          "name": "Claude Sonnet 4",
+          "family": "claude",
+          "release_date": "2025-05-14",
+          "cost": { "input": 3.0, "output": 15.0, "cache_read": 0.3, "cache_write": 3.75 },
+          "limit": { "context": 200000, "output": 64000 },
+          "modalities": { "input": ["text", "image", "pdf"], "output": ["text"] },
+          "capabilities": { "attachment": true, "reasoning": true, "temperature": true, "tool_call": true, "streaming": true },
+          "knowledge": "2025-04-01"
+        },
+        {
+          "id": "claude-opus-4-20250514",
+          "name": "Claude Opus 4",
+          "family": "claude",
+          "release_date": "2025-05-14",
+          "cost": { "input": 15.0, "output": 75.0, "cache_read": 1.5, "cache_write": 18.75 },
+          "limit": { "context": 200000, "output": 32000 },
+          "modalities": { "input": ["text", "image", "pdf"], "output": ["text"] },
+          "capabilities": { "attachment": true, "reasoning": true, "temperature": true, "tool_call": true, "streaming": true },
+          "knowledge": "2025-04-01"
+        },
+        {
+          "id": "claude-haiku-3-5-20241022",
+          "name": "Claude 3.5 Haiku",
+          "family": "claude",
+          "release_date": "2024-10-22",
+          "cost": { "input": 0.8, "output": 4.0, "cache_read": 0.08, "cache_write": 1.0 },
+          "limit": { "context": 200000, "output": 8192 },
+          "modalities": { "input": ["text", "image"], "output": ["text"] },
+          "capabilities": { "attachment": true, "reasoning": false, "temperature": true, "tool_call": true, "streaming": true },
+          "knowledge": "2024-10-01"
+        }
+      ]
     },
     {
       "id": "zai",
@@ -30,27 +68,56 @@
         "sonnet": "glm-5",
         "opus": "glm-5"
       },
-	      "model_choices": [
-	        {
-	          "id": "glm-5",
-	          "description": "GLM-5"
-	        },
-	        {
-	          "id": "glm-5.1",
-	          "description": "GLM-5.1"
-	        },
-	        {
-	          "id": "glm-5-turbo",
-	          "description": "GLM-5 Turbo"
-	        },
-	        {
-	          "id": "glm-4.7",
-	          "description": "GLM-4.7"
-	        }
-	      ],
-	      "test_url": "https://api.z.ai/api/anthropic",
+      "model_choices": [
+        { "id": "glm-5", "description": "GLM-5" },
+        { "id": "glm-5.1", "description": "GLM-5.1" },
+        { "id": "glm-5-turbo", "description": "GLM-5 Turbo" },
+        { "id": "glm-4.7", "description": "GLM-4.7" }
+      ],
+      "test_url": "https://api.z.ai/api/anthropic",
       "setup": [],
-      "usage": []
+      "usage": [],
+      "api_base_url": "https://api.z.ai/api/paas/v4",
+      "npm_package": "@ai-sdk/openai-compatible",
+      "doc_url": "https://docs.z.ai",
+      "models": [
+        {
+          "id": "glm-5",
+          "name": "GLM-5",
+          "family": "glm",
+          "release_date": "2025-06-01",
+          "cost": { "input": 0.5, "output": 0.5 },
+          "limit": { "context": 128000, "output": 4096 },
+          "modalities": { "input": ["text", "image"], "output": ["text"] },
+          "capabilities": { "tool_call": true, "streaming": true, "temperature": true }
+        },
+        {
+          "id": "glm-5.1",
+          "name": "GLM-5.1",
+          "family": "glm",
+          "release_date": "2025-06-15",
+          "cost": { "input": 1.0, "output": 1.0 },
+          "limit": { "context": 128000, "output": 4096 },
+          "modalities": { "input": ["text", "image"], "output": ["text"] },
+          "capabilities": { "tool_call": true, "streaming": true, "temperature": true }
+        },
+        {
+          "id": "glm-5-turbo",
+          "name": "GLM-5 Turbo",
+          "family": "glm",
+          "cost": { "input": 0.2, "output": 0.2 },
+          "limit": { "context": 128000, "output": 4096 },
+          "capabilities": { "tool_call": true, "streaming": true, "temperature": true }
+        },
+        {
+          "id": "glm-4.7",
+          "name": "GLM-4.7",
+          "family": "glm",
+          "cost": { "input": 0.15, "output": 0.15 },
+          "limit": { "context": 128000, "output": 4096 },
+          "capabilities": { "tool_call": true, "streaming": true, "temperature": true }
+        }
+      ]
     },
     {
       "id": "zai-cn",
@@ -67,27 +134,56 @@
         "sonnet": "glm-5",
         "opus": "glm-5"
       },
-	      "model_choices": [
-	        {
-	          "id": "glm-5",
-	          "description": "GLM-5"
-	        },
-	        {
-	          "id": "glm-5.1",
-	          "description": "GLM-5.1"
-	        },
-	        {
-	          "id": "glm-5-turbo",
-	          "description": "GLM-5 Turbo"
-	        },
-	        {
-	          "id": "glm-4.7",
-	          "description": "GLM-4.7"
-	        }
-	      ],
-	      "test_url": "https://open.bigmodel.cn/api/anthropic",
+      "model_choices": [
+        { "id": "glm-5", "description": "GLM-5" },
+        { "id": "glm-5.1", "description": "GLM-5.1" },
+        { "id": "glm-5-turbo", "description": "GLM-5 Turbo" },
+        { "id": "glm-4.7", "description": "GLM-4.7" }
+      ],
+      "test_url": "https://open.bigmodel.cn/api/anthropic",
       "setup": [],
-      "usage": []
+      "usage": [],
+      "api_base_url": "https://open.bigmodel.cn/api/paas/v4",
+      "npm_package": "@ai-sdk/openai-compatible",
+      "doc_url": "https://open.bigmodel.cn",
+      "models": [
+        {
+          "id": "glm-5",
+          "name": "GLM-5",
+          "family": "glm",
+          "release_date": "2025-06-01",
+          "cost": { "input": 0.5, "output": 0.5 },
+          "limit": { "context": 128000, "output": 4096 },
+          "modalities": { "input": ["text", "image"], "output": ["text"] },
+          "capabilities": { "tool_call": true, "streaming": true, "temperature": true }
+        },
+        {
+          "id": "glm-5.1",
+          "name": "GLM-5.1",
+          "family": "glm",
+          "release_date": "2025-06-15",
+          "cost": { "input": 1.0, "output": 1.0 },
+          "limit": { "context": 128000, "output": 4096 },
+          "modalities": { "input": ["text", "image"], "output": ["text"] },
+          "capabilities": { "tool_call": true, "streaming": true, "temperature": true }
+        },
+        {
+          "id": "glm-5-turbo",
+          "name": "GLM-5 Turbo",
+          "family": "glm",
+          "cost": { "input": 0.2, "output": 0.2 },
+          "limit": { "context": 128000, "output": 4096 },
+          "capabilities": { "tool_call": true, "streaming": true, "temperature": true }
+        },
+        {
+          "id": "glm-4.7",
+          "name": "GLM-4.7",
+          "family": "glm",
+          "cost": { "input": 0.15, "output": 0.15 },
+          "limit": { "context": 128000, "output": 4096 },
+          "capabilities": { "tool_call": true, "streaming": true, "temperature": true }
+        }
+      ]
     },
     {
       "id": "minimax",
@@ -106,38 +202,48 @@
         "small": "MiniMax-M2.7"
       },
       "model_choices": [
-        {
-          "id": "MiniMax-M2.7",
-          "description": "MiniMax M2.7"
-        },
-        {
-          "id": "MiniMax-M2.7-highspeed",
-          "description": "MiniMax M2.7 Highspeed"
-        },
-        {
-          "id": "MiniMax-M2.5",
-          "description": "MiniMax M2.5"
-        },
-        {
-          "id": "MiniMax-M2.5-highspeed",
-          "description": "MiniMax M2.5 Highspeed"
-        },
-        {
-          "id": "MiniMax-M2.1",
-          "description": "MiniMax M2.1"
-        },
-        {
-          "id": "MiniMax-M2.1-highspeed",
-          "description": "MiniMax M2.1 Highspeed"
-        },
-        {
-          "id": "MiniMax-M2",
-          "description": "MiniMax M2"
-        }
+        { "id": "MiniMax-M2.7", "description": "MiniMax M2.7" },
+        { "id": "MiniMax-M2.7-highspeed", "description": "MiniMax M2.7 Highspeed" },
+        { "id": "MiniMax-M2.5", "description": "MiniMax M2.5" },
+        { "id": "MiniMax-M2.5-highspeed", "description": "MiniMax M2.5 Highspeed" },
+        { "id": "MiniMax-M2.1", "description": "MiniMax M2.1" },
+        { "id": "MiniMax-M2.1-highspeed", "description": "MiniMax M2.1 Highspeed" },
+        { "id": "MiniMax-M2", "description": "MiniMax M2" }
       ],
       "test_url": "https://api.minimax.io/anthropic",
       "setup": [],
-      "usage": []
+      "usage": [],
+      "api_base_url": "https://api.minimax.io/v1",
+      "npm_package": "@ai-sdk/openai-compatible",
+      "doc_url": "https://www.minimaxi.com",
+      "models": [
+        {
+          "id": "MiniMax-M2.7",
+          "name": "MiniMax M2.7",
+          "family": "minimax",
+          "release_date": "2025-05-01",
+          "cost": { "input": 0.2, "output": 0.6 },
+          "limit": { "context": 1048576, "output": 8192 },
+          "modalities": { "input": ["text", "image"], "output": ["text"] },
+          "capabilities": { "tool_call": true, "streaming": true, "temperature": true }
+        },
+        {
+          "id": "MiniMax-M2.7-highspeed",
+          "name": "MiniMax M2.7 Highspeed",
+          "family": "minimax",
+          "cost": { "input": 0.1, "output": 0.3 },
+          "limit": { "context": 1048576, "output": 8192 },
+          "capabilities": { "tool_call": true, "streaming": true, "temperature": true }
+        },
+        {
+          "id": "MiniMax-M2.5",
+          "name": "MiniMax M2.5",
+          "family": "minimax",
+          "cost": { "input": 0.15, "output": 0.45 },
+          "limit": { "context": 1048576, "output": 8192 },
+          "capabilities": { "tool_call": true, "streaming": true, "temperature": true }
+        }
+      ]
     },
     {
       "id": "minimax-cn",
@@ -156,38 +262,38 @@
         "small": "MiniMax-M2.7"
       },
       "model_choices": [
-        {
-          "id": "MiniMax-M2.7",
-          "description": "MiniMax M2.7"
-        },
-        {
-          "id": "MiniMax-M2.7-highspeed",
-          "description": "MiniMax M2.7 Highspeed"
-        },
-        {
-          "id": "MiniMax-M2.5",
-          "description": "MiniMax M2.5"
-        },
-        {
-          "id": "MiniMax-M2.5-highspeed",
-          "description": "MiniMax M2.5 Highspeed"
-        },
-        {
-          "id": "MiniMax-M2.1",
-          "description": "MiniMax M2.1"
-        },
-        {
-          "id": "MiniMax-M2.1-highspeed",
-          "description": "MiniMax M2.1 Highspeed"
-        },
-        {
-          "id": "MiniMax-M2",
-          "description": "MiniMax M2"
-        }
+        { "id": "MiniMax-M2.7", "description": "MiniMax M2.7" },
+        { "id": "MiniMax-M2.7-highspeed", "description": "MiniMax M2.7 Highspeed" },
+        { "id": "MiniMax-M2.5", "description": "MiniMax M2.5" },
+        { "id": "MiniMax-M2.5-highspeed", "description": "MiniMax M2.5 Highspeed" },
+        { "id": "MiniMax-M2.1", "description": "MiniMax M2.1" },
+        { "id": "MiniMax-M2.1-highspeed", "description": "MiniMax M2.1 Highspeed" },
+        { "id": "MiniMax-M2", "description": "MiniMax M2" }
       ],
       "test_url": "https://api.minimaxi.com/anthropic",
       "setup": [],
-      "usage": []
+      "usage": [],
+      "api_base_url": "https://api.minimaxi.com/v1",
+      "npm_package": "@ai-sdk/openai-compatible",
+      "doc_url": "https://www.minimaxi.com",
+      "models": [
+        {
+          "id": "MiniMax-M2.7",
+          "name": "MiniMax M2.7",
+          "family": "minimax",
+          "cost": { "input": 0.2, "output": 0.6 },
+          "limit": { "context": 1048576, "output": 8192 },
+          "capabilities": { "tool_call": true, "streaming": true, "temperature": true }
+        },
+        {
+          "id": "MiniMax-M2.5",
+          "name": "MiniMax M2.5",
+          "family": "minimax",
+          "cost": { "input": 0.15, "output": 0.45 },
+          "limit": { "context": 1048576, "output": 8192 },
+          "capabilities": { "tool_call": true, "streaming": true, "temperature": true }
+        }
+      ]
     },
     {
       "id": "kimi",
@@ -205,7 +311,30 @@
       "model_choices": [],
       "test_url": "https://api.kimi.com/coding/",
       "setup": [],
-      "usage": []
+      "usage": [],
+      "api_base_url": "https://api.kimi.com/v1",
+      "npm_package": "@ai-sdk/openai-compatible",
+      "doc_url": "https://platform.moonshot.cn",
+      "models": [
+        {
+          "id": "kimi-k2.5",
+          "name": "Kimi K2.5",
+          "family": "kimi",
+          "release_date": "2025-05-01",
+          "cost": { "input": 0.6, "output": 2.4 },
+          "limit": { "context": 131072, "output": 8192 },
+          "modalities": { "input": ["text", "image"], "output": ["text"] },
+          "capabilities": { "tool_call": true, "streaming": true, "temperature": true }
+        },
+        {
+          "id": "kimi-k2",
+          "name": "Kimi K2",
+          "family": "kimi",
+          "cost": { "input": 0.3, "output": 1.2 },
+          "limit": { "context": 131072, "output": 8192 },
+          "capabilities": { "tool_call": true, "streaming": true, "temperature": true }
+        }
+      ]
     },
     {
       "id": "moonshot",
@@ -221,7 +350,28 @@
       "model_choices": [],
       "test_url": "https://api.moonshot.ai/anthropic",
       "setup": [],
-      "usage": []
+      "usage": [],
+      "api_base_url": "https://api.moonshot.ai/v1",
+      "npm_package": "@ai-sdk/openai-compatible",
+      "doc_url": "https://platform.moonshot.ai",
+      "models": [
+        {
+          "id": "kimi-k2.5",
+          "name": "Kimi K2.5",
+          "family": "kimi",
+          "cost": { "input": 0.6, "output": 2.4 },
+          "limit": { "context": 131072, "output": 8192 },
+          "capabilities": { "tool_call": true, "streaming": true, "temperature": true }
+        },
+        {
+          "id": "kimi-k2",
+          "name": "Kimi K2",
+          "family": "kimi",
+          "cost": { "input": 0.3, "output": 1.2 },
+          "limit": { "context": 131072, "output": 8192 },
+          "capabilities": { "tool_call": true, "streaming": true, "temperature": true }
+        }
+      ]
     },
     {
       "id": "ve",
@@ -237,7 +387,37 @@
       "model_choices": [],
       "test_url": "https://ark.cn-beijing.volces.com/api/coding",
       "setup": [],
-      "usage": []
+      "usage": [],
+      "api_base_url": "https://ark.cn-beijing.volces.com/api/v3",
+      "npm_package": "@ai-sdk/openai-compatible",
+      "doc_url": "https://www.volcengine.com/docs/82379",
+      "models": [
+        {
+          "id": "doubao-seed-code-preview-latest",
+          "name": "Doubao Seed Code Preview",
+          "family": "doubao",
+          "cost": { "input": 0.15, "output": 0.5 },
+          "limit": { "context": 131072, "output": 8192 },
+          "modalities": { "input": ["text"], "output": ["text"] },
+          "capabilities": { "tool_call": true, "streaming": true, "temperature": true }
+        },
+        {
+          "id": "doubao-pro-32k",
+          "name": "Doubao Pro 32K",
+          "family": "doubao",
+          "cost": { "input": 0.04, "output": 0.12 },
+          "limit": { "context": 32768, "output": 4096 },
+          "capabilities": { "tool_call": true, "streaming": true, "temperature": true }
+        },
+        {
+          "id": "doubao-pro-128k",
+          "name": "Doubao Pro 128K",
+          "family": "doubao",
+          "cost": { "input": 0.1, "output": 0.3 },
+          "limit": { "context": 131072, "output": 4096 },
+          "capabilities": { "tool_call": true, "streaming": true, "temperature": true }
+        }
+      ]
     },
     {
       "id": "deepseek",
@@ -255,7 +435,40 @@
       "model_choices": [],
       "test_url": "https://api.deepseek.com/anthropic",
       "setup": [],
-      "usage": []
+      "usage": [],
+      "api_base_url": "https://api.deepseek.com/v1",
+      "npm_package": "@ai-sdk/openai-compatible",
+      "doc_url": "https://api-docs.deepseek.com",
+      "models": [
+        {
+          "id": "deepseek-chat",
+          "name": "DeepSeek V3",
+          "family": "deepseek",
+          "release_date": "2025-03-01",
+          "cost": { "input": 0.27, "output": 1.1, "cache_read": 0.07 },
+          "limit": { "context": 131072, "output": 8192 },
+          "modalities": { "input": ["text"], "output": ["text"] },
+          "capabilities": { "tool_call": true, "streaming": true, "temperature": true }
+        },
+        {
+          "id": "deepseek-reasoner",
+          "name": "DeepSeek R1",
+          "family": "deepseek",
+          "release_date": "2025-01-20",
+          "cost": { "input": 0.55, "output": 2.19, "cache_read": 0.14 },
+          "limit": { "context": 131072, "output": 8192 },
+          "modalities": { "input": ["text"], "output": ["text"] },
+          "capabilities": { "reasoning": true, "tool_call": true, "streaming": true, "temperature": false }
+        },
+        {
+          "id": "deepseek-chat-v3-0324",
+          "name": "DeepSeek V3 0324",
+          "family": "deepseek",
+          "cost": { "input": 0.27, "output": 1.1, "cache_read": 0.07 },
+          "limit": { "context": 131072, "output": 8192 },
+          "capabilities": { "tool_call": true, "streaming": true, "temperature": true }
+        }
+      ]
     },
     {
       "id": "mimo",
@@ -273,22 +486,43 @@
         "opus": "mimo-v2-pro"
       },
       "model_choices": [
-        {
-          "id": "mimo-v2-pro",
-          "description": "MiMo V2 Pro"
-        },
-        {
-          "id": "mimo-v2-omni",
-          "description": "MiMo V2 Omni"
-        },
-        {
-          "id": "mimo-v2-flash",
-          "description": "MiMo V2 Flash"
-        }
+        { "id": "mimo-v2-pro", "description": "MiMo V2 Pro" },
+        { "id": "mimo-v2-omni", "description": "MiMo V2 Omni" },
+        { "id": "mimo-v2-flash", "description": "MiMo V2 Flash" }
       ],
       "test_url": "https://api.xiaomimimo.com/anthropic",
       "setup": [],
-      "usage": []
+      "usage": [],
+      "api_base_url": "https://api.xiaomimimo.com/v1",
+      "npm_package": "@ai-sdk/openai-compatible",
+      "doc_url": "https://xiaomimimo.github.io",
+      "models": [
+        {
+          "id": "mimo-v2-pro",
+          "name": "MiMo V2 Pro",
+          "family": "mimo",
+          "cost": { "input": 0.2, "output": 0.6 },
+          "limit": { "context": 131072, "output": 8192 },
+          "modalities": { "input": ["text", "image"], "output": ["text"] },
+          "capabilities": { "tool_call": true, "streaming": true, "temperature": true }
+        },
+        {
+          "id": "mimo-v2-omni",
+          "name": "MiMo V2 Omni",
+          "family": "mimo",
+          "cost": { "input": 0.3, "output": 0.9 },
+          "limit": { "context": 131072, "output": 8192 },
+          "capabilities": { "tool_call": true, "streaming": true, "temperature": true }
+        },
+        {
+          "id": "mimo-v2-flash",
+          "name": "MiMo V2 Flash",
+          "family": "mimo",
+          "cost": { "input": 0.05, "output": 0.15 },
+          "limit": { "context": 131072, "output": 8192 },
+          "capabilities": { "tool_call": true, "streaming": true, "temperature": true }
+        }
+      ]
     },
     {
       "id": "alibaba",
@@ -306,42 +540,49 @@
         "opus": "qwen3.5-plus"
       },
       "model_choices": [
-        {
-          "id": "qwen3.5-plus",
-          "description": "Qwen 3.5 Plus"
-        },
-        {
-          "id": "kimi-k2.5",
-          "description": "Kimi K2.5"
-        },
-        {
-          "id": "glm-5",
-          "description": "GLM-5"
-        },
-        {
-          "id": "MiniMax-M2.5",
-          "description": "MiniMax M2.5"
-        },
-        {
-          "id": "qwen3-coder-next",
-          "description": "Qwen3 Coder Next"
-        },
-        {
-          "id": "qwen3-coder-plus",
-          "description": "Qwen3 Coder Plus"
-        },
-        {
-          "id": "qwen3-max-2026-01-23",
-          "description": "Qwen3 Max"
-        },
-        {
-          "id": "glm-4.7",
-          "description": "GLM-4.7"
-        }
+        { "id": "qwen3.5-plus", "description": "Qwen 3.5 Plus" },
+        { "id": "kimi-k2.5", "description": "Kimi K2.5" },
+        { "id": "glm-5", "description": "GLM-5" },
+        { "id": "MiniMax-M2.5", "description": "MiniMax M2.5" },
+        { "id": "qwen3-coder-next", "description": "Qwen3 Coder Next" },
+        { "id": "qwen3-coder-plus", "description": "Qwen3 Coder Plus" },
+        { "id": "qwen3-max-2026-01-23", "description": "Qwen3 Max" },
+        { "id": "glm-4.7", "description": "GLM-4.7" }
       ],
       "test_url": "https://coding-intl.dashscope.aliyuncs.com/apps/anthropic",
       "setup": [],
-      "usage": []
+      "usage": [],
+      "api_base_url": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+      "npm_package": "@ai-sdk/openai-compatible",
+      "doc_url": "https://help.aliyun.com/zh/model-studio",
+      "models": [
+        {
+          "id": "qwen3.5-plus",
+          "name": "Qwen 3.5 Plus",
+          "family": "qwen",
+          "release_date": "2025-05-01",
+          "cost": { "input": 0.5, "output": 1.5 },
+          "limit": { "context": 131072, "output": 8192 },
+          "modalities": { "input": ["text", "image"], "output": ["text"] },
+          "capabilities": { "tool_call": true, "streaming": true, "temperature": true }
+        },
+        {
+          "id": "qwen3-coder-plus",
+          "name": "Qwen3 Coder Plus",
+          "family": "qwen",
+          "cost": { "input": 0.3, "output": 0.9 },
+          "limit": { "context": 131072, "output": 8192 },
+          "capabilities": { "tool_call": true, "streaming": true, "temperature": true }
+        },
+        {
+          "id": "qwen3-coder-next",
+          "name": "Qwen3 Coder Next",
+          "family": "qwen",
+          "cost": { "input": 0.3, "output": 0.9 },
+          "limit": { "context": 131072, "output": 8192 },
+          "capabilities": { "tool_call": true, "streaming": true, "temperature": true }
+        }
+      ]
     },
     {
       "id": "alibaba-us",
@@ -359,42 +600,39 @@
         "opus": "qwen3.5-plus"
       },
       "model_choices": [
-        {
-          "id": "qwen3.5-plus",
-          "description": "Qwen 3.5 Plus"
-        },
-        {
-          "id": "kimi-k2.5",
-          "description": "Kimi K2.5"
-        },
-        {
-          "id": "glm-5",
-          "description": "GLM-5"
-        },
-        {
-          "id": "MiniMax-M2.5",
-          "description": "MiniMax M2.5"
-        },
-        {
-          "id": "qwen3-coder-next",
-          "description": "Qwen3 Coder Next"
-        },
-        {
-          "id": "qwen3-coder-plus",
-          "description": "Qwen3 Coder Plus"
-        },
-        {
-          "id": "qwen3-max-2026-01-23",
-          "description": "Qwen3 Max"
-        },
-        {
-          "id": "glm-4.7",
-          "description": "GLM-4.7"
-        }
+        { "id": "qwen3.5-plus", "description": "Qwen 3.5 Plus" },
+        { "id": "kimi-k2.5", "description": "Kimi K2.5" },
+        { "id": "glm-5", "description": "GLM-5" },
+        { "id": "MiniMax-M2.5", "description": "MiniMax M2.5" },
+        { "id": "qwen3-coder-next", "description": "Qwen3 Coder Next" },
+        { "id": "qwen3-coder-plus", "description": "Qwen3 Coder Plus" },
+        { "id": "qwen3-max-2026-01-23", "description": "Qwen3 Max" },
+        { "id": "glm-4.7", "description": "GLM-4.7" }
       ],
       "test_url": "https://coding-us.dashscope.aliyuncs.com/apps/anthropic",
       "setup": [],
-      "usage": []
+      "usage": [],
+      "api_base_url": "https://dashscope-us.aliyuncs.com/compatible-mode/v1",
+      "npm_package": "@ai-sdk/openai-compatible",
+      "doc_url": "https://help.aliyun.com/zh/model-studio",
+      "models": [
+        {
+          "id": "qwen3.5-plus",
+          "name": "Qwen 3.5 Plus",
+          "family": "qwen",
+          "cost": { "input": 0.5, "output": 1.5 },
+          "limit": { "context": 131072, "output": 8192 },
+          "capabilities": { "tool_call": true, "streaming": true, "temperature": true }
+        },
+        {
+          "id": "qwen3-coder-plus",
+          "name": "Qwen3 Coder Plus",
+          "family": "qwen",
+          "cost": { "input": 0.3, "output": 0.9 },
+          "limit": { "context": 131072, "output": 8192 },
+          "capabilities": { "tool_call": true, "streaming": true, "temperature": true }
+        }
+      ]
     },
     {
       "id": "alibaba-cn",
@@ -412,42 +650,39 @@
         "opus": "qwen3.5-plus"
       },
       "model_choices": [
-        {
-          "id": "qwen3.5-plus",
-          "description": "Qwen 3.5 Plus"
-        },
-        {
-          "id": "kimi-k2.5",
-          "description": "Kimi K2.5"
-        },
-        {
-          "id": "glm-5",
-          "description": "GLM-5"
-        },
-        {
-          "id": "MiniMax-M2.5",
-          "description": "MiniMax M2.5"
-        },
-        {
-          "id": "qwen3-coder-next",
-          "description": "Qwen3 Coder Next"
-        },
-        {
-          "id": "qwen3-coder-plus",
-          "description": "Qwen3 Coder Plus"
-        },
-        {
-          "id": "qwen3-max-2026-01-23",
-          "description": "Qwen3 Max"
-        },
-        {
-          "id": "glm-4.7",
-          "description": "GLM-4.7"
-        }
+        { "id": "qwen3.5-plus", "description": "Qwen 3.5 Plus" },
+        { "id": "kimi-k2.5", "description": "Kimi K2.5" },
+        { "id": "glm-5", "description": "GLM-5" },
+        { "id": "MiniMax-M2.5", "description": "MiniMax M2.5" },
+        { "id": "qwen3-coder-next", "description": "Qwen3 Coder Next" },
+        { "id": "qwen3-coder-plus", "description": "Qwen3 Coder Plus" },
+        { "id": "qwen3-max-2026-01-23", "description": "Qwen3 Max" },
+        { "id": "glm-4.7", "description": "GLM-4.7" }
       ],
       "test_url": "https://coding.dashscope.aliyuncs.com/apps/anthropic",
       "setup": [],
-      "usage": []
+      "usage": [],
+      "api_base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+      "npm_package": "@ai-sdk/openai-compatible",
+      "doc_url": "https://help.aliyun.com/zh/model-studio",
+      "models": [
+        {
+          "id": "qwen3.5-plus",
+          "name": "Qwen 3.5 Plus",
+          "family": "qwen",
+          "cost": { "input": 0.5, "output": 1.5 },
+          "limit": { "context": 131072, "output": 8192 },
+          "capabilities": { "tool_call": true, "streaming": true, "temperature": true }
+        },
+        {
+          "id": "qwen3-coder-plus",
+          "name": "Qwen3 Coder Plus",
+          "family": "qwen",
+          "cost": { "input": 0.3, "output": 0.9 },
+          "limit": { "context": 131072, "output": 8192 },
+          "capabilities": { "tool_call": true, "streaming": true, "temperature": true }
+        }
+      ]
     },
     {
       "id": "ollama",
@@ -468,6 +703,36 @@
       ],
       "usage": [
         "claudy ollama --model qwen3-coder"
+      ],
+      "api_base_url": "http://localhost:11434",
+      "npm_package": "ollama-ai-provider",
+      "doc_url": "https://github.com/ollama/ollama",
+      "models": [
+        {
+          "id": "qwen3-coder",
+          "name": "Qwen3 Coder",
+          "family": "qwen",
+          "cost": { "input": 0.0, "output": 0.0 },
+          "limit": { "context": 131072, "output": 8192 },
+          "modalities": { "input": ["text"], "output": ["text"] },
+          "capabilities": { "tool_call": true, "streaming": true, "temperature": true }
+        },
+        {
+          "id": "deepseek-r1",
+          "name": "DeepSeek R1",
+          "family": "deepseek",
+          "cost": { "input": 0.0, "output": 0.0 },
+          "limit": { "context": 131072, "output": 8192 },
+          "capabilities": { "reasoning": true, "tool_call": true, "streaming": true }
+        },
+        {
+          "id": "llama3.1",
+          "name": "Llama 3.1",
+          "family": "llama",
+          "cost": { "input": 0.0, "output": 0.0 },
+          "limit": { "context": 131072, "output": 4096 },
+          "capabilities": { "tool_call": true, "streaming": true, "temperature": true }
+        }
       ]
     },
     {
@@ -489,6 +754,19 @@
       ],
       "usage": [
         "claudy lmstudio --model <model-name>"
+      ],
+      "api_base_url": "http://localhost:1234/v1",
+      "npm_package": "@ai-sdk/openai-compatible",
+      "doc_url": "https://lmstudio.ai",
+      "models": [
+        {
+          "id": "local-model",
+          "name": "Local Model",
+          "family": "local",
+          "cost": { "input": 0.0, "output": 0.0 },
+          "limit": { "context": 32768, "output": 4096 },
+          "capabilities": { "streaming": true, "temperature": true }
+        }
       ]
     },
     {
@@ -509,6 +787,19 @@
       ],
       "usage": [
         "claudy llamacpp --model <model-name>"
+      ],
+      "api_base_url": "http://localhost:8000/v1",
+      "npm_package": "@ai-sdk/openai-compatible",
+      "doc_url": "https://github.com/ggml-org/llama.cpp",
+      "models": [
+        {
+          "id": "local-model",
+          "name": "Local Model",
+          "family": "local",
+          "cost": { "input": 0.0, "output": 0.0 },
+          "limit": { "context": 32768, "output": 4096 },
+          "capabilities": { "streaming": true, "temperature": true }
+        }
       ]
     }
   ]

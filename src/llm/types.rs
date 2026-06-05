@@ -1,3 +1,5 @@
+use std::pin::Pin;
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -74,3 +76,19 @@ pub struct TokenUsage {
     pub completion_tokens: u32,
     pub total_tokens: u32,
 }
+
+/// A single event in an LLM streaming response.
+#[derive(Debug, Clone)]
+pub enum StreamEvent {
+    /// Partial text content arrived.
+    Delta { content: String },
+    /// Final token usage statistics.
+    Usage(TokenUsage),
+    /// Stream has ended.
+    Done,
+}
+
+/// Type alias for a boxed streaming response.
+#[cfg(feature = "client-async")]
+pub type LLMStream =
+    Pin<Box<dyn futures_core::Stream<Item = crate::error::Result<StreamEvent>> + Send>>;
