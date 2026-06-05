@@ -27,3 +27,7 @@ We take security vulnerabilities seriously. If you discover a security issue:
 ## Dependency Security
 
 We use `cargo audit` in CI to scan for known vulnerabilities in dependencies.
+
+## Secret Scanning
+
+We use [gitleaks](https://github.com/gitleaks/gitleaks) in CI to detect accidentally committed secrets, API keys, and credentials.
