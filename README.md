@@ -43,7 +43,7 @@ Each module is gated behind a feature flag so you only pay for what you use.
 | `config` | TOML config loader | |
 | `graph` | Knowledge graph — SQLite, FTS5, smart recall, BFS traversal | |
 | `graph-async` | Async graph wrappers (requires tokio) | |
-| `graph-pool` | Multi-connection async graph pool (WAL concurrency) | |
+| `graph-pool` | Multi-connection async graph pool (`AsyncPoolGraph`, WAL concurrency) | |
 | `mcp` | MCP server — JSON-RPC 2.0, stdio transport, Bearer auth | |
 | `tokens` | Token estimation with Unicode-script heuristics | |
 | `install` | AI tool installation wizard | |
@@ -316,16 +316,21 @@ println!("Estimated tokens: {}", tokens);
 
 ```rust
 use llm_kernel::embedding::{EmbeddingProvider, cosine_similarity};
-use llm_kernel::search::rrf_fuse;
+use llm_kernel::search::{SearchResult, rrf_fuse};
 
 // Cosine similarity between vectors
 let sim = cosine_similarity(&[0.1, 0.2, 0.3], &[0.4, 0.5, 0.6]);
 
 // Reciprocal Rank Fusion for hybrid search
-let merged = rrf_fuse(&[
-    vec!["doc-a".into(), "doc-b".into()],
-    vec!["doc-b".into(), "doc-c".into()],
-], 60);
+let bm25 = vec![
+    SearchResult { id: "doc-a".into(), score: 0.9, text: "Rust guide".into() },
+    SearchResult { id: "doc-b".into(), score: 0.7, text: "Python basics".into() },
+];
+let vector = vec![
+    SearchResult { id: "doc-b".into(), score: 0.95, text: "Python basics".into() },
+    SearchResult { id: "doc-c".into(), score: 0.6, text: "Go concurrency".into() },
+];
+let merged = rrf_fuse(&[bm25, vector], 60);
 ```
 
 #### Local ONNX embedding (fastembed-rs)
@@ -397,7 +402,7 @@ Each model in the catalog includes:
 | | llm-kernel | [rig] | [langchain-rust] |
 |--|-----------|-------|-------------------|
 | Provider catalog | ✅ 16 providers, 114 models built-in | Manual config | Manual config |
-| Feature gates | ✅ 21 independent modules | Monolithic | Monolithic |
+| Feature gates | ✅ 20 independent modules | Monolithic | Monolithic |
 | Local embedding | ✅ 44 ONNX + Qwen3 + Nomic MoE | ❌ | ❌ |
 | MCP server | ✅ JSON-RPC 2.0 | ❌ | ❌ |
 | Knowledge graph | ✅ SQLite + FTS5 + smart recall | ❌ | ❌ |
