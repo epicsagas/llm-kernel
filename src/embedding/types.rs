@@ -30,14 +30,14 @@ pub fn cosine_similarity(a: &[f32], b: &[f32]) -> f64 {
     if a.len() != b.len() || a.is_empty() {
         return 0.0;
     }
-    let (dot, sum_a, sum_b) = a
-        .iter()
-        .zip(b.iter())
-        .fold((0.0f64, 0.0f64, 0.0f64), |(dot, sa, sb), (&x, &y)| {
-            let x = x as f64;
-            let y = y as f64;
-            (dot + x * y, sa + x * x, sb + y * y)
-        });
+    let (dot, sum_a, sum_b) =
+        a.iter()
+            .zip(b.iter())
+            .fold((0.0f64, 0.0f64, 0.0f64), |(dot, sa, sb), (&x, &y)| {
+                let x = x as f64;
+                let y = y as f64;
+                (dot + x * y, sa + x * x, sb + y * y)
+            });
     let denom = sum_a.sqrt() * sum_b.sqrt();
     if denom == 0.0 { 0.0 } else { dot / denom }
 }
