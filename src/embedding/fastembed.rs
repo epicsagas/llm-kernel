@@ -46,6 +46,31 @@ impl FastembedProvider {
         })
     }
 
+    /// Create with DirectML GPU execution on Windows.
+    ///
+    /// Requires the `embedding-fastembed-directml` feature and Windows OS.
+    /// The DirectML runtime DLL must be present on the target system.
+    ///
+    /// `cache_dir` overrides the HuggingFace model cache directory.
+    #[cfg(all(feature = "embedding-fastembed-directml", target_os = "windows"))]
+    pub fn new_with_directml(
+        model: EmbeddingModel,
+        cache_dir: Option<PathBuf>,
+    ) -> anyhow::Result<Self> {
+        use ort::execution_providers::DirectMLExecutionProvider;
+        let mut options = fastembed::TextInitOptions::new(model.as_fastembed())
+            .with_show_download_progress(false)
+            .with_execution_providers(vec![DirectMLExecutionProvider::default().build()]);
+        if let Some(dir) = cache_dir {
+            options = options.with_cache_dir(dir);
+        }
+        let te = fastembed::TextEmbedding::try_new(options)?;
+        Ok(Self {
+            inner: Mutex::new(te),
+            model,
+        })
+    }
+
     /// Create with a custom maximum sequence length.
     pub fn with_max_length(
         model: EmbeddingModel,
