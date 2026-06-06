@@ -267,7 +267,11 @@ impl EmbeddingModel {
         }
     }
 
-    /// HuggingFace repository ID (e.g. `"BAAI/bge-small-en-v1.5"`).
+    /// Original HuggingFace model name (e.g. `"BAAI/bge-small-en-v1.5"`).
+    ///
+    /// This is the **canonical** model identifier from the original publisher.
+    /// For the actual HuggingFace repository used by fastembed-rs for downloads
+    /// and caching, use [`model_code`](Self::model_code) instead.
     pub const fn model_id(self) -> &'static str {
         match self {
             Self::BGESmallENV15 => "BAAI/bge-small-en-v1.5",
@@ -400,6 +404,62 @@ impl EmbeddingModel {
     /// Whether this model handles image inputs (CLIP).
     pub const fn is_image_model(self) -> bool {
         matches!(self, Self::ClipVitB32)
+    }
+
+    /// HuggingFace model code used by fastembed-rs for downloads and caching
+    /// (e.g. `"Xenova/bge-small-en-v1.5"`).
+    ///
+    /// This is the **actual** repository identifier that `hf-hub` uses when
+    /// downloading model weights. Differs from [`model_id`](Self::model_id)
+    /// when the ONNX conversion lives in a separate repo (e.g. `Qdrant/…`,
+    /// `Xenova/…`, `onnx-community/…`).
+    pub const fn model_code(self) -> &'static str {
+        match self {
+            Self::AllMiniLML6V2 => "Qdrant/all-MiniLM-L6-v2-onnx",
+            Self::AllMiniLML6V2Q => "Xenova/all-MiniLM-L6-v2",
+            Self::AllMiniLML12V2 => "Xenova/all-MiniLM-L12-v2",
+            Self::AllMiniLML12V2Q => "Xenova/all-MiniLM-L12-v2",
+            Self::AllMpnetBaseV2 => "Xenova/all-mpnet-base-v2",
+            Self::BGEBaseENV15 => "Xenova/bge-base-en-v1.5",
+            Self::BGEBaseENV15Q => "Qdrant/bge-base-en-v1.5-onnx-Q",
+            Self::BGELargeENV15 => "Xenova/bge-large-en-v1.5",
+            Self::BGELargeENV15Q => "Qdrant/bge-large-en-v1.5-onnx-Q",
+            Self::BGESmallENV15 => "Xenova/bge-small-en-v1.5",
+            Self::BGESmallENV15Q => "Qdrant/bge-small-en-v1.5-onnx-Q",
+            Self::NomicEmbedTextV1 => "nomic-ai/nomic-embed-text-v1",
+            Self::NomicEmbedTextV15 => "nomic-ai/nomic-embed-text-v1.5",
+            Self::NomicEmbedTextV15Q => "nomic-ai/nomic-embed-text-v1.5",
+            Self::ParaphraseMLMiniLML12V2 => "Xenova/paraphrase-multilingual-MiniLM-L12-v2",
+            Self::ParaphraseMLMiniLML12V2Q => "Qdrant/paraphrase-multilingual-MiniLM-L12-v2-onnx-Q",
+            Self::ParaphraseMLMpnetBaseV2 => "Xenova/paraphrase-multilingual-mpnet-base-v2",
+            Self::BGESmallZHV15 => "Xenova/bge-small-zh-v1.5",
+            Self::BGELargeZHV15 => "Xenova/bge-large-zh-v1.5",
+            Self::BGEM3 => "BAAI/bge-m3",
+            Self::ModernBertEmbedLarge => "lightonai/modernbert-embed-large",
+            Self::MultilingualE5Small => "intfloat/multilingual-e5-small",
+            Self::MultilingualE5Base => "intfloat/multilingual-e5-base",
+            Self::MultilingualE5Large => "Qdrant/multilingual-e5-large-onnx",
+            Self::MxbaiEmbedLargeV1 => "mixedbread-ai/mxbai-embed-large-v1",
+            Self::MxbaiEmbedLargeV1Q => "mixedbread-ai/mxbai-embed-large-v1",
+            Self::GTEBaseENV15 => "Alibaba-NLP/gte-base-en-v1.5",
+            Self::GTEBaseENV15Q => "Alibaba-NLP/gte-base-en-v1.5",
+            Self::GTELargeENV15 => "Alibaba-NLP/gte-large-en-v1.5",
+            Self::GTELargeENV15Q => "Alibaba-NLP/gte-large-en-v1.5",
+            Self::ClipVitB32 => "Qdrant/clip-ViT-B-32-text",
+            Self::JinaEmbeddingsV2BaseCode => "jinaai/jina-embeddings-v2-base-code",
+            Self::JinaEmbeddingsV2BaseEN => "jinaai/jina-embeddings-v2-base-en",
+            Self::EmbeddingGemma300M => "onnx-community/embeddinggemma-300m-ONNX",
+            Self::SnowflakeArcticEmbedXS => "snowflake/snowflake-arctic-embed-xs",
+            Self::SnowflakeArcticEmbedXSQ => "snowflake/snowflake-arctic-embed-xs",
+            Self::SnowflakeArcticEmbedS => "snowflake/snowflake-arctic-embed-s",
+            Self::SnowflakeArcticEmbedSQ => "snowflake/snowflake-arctic-embed-s",
+            Self::SnowflakeArcticEmbedM => "Snowflake/snowflake-arctic-embed-m",
+            Self::SnowflakeArcticEmbedMQ => "Snowflake/snowflake-arctic-embed-m",
+            Self::SnowflakeArcticEmbedMLong => "snowflake/snowflake-arctic-embed-m-long",
+            Self::SnowflakeArcticEmbedMLongQ => "snowflake/snowflake-arctic-embed-m-long",
+            Self::SnowflakeArcticEmbedL => "snowflake/snowflake-arctic-embed-l",
+            Self::SnowflakeArcticEmbedLQ => "snowflake/snowflake-arctic-embed-l",
+        }
     }
 
     /// String representation matching the enum variant name.
@@ -700,6 +760,7 @@ mod tests {
         for &m in EmbeddingModel::ALL {
             assert!(m.size_mb() > 0, "{m:?}: size_mb is zero");
             assert!(!m.model_id().is_empty(), "{m:?}: model_id is empty");
+            assert!(!m.model_code().is_empty(), "{m:?}: model_code is empty");
             assert!(m.max_seq_length() > 0, "{m:?}: max_seq_length is zero");
         }
     }
