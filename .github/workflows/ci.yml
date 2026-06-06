@@ -85,17 +85,13 @@ jobs:
           path: "*.cdx.json"
 
   directml-check:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: x86_64-pc-windows-gnu
-      - name: Install MinGW cross-compiler
-        run: sudo apt-get install -y mingw-w64
       - uses: Swatinem/rust-cache@v2
-      - name: Check DirectML feature (Windows cross-compile)
-        run: cargo check --features embedding-fastembed-directml --target x86_64-pc-windows-gnu
+      - name: Check DirectML feature (Windows native)
+        run: cargo check --features embedding-fastembed-directml
 
   secrets:
     runs-on: ubuntu-latest
