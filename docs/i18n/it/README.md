@@ -1,10 +1,16 @@
-**English** | [한국어](docs/i18n/ko/README.md) | [日本語](docs/i18n/ja/README.md) | [简体中文](docs/i18n/zh-Hans/README.md) | [繁體中文](docs/i18n/zh-Hant/README.md) | [Español](docs/i18n/es/README.md) | [Français](docs/i18n/fr/README.md) | [Deutsch](docs/i18n/de/README.md) | [Português](docs/i18n/pt/README.md) | [Русский](docs/i18n/ru/README.md) | [Italiano](docs/i18n/it/README.md)
+<!-- Translated from README.md @ commit edd4827 (2026-06-06) -->
+<!-- If English README has changed since then, this translation may be outdated -->
+
+[English](../../README.md) | [한국어](../ko/README.md) | [日本語](../ja/README.md) | [简体中文](../zh-Hans/README.md) | [繁體中文](../zh-Hant/README.md) | [Español](../es/README.md) | [Français](../fr/README.md) | [Deutsch](../de/README.md) | [Português](../pt/README.md) | [Русский](../ru/README.md) | **Italiano**
+
+> Questo documento è una traduzione di [README.md](../../README.md).
+> La versione inglese è la fonte autorevole e potrebbe essere più aggiornata.
 
 <div align="center">
 
 # llm-kernel
 
-> Foundation library for Rust AI-native apps — provider catalog, LLM client, MCP server, search, telemetry, and safety
+> Libreria di base per applicazioni Rust native AI — catalogo provider, client LLM, server MCP, ricerca, telemetria e sicurezza
 
 [![CI](https://github.com/epicsagas/llm-kernel/actions/workflows/ci.yml/badge.svg)](https://github.com/epicsagas/llm-kernel/actions/workflows/ci.yml)
 [![crates.io](https://img.shields.io/crates/v/llm-kernel)](https://crates.io/crates/llm-kernel)
@@ -13,87 +19,87 @@
 
 </div>
 
-## Overview
+## Panoramica
 
-llm-kernel provides the foundational layer for building LLM-powered tools, agents, and servers in Rust:
+llm-kernel fornisce il livello fondamentale per costruire strumenti, agent e server basati su LLM in Rust:
 
-- **Provider catalog** — 16 built-in providers, 114 models with metadata, pricing, and capabilities
-- **Async client** — trait-based client for OpenAI and Anthropic with SSE streaming
-- **Model discovery** — dynamic model discovery from models.dev, Ollama, OpenAI-compatible endpoints
-- **Credential vault** — dotenv-style API key management with atomic writes
-- **Config loader** — TOML config with auto-create from template
-- **Knowledge graph** — SQLite-backed graph with FTS5 search, smart recall, BFS traversal, async wrappers
-- **MCP server** — JSON-RPC 2.0 server framework with stdio transport and Bearer auth
-- **Embedding** — provider trait + cosine similarity, local ONNX (44 models), Qwen3 candle, Nomic V2 MoE candle, OpenAI remote ([full model list →](EMBEDDING_MODELS.md))
-- **Search** — Reciprocal Rank Fusion for hybrid search result merging
-- **Token estimation** — zero-dependency Unicode-script heuristic token counting
-- **Telemetry** — enum-gated events with no PII, console and noop sinks
-- **Safety** — secret masking, error classification, output sanitization
-- **Install wizard** — MCP config generation for Claude Desktop, Cursor, Copilot, OpenCode, Cline
+- **Catalogo provider** — 16 provider integrati, 114 modelli con metadati, prezzi e capacità
+- **Client asincrono** — client basato su trait per OpenAI e Anthropic con streaming SSE
+- **Scoperta modelli** — scoperta dinamica dei modelli da models.dev, Ollama, endpoint compatibili OpenAI
+- **Vault delle credenziali** — gestione delle chiavi API in stile dotenv con scritture atomiche
+- **Caricamento configurazione** — configurazione TOML con creazione automatica da template
+- **Grafo di conoscenza** — grafo basato su SQLite con ricerca FTS5, richiamo intelligente, attraversamento BFS, wrapper asincroni
+- **Server MCP** — framework server JSON-RPC 2.0 con trasporto stdio e autenticazione Bearer
+- **Embedding** — trait provider + similarità coseno, ONNX locale (44 modelli), Qwen3 candle, Nomic V2 MoE candle, OpenAI remoto ([elenco completo modelli →](EMBEDDING_MODELS.md))
+- **Ricerca** — Reciprocal Rank Fusion per la fusione ibrida dei risultati di ricerca
+- **Stima token** — conteggio euristico dei token basato su script Unicode senza dipendenze
+- **Telemetria** — eventi con gating enum senza PII, sink console e noop
+- **Sicurezza** — mascheramento segreti, classificazione errori, sanificazione output
+- **Wizard di installazione** — generazione configurazione MCP per Claude Desktop, Cursor, Copilot, OpenCode, Cline
 
-## Feature flags
+## Flag di feature
 
-Each module is gated behind a feature flag so you only pay for what you use.
+Ogni modulo è protetto da una flag di feature, così paghi solo per ciò che utilizzi.
 
-| Feature | Description | Default |
-|---------|-------------|---------|
-| `provider` | Provider catalog, model descriptors, pricing | ✅ |
-| `client-async` | Async LLM client (reqwest) with streaming | |
-| `discovery` | Dynamic model discovery (models.dev, Ollama, OpenAI-compat) | |
-| `secrets` | SecretVault credential management | |
-| `store` | SQLite init helpers (WAL, FTS5, schema versioning) | |
-| `config` | TOML config loader | |
-| `graph` | Knowledge graph — SQLite, FTS5, smart recall, BFS traversal | |
-| `graph-async` | Async graph wrappers (requires tokio) | |
-| `graph-pool` | Multi-connection async graph pool (`AsyncPoolGraph`, WAL concurrency) | |
-| `mcp` | MCP server — JSON-RPC 2.0, stdio transport, Bearer auth | |
-| `tokens` | Token estimation with Unicode-script heuristics | |
-| `install` | AI tool installation wizard | |
-| `search` | Hybrid search with Reciprocal Rank Fusion | |
-| `embedding` | Embedding provider trait + cosine similarity | |
-| `embedding-openai` | OpenAI text-embedding client (sync HTTP) | |
-| `embedding-fastembed` | Local ONNX embedding via fastembed-rs (44 models) | |
-| `embedding-fastembed-qwen3` | Qwen3 embedding via candle backend | |
-| `embedding-fastembed-nomic-moe` | Nomic V2 MoE embedding via candle backend | |
-| `telemetry` | Enum-gated telemetry events, no PII | |
-| `safety` | Secret masking, error classification, output sanitization | |
-| `full` | All features | |
+| Feature | Descrizione | Predefinito |
+|---------|-------------|-------------|
+| `provider` | Catalogo provider, descrittori modelli, prezzi | ✅ |
+| `client-async` | Client LLM asincrono (reqwest) con streaming | |
+| `discovery` | Scoperta dinamica modelli (models.dev, Ollama, OpenAI-compat) | |
+| `secrets` | Gestione credenziali SecretVault | |
+| `store` | Helper init SQLite (WAL, FTS5, versionamento schema) | |
+| `config` | Caricatore configurazione TOML | |
+| `graph` | Grafo di conoscenza — SQLite, FTS5, richiamo intelligente, attraversamento BFS | |
+| `graph-async` | Wrapper grafo asincroni (richiede tokio) | |
+| `graph-pool` | Pool grafo asincrono multi-connessione (`AsyncPoolGraph`, concorrenza WAL) | |
+| `mcp` | Server MCP — JSON-RPC 2.0, trasporto stdio, autenticazione Bearer | |
+| `tokens` | Stima token con euristiche Unicode-script | |
+| `install` | Wizard di installazione strumenti AI | |
+| `search` | Ricerca ibrida con Reciprocal Rank Fusion | |
+| `embedding` | Trait provider embedding + similarità coseno | |
+| `embedding-openai` | Client OpenAI text-embedding (HTTP sincrono) | |
+| `embedding-fastembed` | Embedding ONNX locale via fastembed-rs (44 modelli) | |
+| `embedding-fastembed-qwen3` | Embedding Qwen3 via backend candle | |
+| `embedding-fastembed-nomic-moe` | Embedding Nomic V2 MoE via backend candle | |
+| `telemetry` | Eventi di telemetria con gating enum, senza PII | |
+| `safety` | Mascheramento segreti, classificazione errori, sanificazione output | |
+| `full` | Tutte le feature | |
 
-## Quick start
+## Guida rapida
 
-Add to your `Cargo.toml`:
+Aggiungi al tuo `Cargo.toml`:
 
 ```toml
 [dependencies]
 llm-kernel = "0.1.0"
 ```
 
-The `provider` feature is enabled by default. For the async client:
+La feature `provider` è abilitata per impostazione predefinita. Per il client asincrono:
 
 ```toml
 [dependencies]
 llm-kernel = { version = "0.1.0", features = ["client-async"] }
 ```
 
-For the knowledge graph with async wrappers:
+Per il grafo di conoscenza con wrapper asincroni:
 
 ```toml
 [dependencies]
 llm-kernel = { version = "0.1.0", features = ["graph", "graph-async"] }
 ```
 
-For local embedding (ONNX, no API key):
+Per l'embedding locale (ONNX, nessuna chiave API):
 
 ```toml
 [dependencies]
 llm-kernel = { version = "0.1.0", features = ["embedding-fastembed"] }
 ```
 
-## Usage
+## Utilizzo
 
-### Provider catalog
+### Catalogo provider
 
-The embedded catalog contains 16 providers with 114 models aligned to the [models.dev](https://github.com/anomalyco/models.dev) schema.
+Il catalogo integrato contiene 16 provider con 114 modelli allineati allo schema [models.dev](https://github.com/anomalyco/models.dev).
 
 ```rust
 use llm_kernel::prelude::*;
@@ -117,7 +123,7 @@ if let Some(model) = catalog.find_model("claude-sonnet-4-20250514") {
 }
 ```
 
-### Async chat completion
+### Completamento chat asincrono
 
 ```rust
 use llm_kernel::prelude::*;
@@ -171,7 +177,7 @@ let stream = client.stream_complete(LLMRequest {
 // Stream yields Delta, Usage, and Done events
 ```
 
-### Model discovery
+### Scoperta modelli
 
 ```rust
 use llm_kernel::discovery::{fetch_and_cache, load_cache, fetch_ollama_models};
@@ -194,7 +200,7 @@ for name in &ollama_models {
 }
 ```
 
-### Credential vault
+### Vault delle credenziali
 
 ```rust
 use llm_kernel::prelude::*;
@@ -208,7 +214,7 @@ println!("{}", redact_credential("sk-abcdef1234567890"));
 // → "sk-abcd...7890"
 ```
 
-### TOML config
+### Configurazione TOML
 
 ```rust
 use llm_kernel::config::load_toml_config;
@@ -226,7 +232,7 @@ let config: AppConfig = load_toml_config(
 )?;
 ```
 
-### SQLite store
+### Store SQLite
 
 ```rust
 use llm_kernel::store::init_schema;
@@ -236,7 +242,7 @@ let conn = init_schema(&db_path, ddl, 1)?;
 // WAL mode, busy timeout, and schema versioning applied automatically
 ```
 
-### Knowledge graph
+### Grafo di conoscenza
 
 ```rust
 use llm_kernel::prelude::*;
@@ -284,7 +290,7 @@ let stats = compute_stats(&conn).unwrap();
 println!("{} nodes, {} edges", stats.total_nodes, stats.total_edges);
 ```
 
-### MCP server
+### Server MCP
 
 ```rust
 use llm_kernel::mcp::{McpServer, Tool, JsonRpcRequest};
@@ -305,7 +311,7 @@ server.register_tool(Tool {
 server.run_stdio().await?;
 ```
 
-### Token estimation
+### Stima dei token
 
 ```rust
 use llm_kernel::tokens::estimate_tokens;
@@ -314,7 +320,7 @@ let tokens = estimate_tokens("Hello, world! こんにちは世界 🌍");
 println!("Estimated tokens: {}", tokens);
 ```
 
-### Embedding + search
+### Embedding e ricerca
 
 ```rust
 use llm_kernel::embedding::{EmbeddingProvider, cosine_similarity};
@@ -335,9 +341,9 @@ let vector = vec![
 let merged = rrf_fuse(&[bm25, vector], 60);
 ```
 
-#### Local ONNX embedding (fastembed-rs)
+#### Embedding ONNX locale (fastembed-rs)
 
-44 models via ONNX Runtime — no API key, no network after first download.
+44 modelli via ONNX Runtime — nessuna chiave API, nessuna connessione di rete dopo il primo download.
 
 ```rust
 use llm_kernel::embedding::{EmbeddingModel, FastembedProvider, EmbeddingProvider};
@@ -347,9 +353,9 @@ let result = provider.embed("hello world")?;
 assert_eq!(result.vector.len(), 384);
 ```
 
-#### Qwen3 embedding (candle)
+#### Embedding Qwen3 (candle)
 
-Pure Rust GPU/CPU inference via candle-nn — no ONNX Runtime.
+Inferenza pura Rust GPU/CPU via candle-nn — senza ONNX Runtime.
 
 ```rust
 use llm_kernel::embedding::{Qwen3Provider, EmbeddingProvider};
@@ -358,9 +364,9 @@ let provider = Qwen3Provider::new("Qwen/Qwen3-Embedding-0.6B")?;
 let result = provider.embed("hello world")?;
 ```
 
-#### Nomic V2 MoE embedding (candle)
+#### Embedding Nomic V2 MoE (candle)
 
-Lightweight MoE model — 8 experts, top-2 routing, 305M active params.
+Modello MoE leggero — 8 esperti, routing top-2, 305M parametri attivi.
 
 ```rust
 use llm_kernel::embedding::{NomicMoeProvider, EmbeddingProvider};
@@ -370,7 +376,7 @@ let result = provider.embed("hello world")?;
 assert_eq!(result.vector.len(), 768);
 ```
 
-### Safety utilities
+### Utilità di sicurezza
 
 ```rust
 use llm_kernel::safety::{mask_secrets, classify_failure, sanitize_output};
@@ -387,37 +393,37 @@ let category = classify_failure("connection timed out after 30s");
 let clean = sanitize_output(user_input)?;
 ```
 
-## Model metadata
+## Metadati dei modelli
 
-Each model in the catalog includes:
+Ogni modello nel catalogo include:
 
-| Field | Description |
+| Campo | Descrizione |
 |-------|-------------|
-| `cost` | Per-million-token pricing (input, output, cache_read, cache_write) |
-| `limit` | Context and output token limits |
-| `modalities` | Input/output modalities (text, image, audio) |
-| `capabilities` | Flags: attachment, reasoning, temperature, tool_call, streaming |
-| `knowledge` | Training data cutoff date |
+| `cost` | Prezzi per milione di token (input, output, cache_read, cache_write) |
+| `limit` | Limiti di token per contesto e output |
+| `modalities` | Modalità di input/output (testo, immagine, audio) |
+| `capabilities` | Flag: attachment, reasoning, temperature, tool_call, streaming |
+| `knowledge` | Data di cutoff dei dati di addestramento |
 
-## Why llm-kernel?
+## Perché llm-kernel?
 
 | | llm-kernel | [rig] | [langchain-rust] |
 |--|-----------|-------|-------------------|
-| Provider catalog | ✅ 16 providers, 114 models built-in | Manual config | Manual config |
-| Feature gates | ✅ 20 independent modules | Monolithic | Monolithic |
-| Local embedding | ✅ 44 ONNX + Qwen3 + Nomic MoE | ❌ | ❌ |
-| MCP server | ✅ JSON-RPC 2.0 | ❌ | ❌ |
-| Knowledge graph | ✅ SQLite + FTS5 + smart recall | ❌ | ❌ |
-| Mandatory deps | `serde` only | `reqwest`, `tokio`, … | Many |
-| Chains / agents | ❌ | ✅ | ✅ |
-| RAG pipelines | ❌ | ✅ | ✅ |
+| Catalogo provider | ✅ 16 provider, 114 modelli integrati | Configurazione manuale | Configurazione manuale |
+| Feature gate | ✅ 20 moduli indipendenti | Monolitico | Monolitico |
+| Embedding locale | ✅ 44 ONNX + Qwen3 + Nomic MoE | ❌ | ❌ |
+| Server MCP | ✅ JSON-RPC 2.0 | ❌ | ❌ |
+| Grafo di conoscenza | ✅ SQLite + FTS5 + richiamo intelligente | ❌ | ❌ |
+| Dipendenze obbligatorie | Solo `serde` | `reqwest`, `tokio`, … | Molte |
+| Catene / agent | ❌ | ✅ | ✅ |
+| Pipeline RAG | ❌ | ✅ | ✅ |
 
 [rig]: https://github.com/0xPlaygrounds/rig
 [langchain-rust]: https://github.com/Abraxas-365/langchain-rust
 
-llm-kernel is a **lightweight foundation layer** — compose it with rig or langchain-rust when you need chains, agents, or RAG.
+llm-kernel è uno **strato fondamentale leggero** — componilo con rig o langchain-rust quando hai bisogno di catene, agent o RAG.
 
-## Architecture
+## Architettura
 
 ```
 ┌──────────────────────────────────────────┐
@@ -436,18 +442,18 @@ llm-kernel is a **lightweight foundation layer** — compose it with rig or lang
 └──────────────────────────────────────────┘
 ```
 
-- **`LLMClient` trait** — unified interface for `OpenAIClient` and `AnthropicClient`
-- **`EmbeddingProvider` trait** — unified interface for `FastembedProvider` (ONNX), `Qwen3Provider` (candle), `NomicMoeProvider` (candle), `OpenAIEmbeddingClient` (remote)
-- **`ProviderIndex`** — zero-copy access to embedded catalog, queryable by provider or model
-- **`McpServer`** — JSON-RPC 2.0 server with stdio transport, Bearer auth, tool registration
-- **`SecretVault`** — `HashMap<String, String>` with dotenv load/save and symlink guards
-- **`graph`** — SQLite knowledge graph with FTS5 search, composite scoring recall, BFS traversal, importance decay
-- **`TelemetryEvent`** — enum-gated variants for structured observability (no PII)
-- **`safety`** — secret masking, error classification, bidi/ANSI/null sanitization
+- **Trait `LLMClient`** — interfaccia unificata per `OpenAIClient` e `AnthropicClient`
+- **Trait `EmbeddingProvider`** — interfaccia unificata per `FastembedProvider` (ONNX), `Qwen3Provider` (candle), `NomicMoeProvider` (candle), `OpenAIEmbeddingClient` (remoto)
+- **`ProviderIndex`** — accesso zero-copy al catalogo integrato, interrogabile per provider o modello
+- **`McpServer`** — server JSON-RPC 2.0 con trasporto stdio, autenticazione Bearer, registrazione tool
+- **`SecretVault`** — `HashMap<String, String>` con caricamento/salvataggio dotenv e guardie symlink
+- **`graph`** — grafo di conoscenza SQLite con ricerca FTS5, richiamo con punteggio composito, attraversamento BFS, decadimento dell'importanza
+- **`TelemetryEvent`** — varianti con gating enum per osservabilità strutturata (senza PII)
+- **`safety`** — mascheramento segreti, classificazione errori, sanificazione bidi/ANSI/null
 
-## Benchmarks
+## Benchmark
 
-Criterion benchmarks under `benches/`:
+Benchmark Criterion nella directory `benches/`:
 
 ```bash
 cargo bench                          # Run all benchmarks
@@ -455,7 +461,7 @@ cargo bench -- graph_bench           # Graph: smart_recall, BFS, neighbors
 cargo bench -- compute_bench         # Token estimation, RRF fusion
 ```
 
-## Examples
+## Esempi
 
 ```bash
 # List all providers and models (no API key needed)
@@ -468,14 +474,14 @@ cargo run --example chat_openai --features client-async
 cargo run --example stream_anthropic --features client-async
 ```
 
-## Requirements
+## Requisiti
 
 - Rust 1.92+ (edition 2024)
 
-## Contributing
+## Contribuire
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). PRs welcome.
+Consulta [CONTRIBUTING.md](CONTRIBUTING.md). Le PR sono benvenute.
 
-## License
+## Licenza
 
 [Apache-2.0](LICENSE) © 2026 EpicCounty
