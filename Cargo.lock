@@ -1808,6 +1808,7 @@ dependencies = [
  "criterion",
  "fastembed",
  "futures-core",
+ "ort",
  "regex",
  "reqwest 0.13.4",
  "rusqlite",

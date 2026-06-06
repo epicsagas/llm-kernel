@@ -43,6 +43,23 @@ impl OpenAIEmbeddingClient {
         }
     }
 
+    /// Create with an explicit model name and embedding dimension.
+    ///
+    /// Use this for legacy models (`text-embedding-ada-002`), reduced-dimension
+    /// variants, or any future model not covered by [`new_small`](Self::new_small)
+    /// and [`new_large`](Self::new_large).
+    pub fn new_with_model(
+        api_key: impl Into<String>,
+        model: impl Into<String>,
+        dim: usize,
+    ) -> Self {
+        Self {
+            api_key: api_key.into(),
+            model: model.into(),
+            dim,
+        }
+    }
+
     /// Create from environment variable `OPENAI_API_KEY`.
     pub fn from_env() -> anyhow::Result<Self> {
         let key = std::env::var("OPENAI_API_KEY")
@@ -173,6 +190,20 @@ mod tests {
         let payload: EmbeddingResponse = serde_json::from_str(raw).unwrap();
         assert_eq!(payload.data.len(), 1);
         assert_eq!(payload.data[0].embedding, vec![0.1f32, -0.2, 0.3]);
+    }
+
+    #[test]
+    fn new_with_model_sets_name_and_dim() {
+        let client = OpenAIEmbeddingClient::new_with_model("key", "text-embedding-ada-002", 1536);
+        assert_eq!(client.dim(), 1536);
+        assert_eq!(client.name(), "text-embedding-ada-002");
+    }
+
+    #[test]
+    fn new_with_model_custom_dim() {
+        let client = OpenAIEmbeddingClient::new_with_model("key", "text-embedding-3-small", 512);
+        assert_eq!(client.dim(), 512);
+        assert_eq!(client.name(), "text-embedding-3-small");
     }
 
     #[test]

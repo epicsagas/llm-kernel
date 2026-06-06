@@ -68,6 +68,9 @@ embedding-fastembed-qwen3 = ["embedding-fastembed", "fastembed/qwen3", "dep:cand
 # Nomic V2 MoE embedding via fastembed-rs candle backend
 embedding-fastembed-nomic-moe = ["embedding-fastembed", "fastembed/nomic-v2-moe", "dep:candle-core"]
 
+# DirectML GPU execution provider for FastembedProvider (Windows only)
+embedding-fastembed-directml = ["embedding-fastembed", "dep:ort"]
+
 # Knowledge graph with async wrappers (requires tokio)
 graph-async = ["graph", "dep:tokio"]
 
@@ -104,6 +107,7 @@ futures-core = { version = "0.3", optional = true }
 async-trait = { version = "0.1", optional = true }
 regex       = { version = "1", optional = true }
 fastembed   = { version = "5", default-features = false, features = ["hf-hub-native-tls", "ort-download-binaries-native-tls"], optional = true }
+ort         = { version = "=2.0.0-rc.12", default-features = false, optional = true }
 candle-core = { version = "0.10", optional = true }
 
 [dev-dependencies]

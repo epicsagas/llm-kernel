@@ -16,23 +16,26 @@ impl EmbeddingResult {
     }
 
     /// Compute cosine similarity between two embedding results.
-    pub fn cosine_similarity(&self, other: &EmbeddingResult) -> f32 {
+    pub fn cosine_similarity(&self, other: &EmbeddingResult) -> f64 {
         cosine_similarity(&self.vector, &other.vector)
     }
 }
 
 /// Compute cosine similarity between two f32 vectors.
 ///
-/// Single-pass accumulation: dot product and both squared norms
-/// are computed simultaneously to avoid three separate iterations.
-pub fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
+/// Accumulates dot product and squared norms in f64 to avoid precision
+/// loss in high-dimensional spaces (384–1024 dims) where f32 rounding
+/// can flip ranking order between near-identical candidates.
+pub fn cosine_similarity(a: &[f32], b: &[f32]) -> f64 {
     if a.len() != b.len() || a.is_empty() {
         return 0.0;
     }
     let (dot, sum_a, sum_b) = a
         .iter()
         .zip(b.iter())
-        .fold((0.0f32, 0.0f32, 0.0f32), |(dot, sa, sb), (&x, &y)| {
+        .fold((0.0f64, 0.0f64, 0.0f64), |(dot, sa, sb), (&x, &y)| {
+            let x = x as f64;
+            let y = y as f64;
             (dot + x * y, sa + x * x, sb + y * y)
         });
     let denom = sum_a.sqrt() * sum_b.sqrt();
@@ -89,12 +92,12 @@ mod tests {
 
     #[test]
     fn cosine_similarity_empty() {
-        assert_eq!(cosine_similarity(&[], &[]), 0.0);
+        assert_eq!(cosine_similarity(&[], &[]), 0.0f64);
     }
 
     #[test]
     fn cosine_similarity_unequal_len() {
-        assert_eq!(cosine_similarity(&[1.0], &[1.0, 2.0]), 0.0);
+        assert_eq!(cosine_similarity(&[1.0], &[1.0, 2.0]), 0.0f64);
     }
 
     #[test]
