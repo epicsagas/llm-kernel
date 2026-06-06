@@ -91,6 +91,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-pc-windows-gnu
+      - name: Install MinGW cross-compiler
+        run: sudo apt-get install -y mingw-w64
       - uses: Swatinem/rust-cache@v2
       - name: Check DirectML feature (Windows cross-compile)
         run: cargo check --features embedding-fastembed-directml --target x86_64-pc-windows-gnu
