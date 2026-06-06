@@ -227,11 +227,15 @@ impl LazyFastembedProvider {
                     .cvar
                     .wait_timeout_while(guard, timeout, |g| matches!(g.state, ModelState::Loading));
                 match result {
-                    Ok((g, timeout_result)) => {
-                        guard = g;
+                    Ok((mut g, timeout_result)) => {
                         if timeout_result.timed_out() {
+                            if matches!(g.state, ModelState::Loading) {
+                                g.state = ModelState::Failed("model loading timed out".into());
+                                self.cvar.notify_all();
+                            }
                             return Err("model loading timed out".into());
                         }
+                        guard = g;
                     }
                     Err(e) => {
                         (guard, _) = e.into_inner();

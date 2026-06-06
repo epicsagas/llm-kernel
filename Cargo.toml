@@ -1,6 +1,6 @@
 [package]
 name         = "llm-kernel"
-version      = "0.1.1"
+version      = "0.2.0"
 edition      = "2024"
 description  = "Foundation library for Rust AI-native apps — provider catalog, LLM client, MCP server, search, telemetry, and safety"
 license      = "Apache-2.0"
