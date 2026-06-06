@@ -1,7 +1,9 @@
-//! Benchmarks for pure-compute modules — token estimation and RRF fusion.
+//! Benchmarks for pure-compute modules — token estimation, RRF fusion, and
+//! embedding similarity.
 
 use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
 
+use llm_kernel::embedding::cosine_similarity;
 use llm_kernel::search::rrf::rrf_fuse;
 use llm_kernel::search::types::SearchResult;
 use llm_kernel::tokens::estimate_tokens;
@@ -67,5 +69,23 @@ fn bench_rrf_fuse(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, bench_estimate_tokens, bench_rrf_fuse);
+// ── cosine_similarity ─────────────────────────────────────
+
+fn bench_cosine_similarity(c: &mut Criterion) {
+    let mut group = c.benchmark_group("cosine_similarity");
+
+    for dim in [128usize, 384, 768, 1024] {
+        let scale = (dim as f32).sqrt().recip();
+        let a: Vec<f32> = vec![scale; dim];
+        let b: Vec<f32> = (0..dim).map(|i| (i as f32 * 0.001).sin() * scale).collect();
+
+        group.bench_with_input(BenchmarkId::new("dim", dim), &(&a, &b), |bench, (a, b)| {
+            bench.iter(|| black_box(cosine_similarity(a, b)));
+        });
+    }
+
+    group.finish();
+}
+
+criterion_group!(benches, bench_estimate_tokens, bench_rrf_fuse, bench_cosine_similarity);
 criterion_main!(benches);

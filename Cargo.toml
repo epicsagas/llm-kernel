@@ -84,7 +84,9 @@ telemetry = ["dep:serde_json"]
 # Safety utilities (secret masking, error classification)
 safety = ["dep:regex"]
 
-# Everything
+# Everything except Windows-only execution backends.
+# embedding-fastembed-directml is intentionally excluded: it pulls in the ort
+# RC dependency which is not appropriate for cross-platform builds.
 full = ["provider", "discovery", "client-async", "secrets", "store", "config", "graph", "graph-async", "graph-pool", "mcp", "tokens", "install", "search", "embedding", "embedding-openai", "embedding-fastembed", "embedding-fastembed-qwen3", "embedding-fastembed-nomic-moe", "telemetry", "safety"]
 
 [dependencies]
@@ -123,7 +125,7 @@ required-features = ["graph"]
 [[bench]]
 name = "compute_bench"
 harness = false
-required-features = ["search", "tokens"]
+required-features = ["search", "tokens", "embedding"]
 
 [profile.dev]
 opt-level = 0
