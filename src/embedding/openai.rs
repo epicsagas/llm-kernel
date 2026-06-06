@@ -48,6 +48,10 @@ impl OpenAIEmbeddingClient {
     /// Use this for legacy models (`text-embedding-ada-002`), reduced-dimension
     /// variants, or any future model not covered by [`new_small`](Self::new_small)
     /// and [`new_large`](Self::new_large).
+    ///
+    /// # Panics
+    ///
+    /// Panics if `dim` is zero.
     pub fn new_with_model(
         api_key: impl Into<String>,
         model: impl Into<String>,
