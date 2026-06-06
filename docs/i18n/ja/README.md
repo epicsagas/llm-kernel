@@ -1,10 +1,16 @@
-**English** | [한국어](docs/i18n/ko/README.md) | [日本語](docs/i18n/ja/README.md) | [简体中文](docs/i18n/zh-Hans/README.md) | [繁體中文](docs/i18n/zh-Hant/README.md) | [Español](docs/i18n/es/README.md) | [Français](docs/i18n/fr/README.md) | [Deutsch](docs/i18n/de/README.md) | [Português](docs/i18n/pt/README.md) | [Русский](docs/i18n/ru/README.md) | [Italiano](docs/i18n/it/README.md)
+<!-- Translated from README.md @ commit edd4827 (2026-06-06) -->
+<!-- If English README has changed since then, this translation may be outdated -->
+
+[English](../../README.md) | [한국어](../ko/README.md) | **日本語** | [简体中文](../zh-Hans/README.md) | [繁體中文](../zh-Hant/README.md) | [Español](../es/README.md) | [Français](../fr/README.md) | [Deutsch](../de/README.md) | [Português](../pt/README.md) | [Русский](../ru/README.md) | [Italiano](../it/README.md)
+
+> この文書は [README.md](../../README.md) の日本語翻訳です。
+> 英語版が権威ある情報源であり、より最新の情報が含まれている場合があります。
 
 <div align="center">
 
 # llm-kernel
 
-> Foundation library for Rust AI-native apps — provider catalog, LLM client, MCP server, search, telemetry, and safety
+> Rust AIネイティブアプリ向けの基盤ライブラリ — プロバイダーカタログ、LLMクライアント、MCPサーバー、検索、テレメトリ、セーフティ
 
 [![CI](https://github.com/epicsagas/llm-kernel/actions/workflows/ci.yml/badge.svg)](https://github.com/epicsagas/llm-kernel/actions/workflows/ci.yml)
 [![crates.io](https://img.shields.io/crates/v/llm-kernel)](https://crates.io/crates/llm-kernel)
@@ -13,87 +19,87 @@
 
 </div>
 
-## Overview
+## 概要
 
-llm-kernel provides the foundational layer for building LLM-powered tools, agents, and servers in Rust:
+llm-kernelは、RustでLLM搭載ツール、エージェント、サーバーを構築するための基盤レイヤーを提供します：
 
-- **Provider catalog** — 16 built-in providers, 114 models with metadata, pricing, and capabilities
-- **Async client** — trait-based client for OpenAI and Anthropic with SSE streaming
-- **Model discovery** — dynamic model discovery from models.dev, Ollama, OpenAI-compatible endpoints
-- **Credential vault** — dotenv-style API key management with atomic writes
-- **Config loader** — TOML config with auto-create from template
-- **Knowledge graph** — SQLite-backed graph with FTS5 search, smart recall, BFS traversal, async wrappers
-- **MCP server** — JSON-RPC 2.0 server framework with stdio transport and Bearer auth
-- **Embedding** — provider trait + cosine similarity, local ONNX (44 models), Qwen3 candle, Nomic V2 MoE candle, OpenAI remote ([full model list →](EMBEDDING_MODELS.md))
-- **Search** — Reciprocal Rank Fusion for hybrid search result merging
-- **Token estimation** — zero-dependency Unicode-script heuristic token counting
-- **Telemetry** — enum-gated events with no PII, console and noop sinks
-- **Safety** — secret masking, error classification, output sanitization
-- **Install wizard** — MCP config generation for Claude Desktop, Cursor, Copilot, OpenCode, Cline
+- **プロバイダーカタログ** — 16の組み込みプロバイダー、114モデルのメタデータ、価格情報、機能プロファイル
+- **非同期クライアント** — トレイトベースのOpenAI/Anthropicクライアント、SSEストリーミング対応
+- **モデルディスカバリー** — models.dev、Ollama、OpenAI互換エンドポイントからの動的モデル検出
+- **クレデンシャル保管庫** — dotenv形式のAPIキー管理、アトミック書き込み対応
+- **設定ローダー** — テンプレートからの自動生成付きTOML設定
+- **ナレッジグラフ** — SQLiteベースのグラフ、FTS5検索、スマートリコール、BFSトラバーサル、非同期ラッパー
+- **MCPサーバー** — JSON-RPC 2.0サーバーフレームワーク、stdioトランスポート、Bearer認証
+- **エンベディング** — プロバイダートレイト + コサイン類似度、ローカルONNX（44モデル）、Qwen3 candle、Nomic V2 MoE candle、OpenAIリモート（[全モデル一覧 →](../../EMBEDDING_MODELS.md)）
+- **検索** — ハイブリッド検索結果のマージにReciprocal Rank Fusionを使用
+- **トークン推定** — 依存関係ゼロのUnicodeスクリプトヒューリスティックによるトークンカウント
+- **テレメトリ** — PIIを含まないenumゲート方式のイベント、コンソールおよびnoopシンク
+- **セーフティ** — シークレットマスキング、エラー分類、出力サニタイズ
+- **インストールウィザード** — Claude Desktop、Cursor、Copilot、OpenCode、Cline向けMCP設定生成
 
-## Feature flags
+## フィーチャーフラグ
 
-Each module is gated behind a feature flag so you only pay for what you use.
+各モジュールはフィーチャーフラグで制御されており、必要なものだけを利用できます。
 
-| Feature | Description | Default |
+| フィーチャー | 説明 | デフォルト |
 |---------|-------------|---------|
-| `provider` | Provider catalog, model descriptors, pricing | ✅ |
-| `client-async` | Async LLM client (reqwest) with streaming | |
-| `discovery` | Dynamic model discovery (models.dev, Ollama, OpenAI-compat) | |
-| `secrets` | SecretVault credential management | |
-| `store` | SQLite init helpers (WAL, FTS5, schema versioning) | |
-| `config` | TOML config loader | |
-| `graph` | Knowledge graph — SQLite, FTS5, smart recall, BFS traversal | |
-| `graph-async` | Async graph wrappers (requires tokio) | |
-| `graph-pool` | Multi-connection async graph pool (`AsyncPoolGraph`, WAL concurrency) | |
-| `mcp` | MCP server — JSON-RPC 2.0, stdio transport, Bearer auth | |
-| `tokens` | Token estimation with Unicode-script heuristics | |
-| `install` | AI tool installation wizard | |
-| `search` | Hybrid search with Reciprocal Rank Fusion | |
-| `embedding` | Embedding provider trait + cosine similarity | |
-| `embedding-openai` | OpenAI text-embedding client (sync HTTP) | |
-| `embedding-fastembed` | Local ONNX embedding via fastembed-rs (44 models) | |
-| `embedding-fastembed-qwen3` | Qwen3 embedding via candle backend | |
-| `embedding-fastembed-nomic-moe` | Nomic V2 MoE embedding via candle backend | |
-| `telemetry` | Enum-gated telemetry events, no PII | |
-| `safety` | Secret masking, error classification, output sanitization | |
-| `full` | All features | |
+| `provider` | プロバイダーカタログ、モデル記述子、価格情報 | ✅ |
+| `client-async` | 非同期LLMクライアント（reqwest）、ストリーミング対応 | |
+| `discovery` | 動的モデル検出（models.dev、Ollama、OpenAI互換） | |
+| `secrets` | SecretVaultクレデンシャル管理 | |
+| `store` | SQLite初期化ヘルパー（WAL、FTS5、スキーマバージョニング） | |
+| `config` | TOML設定ローダー | |
+| `graph` | ナレッジグラフ — SQLite、FTS5、スマートリコール、BFSトラバーサル | |
+| `graph-async` | 非同期グラフラッパー（tokioが必要） | |
+| `graph-pool` | マルチ接続非同期グラフプール（`AsyncPoolGraph`、WAL同時実行） | |
+| `mcp` | MCPサーバー — JSON-RPC 2.0、stdioトランスポート、Bearer認証 | |
+| `tokens` | Unicodeスクリプトヒューリスティックによるトークン推定 | |
+| `install` | AIツールインストールウィザード | |
+| `search` | Reciprocal Rank Fusionによるハイブリッド検索 | |
+| `embedding` | エンベディングプロバイダートレイト + コサイン類似度 | |
+| `embedding-openai` | OpenAI text-embeddingクライアント（同期HTTP） | |
+| `embedding-fastembed` | fastembed-rsによるローカルONNXエンベディング（44モデル） | |
+| `embedding-fastembed-qwen3` | candleバックエンドによるQwen3エンベディング | |
+| `embedding-fastembed-nomic-moe` | candleバックエンドによるNomic V2 MoEエンベディング | |
+| `telemetry` | enumゲート方式のテレメトリイベント、PIIなし | |
+| `safety` | シークレットマスキング、エラー分類、出力サニタイズ | |
+| `full` | 全フィーチャー | |
 
-## Quick start
+## クイックスタート
 
-Add to your `Cargo.toml`:
+`Cargo.toml`に追加：
 
 ```toml
 [dependencies]
 llm-kernel = "0.1.0"
 ```
 
-The `provider` feature is enabled by default. For the async client:
+`provider`フィーチャーはデフォルトで有効です。非同期クライアントを使用する場合：
 
 ```toml
 [dependencies]
 llm-kernel = { version = "0.1.0", features = ["client-async"] }
 ```
 
-For the knowledge graph with async wrappers:
+非同期ラッパー付きナレッジグラフを使用する場合：
 
 ```toml
 [dependencies]
 llm-kernel = { version = "0.1.0", features = ["graph", "graph-async"] }
 ```
 
-For local embedding (ONNX, no API key):
+ローカルエンベディング（ONNX、APIキー不要）を使用する場合：
 
 ```toml
 [dependencies]
 llm-kernel = { version = "0.1.0", features = ["embedding-fastembed"] }
 ```
 
-## Usage
+## 使用方法
 
-### Provider catalog
+### プロバイダーカタログ
 
-The embedded catalog contains 16 providers with 114 models aligned to the [models.dev](https://github.com/anomalyco/models.dev) schema.
+組み込みカタログには16のプロバイダーと114のモデルが含まれており、[models.dev](https://github.com/anomalyco/models.dev)スキーマに準拠しています。
 
 ```rust
 use llm_kernel::prelude::*;
@@ -117,7 +123,7 @@ if let Some(model) = catalog.find_model("claude-sonnet-4-20250514") {
 }
 ```
 
-### Async chat completion
+### 非同期チャット補完
 
 ```rust
 use llm_kernel::prelude::*;
@@ -145,7 +151,7 @@ println!("{}", response.content);
 println!("{} tokens used", response.usage.total_tokens);
 ```
 
-### Streaming
+### ストリーミング
 
 ```rust
 use llm_kernel::prelude::*;
@@ -171,7 +177,7 @@ let stream = client.stream_complete(LLMRequest {
 // Stream yields Delta, Usage, and Done events
 ```
 
-### Model discovery
+### モデルディスカバリー
 
 ```rust
 use llm_kernel::discovery::{fetch_and_cache, load_cache, fetch_ollama_models};
@@ -194,7 +200,7 @@ for name in &ollama_models {
 }
 ```
 
-### Credential vault
+### クレデンシャル保管庫
 
 ```rust
 use llm_kernel::prelude::*;
@@ -208,7 +214,7 @@ println!("{}", redact_credential("sk-abcdef1234567890"));
 // → "sk-abcd...7890"
 ```
 
-### TOML config
+### TOML設定
 
 ```rust
 use llm_kernel::config::load_toml_config;
@@ -226,7 +232,7 @@ let config: AppConfig = load_toml_config(
 )?;
 ```
 
-### SQLite store
+### SQLiteストア
 
 ```rust
 use llm_kernel::store::init_schema;
@@ -236,7 +242,7 @@ let conn = init_schema(&db_path, ddl, 1)?;
 // WAL mode, busy timeout, and schema versioning applied automatically
 ```
 
-### Knowledge graph
+### ナレッジグラフ
 
 ```rust
 use llm_kernel::prelude::*;
@@ -284,7 +290,7 @@ let stats = compute_stats(&conn).unwrap();
 println!("{} nodes, {} edges", stats.total_nodes, stats.total_edges);
 ```
 
-### MCP server
+### MCPサーバー
 
 ```rust
 use llm_kernel::mcp::{McpServer, Tool, JsonRpcRequest};
@@ -305,7 +311,7 @@ server.register_tool(Tool {
 server.run_stdio().await?;
 ```
 
-### Token estimation
+### トークン推定
 
 ```rust
 use llm_kernel::tokens::estimate_tokens;
@@ -314,7 +320,7 @@ let tokens = estimate_tokens("Hello, world! こんにちは世界 🌍");
 println!("Estimated tokens: {}", tokens);
 ```
 
-### Embedding + search
+### エンベディング + 検索
 
 ```rust
 use llm_kernel::embedding::{EmbeddingProvider, cosine_similarity};
@@ -335,9 +341,9 @@ let vector = vec![
 let merged = rrf_fuse(&[bm25, vector], 60);
 ```
 
-#### Local ONNX embedding (fastembed-rs)
+#### ローカルONNXエンベディング（fastembed-rs）
 
-44 models via ONNX Runtime — no API key, no network after first download.
+ONNX Runtime経由で44モデルを利用可能 — APIキー不要、初回ダウンロード後はネットワーク不要。
 
 ```rust
 use llm_kernel::embedding::{EmbeddingModel, FastembedProvider, EmbeddingProvider};
@@ -347,9 +353,9 @@ let result = provider.embed("hello world")?;
 assert_eq!(result.vector.len(), 384);
 ```
 
-#### Qwen3 embedding (candle)
+#### Qwen3エンベディング（candle）
 
-Pure Rust GPU/CPU inference via candle-nn — no ONNX Runtime.
+candle-nnによるPure Rust GPU/CPU推論 — ONNX Runtime不要。
 
 ```rust
 use llm_kernel::embedding::{Qwen3Provider, EmbeddingProvider};
@@ -358,9 +364,9 @@ let provider = Qwen3Provider::new("Qwen/Qwen3-Embedding-0.6B")?;
 let result = provider.embed("hello world")?;
 ```
 
-#### Nomic V2 MoE embedding (candle)
+#### Nomic V2 MoEエンベディング（candle）
 
-Lightweight MoE model — 8 experts, top-2 routing, 305M active params.
+軽量MoEモデル — 8エキスパート、top-2ルーティング、305Mアクティブパラメータ。
 
 ```rust
 use llm_kernel::embedding::{NomicMoeProvider, EmbeddingProvider};
@@ -370,7 +376,7 @@ let result = provider.embed("hello world")?;
 assert_eq!(result.vector.len(), 768);
 ```
 
-### Safety utilities
+### セーフティユーティリティ
 
 ```rust
 use llm_kernel::safety::{mask_secrets, classify_failure, sanitize_output};
@@ -387,37 +393,37 @@ let category = classify_failure("connection timed out after 30s");
 let clean = sanitize_output(user_input)?;
 ```
 
-## Model metadata
+## モデルメタデータ
 
-Each model in the catalog includes:
+カタログ内の各モデルには以下が含まれます：
 
-| Field | Description |
+| フィールド | 説明 |
 |-------|-------------|
-| `cost` | Per-million-token pricing (input, output, cache_read, cache_write) |
-| `limit` | Context and output token limits |
-| `modalities` | Input/output modalities (text, image, audio) |
-| `capabilities` | Flags: attachment, reasoning, temperature, tool_call, streaming |
-| `knowledge` | Training data cutoff date |
+| `cost` | 100万トークンあたりの価格（入力、出力、cache_read、cache_write） |
+| `limit` | コンテキストおよび出力トークン制限 |
+| `modalities` | 入力/出力モダリティ（テキスト、画像、音声） |
+| `capabilities` | フラグ：attachment、reasoning、temperature、tool_call、streaming |
+| `knowledge` | 学習データのカットオフ日 |
 
-## Why llm-kernel?
+## なぜllm-kernel？
 
 | | llm-kernel | [rig] | [langchain-rust] |
 |--|-----------|-------|-------------------|
-| Provider catalog | ✅ 16 providers, 114 models built-in | Manual config | Manual config |
-| Feature gates | ✅ 20 independent modules | Monolithic | Monolithic |
-| Local embedding | ✅ 44 ONNX + Qwen3 + Nomic MoE | ❌ | ❌ |
-| MCP server | ✅ JSON-RPC 2.0 | ❌ | ❌ |
-| Knowledge graph | ✅ SQLite + FTS5 + smart recall | ❌ | ❌ |
-| Mandatory deps | `serde` only | `reqwest`, `tokio`, … | Many |
-| Chains / agents | ❌ | ✅ | ✅ |
-| RAG pipelines | ❌ | ✅ | ✅ |
+| プロバイダーカタログ | ✅ 16プロバイダー、114モデル組み込み | 手動設定 | 手動設定 |
+| フィーチャーゲート | ✅ 20の独立モジュール | モノリシック | モノリシック |
+| ローカルエンベディング | ✅ 44 ONNX + Qwen3 + Nomic MoE | ❌ | ❌ |
+| MCPサーバー | ✅ JSON-RPC 2.0 | ❌ | ❌ |
+| ナレッジグラフ | ✅ SQLite + FTS5 + スマートリコール | ❌ | ❌ |
+| 必須依存関係 | `serde`のみ | `reqwest`、`tokio`、… | 多数 |
+| チェーン / エージェント | ❌ | ✅ | ✅ |
+| RAGパイプライン | ❌ | ✅ | ✅ |
 
 [rig]: https://github.com/0xPlaygrounds/rig
 [langchain-rust]: https://github.com/Abraxas-365/langchain-rust
 
-llm-kernel is a **lightweight foundation layer** — compose it with rig or langchain-rust when you need chains, agents, or RAG.
+llm-kernelは**軽量な基盤レイヤー**です — チェーン、エージェント、RAGが必要な場合はrigやlangchain-rustと組み合わせてご利用ください。
 
-## Architecture
+## アーキテクチャ
 
 ```
 ┌──────────────────────────────────────────┐
@@ -436,18 +442,18 @@ llm-kernel is a **lightweight foundation layer** — compose it with rig or lang
 └──────────────────────────────────────────┘
 ```
 
-- **`LLMClient` trait** — unified interface for `OpenAIClient` and `AnthropicClient`
-- **`EmbeddingProvider` trait** — unified interface for `FastembedProvider` (ONNX), `Qwen3Provider` (candle), `NomicMoeProvider` (candle), `OpenAIEmbeddingClient` (remote)
-- **`ProviderIndex`** — zero-copy access to embedded catalog, queryable by provider or model
-- **`McpServer`** — JSON-RPC 2.0 server with stdio transport, Bearer auth, tool registration
-- **`SecretVault`** — `HashMap<String, String>` with dotenv load/save and symlink guards
-- **`graph`** — SQLite knowledge graph with FTS5 search, composite scoring recall, BFS traversal, importance decay
-- **`TelemetryEvent`** — enum-gated variants for structured observability (no PII)
-- **`safety`** — secret masking, error classification, bidi/ANSI/null sanitization
+- **`LLMClient`トレイト** — `OpenAIClient`と`AnthropicClient`の統一インターフェース
+- **`EmbeddingProvider`トレイト** — `FastembedProvider`（ONNX）、`Qwen3Provider`（candle）、`NomicMoeProvider`（candle）、`OpenAIEmbeddingClient`（リモート）の統一インターフェース
+- **`ProviderIndex`** — 組み込みカタログへのゼロコピーアクセス、プロバイダーまたはモデルでクエリ可能
+- **`McpServer`** — JSON-RPC 2.0サーバー、stdioトランスポート、Bearer認証、ツール登録
+- **`SecretVault`** — `HashMap<String, String>`ベース、dotenvロード/セーブ、シンボリックリンクガード付き
+- **`graph`** — SQLiteナレッジグラフ、FTS5検索、複合スコアリングリコール、BFSトラバーサル、重要度減衰
+- **`TelemetryEvent`** — 構造化オブザーバビリティのためのenumゲートバリアント（PIIなし）
+- **`safety`** — シークレットマスキング、エラー分類、双方向/ANSI/nullサニタイズ
 
-## Benchmarks
+## ベンチマーク
 
-Criterion benchmarks under `benches/`:
+`benches/`ディレクトリにCriterionベンチマークが含まれています：
 
 ```bash
 cargo bench                          # Run all benchmarks
@@ -455,7 +461,7 @@ cargo bench -- graph_bench           # Graph: smart_recall, BFS, neighbors
 cargo bench -- compute_bench         # Token estimation, RRF fusion
 ```
 
-## Examples
+## 例
 
 ```bash
 # List all providers and models (no API key needed)
@@ -468,14 +474,14 @@ cargo run --example chat_openai --features client-async
 cargo run --example stream_anthropic --features client-async
 ```
 
-## Requirements
+## 要件
 
-- Rust 1.92+ (edition 2024)
+- Rust 1.92以上（edition 2024）
 
-## Contributing
+## コントリビューション
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). PRs welcome.
+[CONTRIBUTING.md](../../CONTRIBUTING.md)をご覧ください。PRを歓迎します。
 
-## License
+## ライセンス
 
 [Apache-2.0](LICENSE) © 2026 EpicCounty
