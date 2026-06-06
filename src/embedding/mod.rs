@@ -16,6 +16,9 @@ pub mod openai;
 #[cfg(feature = "embedding-fastembed")]
 pub mod fastembed;
 
+#[cfg(feature = "embedding-fastembed")]
+pub mod lazy;
+
 #[cfg(feature = "embedding-fastembed-qwen3")]
 pub mod qwen3;
 
@@ -30,6 +33,9 @@ pub use openai::OpenAIEmbeddingClient;
 
 #[cfg(feature = "embedding-fastembed")]
 pub use fastembed::FastembedProvider;
+
+#[cfg(feature = "embedding-fastembed")]
+pub use lazy::{EmbeddingCache, LazyFastembedProvider, LazyOpts, ModelState, is_model_cached};
 
 #[cfg(feature = "embedding-fastembed-qwen3")]
 pub use qwen3::Qwen3Provider;
