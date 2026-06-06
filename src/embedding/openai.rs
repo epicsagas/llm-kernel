@@ -212,6 +212,12 @@ mod tests {
     }
 
     #[test]
+    #[should_panic(expected = "dim must be non-zero")]
+    fn new_with_model_zero_dim_panics() {
+        OpenAIEmbeddingClient::new_with_model("key", "text-embedding-ada-002", 0);
+    }
+
+    #[test]
     fn preview_truncated_at_64_chars() {
         let long = "a".repeat(100);
         // Simulate the preview logic used in embed()
