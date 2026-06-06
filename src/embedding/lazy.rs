@@ -186,13 +186,35 @@ impl LazyFastembedProvider {
         guard.state.clone()
     }
 
+    /// Whether the model is loaded and ready for inference.
+    ///
+    /// Cheaper than [`state`](Self::state) for hot-path polling — avoids
+    /// cloning the `Failed(String)` variant.
+    pub fn is_ready(&self) -> bool {
+        let guard = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        matches!(guard.state, ModelState::Ready)
+    }
+
     /// Block until the model is ready for inference.
     ///
-    /// If the model is not yet loaded, this triggers download and
-    /// initialisation on the calling thread. Concurrent callers wait
-    /// on a `Condvar` for up to `load_timeout_secs`.
+    /// If the model is idle beyond the configured timeout, the ONNX session
+    /// is evicted and reloaded from the on-disk cache. If the model is not
+    /// yet loaded, this triggers download and initialisation on the calling
+    /// thread. Concurrent callers wait on a `Condvar` for up to
+    /// `load_timeout_secs`.
     pub fn ensure_model(&self) -> Result<(), String> {
         let mut guard = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+
+        // Idle eviction: drop ONNX session if quiet for too long.
+        if matches!(guard.state, ModelState::Ready)
+            && let Some(last) = guard.last_used
+            && self.opts.idle_timeout_secs > 0
+            && last.elapsed().as_secs() > self.opts.idle_timeout_secs
+        {
+            guard.provider = None;
+            guard.state = ModelState::Cached;
+            guard.last_used = None;
+        }
 
         match &guard.state {
             ModelState::Ready => Ok(()),
@@ -276,20 +298,7 @@ impl EmbeddingProvider for LazyFastembedProvider {
             }
         }
 
-        // Check idle eviction
-        {
-            let mut guard = self.inner.lock().unwrap_or_else(|e| e.into_inner());
-            if let Some(last) = guard.last_used
-                && self.opts.idle_timeout_secs > 0
-                && last.elapsed().as_secs() > self.opts.idle_timeout_secs
-            {
-                guard.provider = None;
-                guard.state = ModelState::Cached;
-                guard.last_used = None;
-            }
-        }
-
-        // Ensure model is loaded
+        // Ensure model is loaded (includes idle eviction check)
         self.ensure_model().map_err(|e| anyhow::anyhow!("{e}"))?;
 
         // Embed
@@ -318,10 +327,11 @@ impl EmbeddingProvider for LazyFastembedProvider {
 
 /// Check if model weights exist in the HuggingFace cache directory.
 ///
-/// Uses the `models--{org}--{repo}` folder naming convention.
+/// Uses the `models--{org}--{repo}` folder naming convention that `hf-hub`
+/// employs when caching model artefacts on disk.
 pub fn is_model_cached(model: EmbeddingModel, cache_dir: &std::path::Path) -> bool {
-    let model_id = model.model_id();
-    let mut parts = model_id.splitn(2, '/');
+    let model_code = model.model_code();
+    let mut parts = model_code.splitn(2, '/');
     let org = parts.next().unwrap_or("");
     let repo = parts.next().unwrap_or("");
     if org.is_empty() || repo.is_empty() {
@@ -392,7 +402,12 @@ mod tests {
     #[test]
     fn is_model_cached_existing() {
         let dir = tempfile::tempdir().unwrap();
-        let folder = dir.path().join("models--BAAI--bge-small-en-v1.5");
+        // Use model_code() — the actual HF repo used by fastembed-rs.
+        let model_code = EmbeddingModel::BGESmallENV15.model_code();
+        let parts: Vec<&str> = model_code.splitn(2, '/').collect();
+        let folder = dir
+            .path()
+            .join(format!("models--{}--{}", parts[0], parts[1]));
         std::fs::create_dir_all(&folder).unwrap();
         assert!(is_model_cached(EmbeddingModel::BGESmallENV15, dir.path()));
     }
@@ -411,8 +426,12 @@ mod tests {
     #[test]
     fn constructor_detects_cached() {
         let dir = tempfile::tempdir().unwrap();
-        // Pre-create the cache folder
-        let folder = dir.path().join("models--BAAI--bge-small-en-v1.5");
+        // Use model_code() — matches the actual HF cache folder name.
+        let model_code = EmbeddingModel::BGESmallENV15.model_code();
+        let parts: Vec<&str> = model_code.splitn(2, '/').collect();
+        let folder = dir
+            .path()
+            .join(format!("models--{}--{}", parts[0], parts[1]));
         std::fs::create_dir_all(&folder).unwrap();
         let provider = LazyFastembedProvider::new(
             EmbeddingModel::BGESmallENV15,
