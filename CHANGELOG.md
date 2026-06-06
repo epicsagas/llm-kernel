@@ -5,31 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.1.2] - 2026-06-06
-
-### Fixed
-
-- `embedding-openai`: `embed_batch` now sorts by `index` before mapping to input texts — OpenAI API does not guarantee response ordering, so the previous `zip` could silently corrupt text↔vector associations
-- `embedding-openai`, `embedding-fastembed`: `&text[..64]` byte-slice replaced with char-boundary-safe `text_preview` helper — previously panicked on Korean/emoji/CJK input
-- `embedding-fastembed`: removed unnecessary `prepared.clone()` in `embed_batch`
-
-### Added
-
-- `embedding-fastembed`: `new_with_directml` doc now warns about D3D12 initialisation latency (hundreds of ms on first call)
-- `benches/compute_bench`: `cosine_similarity` criterion benchmarks for 128/384/768/1024 dims
-- CI: `directml-check` job now runs `cargo clippy` on Windows in addition to `cargo check`
-
 ## [0.1.1] - 2026-06-06
 
 ### Fixed
 
 - `embedding`: `cosine_similarity` now accumulates in `f64` and returns `f64`, preventing precision loss in high-dimensional spaces (384–1024 dims) where `f32` rounding can flip ranking order between near-identical candidates (fixes #6)
   - **Breaking:** return type changed from `f32` → `f64` for both the free function and `EmbeddingResult::cosine_similarity`
+- `embedding-openai`: `embed_batch` now sorts by `index` before mapping to input texts — OpenAI API does not guarantee response ordering, so the previous `zip` could silently corrupt text↔vector associations
+- `embedding-openai`, `embedding-fastembed`: `&text[..64]` byte-slice replaced with char-boundary-safe `text_preview` helper — previously panicked on Korean/emoji/CJK input
+- `embedding-fastembed`: removed unnecessary `prepared.clone()` in `embed_batch`
 
 ### Added
 
 - `embedding-openai`: `OpenAIEmbeddingClient::new_with_model(api_key, model, dim)` for arbitrary model names and dimensions (closes #5)
 - `embedding-fastembed-directml`: new feature gate; `FastembedProvider::new_with_directml` for DirectML GPU acceleration on Windows (closes #4)
+- `embedding-fastembed`: `new_with_directml` doc warns about D3D12 initialisation latency
+- `benches/compute_bench`: `cosine_similarity` criterion benchmarks for 128/384/768/1024 dims
+- CI: `directml-check` job now runs `cargo clippy` on Windows in addition to `cargo check`
 
 ## [0.1.0] - 2026-06-06
 
