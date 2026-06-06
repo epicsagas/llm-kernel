@@ -84,6 +84,15 @@ jobs:
           name: sbom
           path: "*.cdx.json"
 
+  directml-check:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Check DirectML feature (Windows native)
+        run: cargo check --features embedding-fastembed-directml
+
   secrets:
     runs-on: ubuntu-latest
     steps:
