@@ -1,10 +1,16 @@
-**English** | [한국어](docs/i18n/ko/README.md) | [日本語](docs/i18n/ja/README.md) | [简体中文](docs/i18n/zh-Hans/README.md) | [繁體中文](docs/i18n/zh-Hant/README.md) | [Español](docs/i18n/es/README.md) | [Français](docs/i18n/fr/README.md) | [Deutsch](docs/i18n/de/README.md) | [Português](docs/i18n/pt/README.md) | [Русский](docs/i18n/ru/README.md) | [Italiano](docs/i18n/it/README.md)
+<!-- Translated from README.md @ commit edd4827 (2026-06-06) -->
+<!-- If English README has changed since then, this translation may be outdated -->
+
+[English](../../README.md) | **한국어** | [日本語](../ja/README.md) | [简体中文](../zh-Hans/README.md) | [繁體中文](../zh-Hant/README.md) | [Español](../es/README.md) | [Français](../fr/README.md) | [Deutsch](../de/README.md) | [Português](../pt/README.md) | [Русский](../ru/README.md) | [Italiano](../it/README.md)
+
+> 이 문서는 [README.md](../../README.md)의 한국어 번역입니다.
+> 영어 원문이 권위 있는 출처이며, 더 최신 내용을 담고 있을 수 있습니다.
 
 <div align="center">
 
 # llm-kernel
 
-> Foundation library for Rust AI-native apps — provider catalog, LLM client, MCP server, search, telemetry, and safety
+> Rust AI 네이티브 애플리케이션을 위한 기반 라이브러리 — 프로바이더 카탈로그, LLM 클라이언트, MCP 서버, 검색, 원격 측정, 안전 유틸리티
 
 [![CI](https://github.com/epicsagas/llm-kernel/actions/workflows/ci.yml/badge.svg)](https://github.com/epicsagas/llm-kernel/actions/workflows/ci.yml)
 [![crates.io](https://img.shields.io/crates/v/llm-kernel)](https://crates.io/crates/llm-kernel)
@@ -13,111 +19,111 @@
 
 </div>
 
-## Overview
+## 개요
 
-llm-kernel provides the foundational layer for building LLM-powered tools, agents, and servers in Rust:
+llm-kernel은 Rust로 LLM 기반 도구, 에이전트, 서버를 구축하기 위한 기반 계층을 제공합니다:
 
-- **Provider catalog** — 16 built-in providers, 114 models with metadata, pricing, and capabilities
-- **Async client** — trait-based client for OpenAI and Anthropic with SSE streaming
-- **Model discovery** — dynamic model discovery from models.dev, Ollama, OpenAI-compatible endpoints
-- **Credential vault** — dotenv-style API key management with atomic writes
-- **Config loader** — TOML config with auto-create from template
-- **Knowledge graph** — SQLite-backed graph with FTS5 search, smart recall, BFS traversal, async wrappers
-- **MCP server** — JSON-RPC 2.0 server framework with stdio transport and Bearer auth
-- **Embedding** — provider trait + cosine similarity, local ONNX (44 models), Qwen3 candle, Nomic V2 MoE candle, OpenAI remote ([full model list →](EMBEDDING_MODELS.md))
-- **Search** — Reciprocal Rank Fusion for hybrid search result merging
-- **Token estimation** — zero-dependency Unicode-script heuristic token counting
-- **Telemetry** — enum-gated events with no PII, console and noop sinks
-- **Safety** — secret masking, error classification, output sanitization
-- **Install wizard** — MCP config generation for Claude Desktop, Cursor, Copilot, OpenCode, Cline
+- **프로바이더 카탈로그** — 16개 내장 프로바이더, 114개 모델의 메타데이터, 가격, 기능 정보
+- **비동기 클라이언트** — trait 기반 OpenAI/Anthropic 클라이언트, SSE 스트리밍 지원
+- **모델 탐색** — models.dev, Ollama, OpenAI 호환 엔드포인트에서 동적 모델 탐색
+- **자격 증명 금고** — dotenv 방식 API 키 관리, 원자적 쓰기 지원
+- **설정 로더** — TOML 설정 로더, 템플릿에서 자동 생성
+- **지식 그래프** — SQLite 기반 그래프, FTS5 검색, 스마트 리콜, BFS 순회, 비동기 래퍼
+- **MCP 서버** — JSON-RPC 2.0 서버 프레임워크, stdio 전송 및 Bearer 인증
+- **임베딩** — 프로바이더 trait + 코사인 유사도, 로컬 ONNX (44개 모델), Qwen3 candle, Nomic V2 MoE candle, OpenAI 원격 ([전체 모델 목록 →](../../EMBEDDING_MODELS.md))
+- **검색** — 하이브리드 검색 결과 병합을 위한 Reciprocal Rank Fusion
+- **토큰 추정** — 외부 의존성 없는 유니코드 스크립트 휴리스틱 토큰 계산
+- **원격 측정** — PII 미포함 enum 게이트 이벤트, 콘솔 및 noop 싱크
+- **안전** — 비밀 마스킹, 오류 분류, 출력 새니타이제이션
+- **설치 마법사** — Claude Desktop, Cursor, Copilot, OpenCode, Cline용 MCP 설정 생성
 
-## Feature flags
+## 기능 플래그
 
-Each module is gated behind a feature flag so you only pay for what you use.
+각 모듈은 기능 플래그로 제어되어 필요한 것만 사용할 수 있습니다.
 
-| Feature | Description | Default |
-|---------|-------------|---------|
-| `provider` | Provider catalog, model descriptors, pricing | ✅ |
-| `client-async` | Async LLM client (reqwest) with streaming | |
-| `discovery` | Dynamic model discovery (models.dev, Ollama, OpenAI-compat) | |
-| `secrets` | SecretVault credential management | |
-| `store` | SQLite init helpers (WAL, FTS5, schema versioning) | |
-| `config` | TOML config loader | |
-| `graph` | Knowledge graph — SQLite, FTS5, smart recall, BFS traversal | |
-| `graph-async` | Async graph wrappers (requires tokio) | |
-| `graph-pool` | Multi-connection async graph pool (`AsyncPoolGraph`, WAL concurrency) | |
-| `mcp` | MCP server — JSON-RPC 2.0, stdio transport, Bearer auth | |
-| `tokens` | Token estimation with Unicode-script heuristics | |
-| `install` | AI tool installation wizard | |
-| `search` | Hybrid search with Reciprocal Rank Fusion | |
-| `embedding` | Embedding provider trait + cosine similarity | |
-| `embedding-openai` | OpenAI text-embedding client (sync HTTP) | |
-| `embedding-fastembed` | Local ONNX embedding via fastembed-rs (44 models) | |
-| `embedding-fastembed-qwen3` | Qwen3 embedding via candle backend | |
-| `embedding-fastembed-nomic-moe` | Nomic V2 MoE embedding via candle backend | |
-| `telemetry` | Enum-gated telemetry events, no PII | |
-| `safety` | Secret masking, error classification, output sanitization | |
-| `full` | All features | |
+| 기능 | 설명 | 기본 |
+|------|------|------|
+| `provider` | 프로바이더 카탈로그, 모델 설명자, 가격 | ✅ |
+| `client-async` | 비동기 LLM 클라이언트 (reqwest), 스트리밍 | |
+| `discovery` | 동적 모델 탐색 (models.dev, Ollama, OpenAI-compat) | |
+| `secrets` | SecretVault 자격 증명 관리 | |
+| `store` | SQLite 초기화 헬퍼 (WAL, FTS5, 스키마 버전 관리) | |
+| `config` | TOML 설정 로더 | |
+| `graph` | 지식 그래프 — SQLite, FTS5, 스마트 리콜, BFS 순회 | |
+| `graph-async` | 비동기 그래프 래퍼 (tokio 필요) | |
+| `graph-pool` | 다중 연결 비동기 그래프 풀 (`AsyncPoolGraph`, WAL 동시성) | |
+| `mcp` | MCP 서버 — JSON-RPC 2.0, stdio 전송, Bearer 인증 | |
+| `tokens` | 유니코드 스크립트 휴리스틱 토큰 추정 | |
+| `install` | AI 도구 설치 마법사 | |
+| `search` | Reciprocal Rank Fusion 하이브리드 검색 | |
+| `embedding` | 임베딩 프로바이더 trait + 코사인 유사도 | |
+| `embedding-openai` | OpenAI 텍스트 임베딩 클라이언트 (동기 HTTP) | |
+| `embedding-fastembed` | fastembed-rs를 통한 로컬 ONNX 임베딩 (44개 모델) | |
+| `embedding-fastembed-qwen3` | candle 백엔드를 통한 Qwen3 임베딩 | |
+| `embedding-fastembed-nomic-moe` | candle 백엔드를 통한 Nomic V2 MoE 임베딩 | |
+| `telemetry` | enum 게이트 원격 측정 이벤트, PII 미포함 | |
+| `safety` | 비밀 마스킹, 오류 분류, 출력 새니타이제이션 | |
+| `full` | 모든 기능 | |
 
-## Quick start
+## 빠른 시작
 
-Add to your `Cargo.toml`:
+`Cargo.toml`에 추가:
 
 ```toml
 [dependencies]
 llm-kernel = "0.1.0"
 ```
 
-The `provider` feature is enabled by default. For the async client:
+`provider` 기능이 기본으로 활성화됩니다. 비동기 클라이언트를 사용하려면:
 
 ```toml
 [dependencies]
 llm-kernel = { version = "0.1.0", features = ["client-async"] }
 ```
 
-For the knowledge graph with async wrappers:
+비동기 래퍼가 포함된 지식 그래프를 사용하려면:
 
 ```toml
 [dependencies]
 llm-kernel = { version = "0.1.0", features = ["graph", "graph-async"] }
 ```
 
-For local embedding (ONNX, no API key):
+로컬 임베딩을 사용하려면 (ONNX, API 키 불필요):
 
 ```toml
 [dependencies]
 llm-kernel = { version = "0.1.0", features = ["embedding-fastembed"] }
 ```
 
-## Usage
+## 사용법
 
-### Provider catalog
+### 프로바이더 카탈로그
 
-The embedded catalog contains 16 providers with 114 models aligned to the [models.dev](https://github.com/anomalyco/models.dev) schema.
+내장 카탈로그는 [models.dev](https://github.com/anomalyco/models.dev) 스키마에 맞춘 16개 프로바이더와 114개 모델을 포함합니다.
 
 ```rust
 use llm_kernel::prelude::*;
 
 let catalog = ProviderIndex::embedded();
 
-// List all providers
+// 모든 프로바이더 나열
 for id in catalog.ids() {
     let provider = catalog.get(&id).unwrap();
     println!("{}", provider.display_name);
 }
 
-// Query models for a provider
+// 프로바이더의 모델 조회
 for model in catalog.models_for("openai") {
     println!("  {} — ${:.2}/1M in", model.id, model.cost.unwrap().input);
 }
 
-// Find a specific model
+// 특정 모델 찾기
 if let Some(model) = catalog.find_model("claude-sonnet-4-20250514") {
     println!("Context: {} tokens", model.limit.unwrap().context);
 }
 ```
 
-### Async chat completion
+### 비동기 채팅 완성
 
 ```rust
 use llm_kernel::prelude::*;
@@ -145,7 +151,7 @@ println!("{}", response.content);
 println!("{} tokens used", response.usage.total_tokens);
 ```
 
-### Streaming
+### 스트리밍
 
 ```rust
 use llm_kernel::prelude::*;
@@ -168,33 +174,33 @@ let stream = client.stream_complete(LLMRequest {
     model: None,
 }).await?;
 
-// Stream yields Delta, Usage, and Done events
+// 스트림은 Delta, Usage, Done 이벤트를 생성합니다
 ```
 
-### Model discovery
+### 모델 탐색
 
 ```rust
 use llm_kernel::discovery::{fetch_and_cache, load_cache, fetch_ollama_models};
 
-// Fetch from models.dev (caches to disk)
+// models.dev에서 가져오기 (디스크에 캐시)
 let payload = fetch_and_cache("~/.cache/llm-kernel/models-dev.json")?;
 for model in &payload.models {
     println!("{} — {} (ctx: {:?})", model.id, model.provider_id, model.limits);
 }
 
-// Load from cache (no network)
+// 캐시에서 로드 (네트워크 없음)
 if let Some(cached) = load_cache("~/.cache/llm-kernel/models-dev.json")? {
     println!("{} models cached", cached.models.len());
 }
 
-// Discover local Ollama models
+// 로컬 Ollama 모델 탐색
 let ollama_models = fetch_ollama_models("http://localhost:11434")?;
 for name in &ollama_models {
     println!("Ollama: {}", name);
 }
 ```
 
-### Credential vault
+### 자격 증명 금고
 
 ```rust
 use llm_kernel::prelude::*;
@@ -203,12 +209,12 @@ let vault = SecretVault::load_from("~/.config/myapp/.env")?;
 vault.set("OPENAI_API_KEY", "sk-...");
 vault.save_to("~/.config/myapp/.env")?;
 
-// Redact credentials for logging
+// 로깅용 자격 증명 마스킹
 println!("{}", redact_credential("sk-abcdef1234567890"));
 // → "sk-abcd...7890"
 ```
 
-### TOML config
+### TOML 설정
 
 ```rust
 use llm_kernel::config::load_toml_config;
@@ -226,17 +232,17 @@ let config: AppConfig = load_toml_config(
 )?;
 ```
 
-### SQLite store
+### SQLite 저장소
 
 ```rust
 use llm_kernel::store::init_schema;
 
 let ddl = "CREATE TABLE items (id TEXT PRIMARY KEY, content TEXT);";
 let conn = init_schema(&db_path, ddl, 1)?;
-// WAL mode, busy timeout, and schema versioning applied automatically
+// WAL 모드, busy 타임아웃, 스키마 버전 관리가 자동으로 적용됩니다
 ```
 
-### Knowledge graph
+### 지식 그래프
 
 ```rust
 use llm_kernel::prelude::*;
@@ -245,7 +251,7 @@ use rusqlite::Connection;
 let conn = Connection::open_in_memory().unwrap();
 init_graph_schema(&conn).unwrap();
 
-// Create nodes
+// 노드 생성
 upsert_node(&conn, &GraphNode {
     id: "rust-ownership".into(),
     node_type: "concept".into(),
@@ -261,7 +267,7 @@ upsert_node(&conn, &GraphNode {
     accessed_at: String::new(),
 }).unwrap();
 
-// Connect with edges
+// 엣지로 연결
 append_edge(&conn, &GraphEdge {
     id: "e1".into(),
     source: "rust-ownership".into(),
@@ -271,20 +277,20 @@ append_edge(&conn, &GraphEdge {
     ts: "2026-01-01T00:00:00Z".into(),
 }).unwrap();
 
-// Smart recall with composite scoring
+// 복합 점수 기반 스마트 리콜
 let results = smart_recall(&conn, Some("my-project"), Some("ownership"), 5).unwrap();
 for scored in &results {
     println!("{:.2} — {}", scored.score, scored.node.title);
 }
 
-// Lifecycle management
+// 수명 주기 관리
 decay_importance(&conn, 30, 0.9, 0.05).unwrap();
 tag_stale_nodes(&conn, 90).unwrap();
 let stats = compute_stats(&conn).unwrap();
 println!("{} nodes, {} edges", stats.total_nodes, stats.total_edges);
 ```
 
-### MCP server
+### MCP 서버
 
 ```rust
 use llm_kernel::mcp::{McpServer, Tool, JsonRpcRequest};
@@ -301,11 +307,11 @@ server.register_tool(Tool {
     }),
 });
 
-// Runs JSON-RPC 2.0 over stdio with Bearer auth
+// Bearer 인증과 함께 stdio를 통해 JSON-RPC 2.0 실행
 server.run_stdio().await?;
 ```
 
-### Token estimation
+### 토큰 추정
 
 ```rust
 use llm_kernel::tokens::estimate_tokens;
@@ -314,16 +320,16 @@ let tokens = estimate_tokens("Hello, world! こんにちは世界 🌍");
 println!("Estimated tokens: {}", tokens);
 ```
 
-### Embedding + search
+### 임베딩 + 검색
 
 ```rust
 use llm_kernel::embedding::{EmbeddingProvider, cosine_similarity};
 use llm_kernel::search::{SearchResult, rrf_fuse};
 
-// Cosine similarity between vectors
+// 벡터 간 코사인 유사도
 let sim = cosine_similarity(&[0.1, 0.2, 0.3], &[0.4, 0.5, 0.6]);
 
-// Reciprocal Rank Fusion for hybrid search
+// 하이브리드 검색을 위한 Reciprocal Rank Fusion
 let bm25 = vec![
     SearchResult { id: "doc-a".into(), score: 0.9, text: "Rust guide".into() },
     SearchResult { id: "doc-b".into(), score: 0.7, text: "Python basics".into() },
@@ -335,9 +341,9 @@ let vector = vec![
 let merged = rrf_fuse(&[bm25, vector], 60);
 ```
 
-#### Local ONNX embedding (fastembed-rs)
+#### 로컬 ONNX 임베딩 (fastembed-rs)
 
-44 models via ONNX Runtime — no API key, no network after first download.
+ONNX Runtime을 통한 44개 모델 — API 키 없이, 최초 다운로드 후 네트워크 불필요.
 
 ```rust
 use llm_kernel::embedding::{EmbeddingModel, FastembedProvider, EmbeddingProvider};
@@ -347,9 +353,9 @@ let result = provider.embed("hello world")?;
 assert_eq!(result.vector.len(), 384);
 ```
 
-#### Qwen3 embedding (candle)
+#### Qwen3 임베딩 (candle)
 
-Pure Rust GPU/CPU inference via candle-nn — no ONNX Runtime.
+candle-nn를 통한 순수 Rust GPU/CPU 추론 — ONNX Runtime 불필요.
 
 ```rust
 use llm_kernel::embedding::{Qwen3Provider, EmbeddingProvider};
@@ -358,9 +364,9 @@ let provider = Qwen3Provider::new("Qwen/Qwen3-Embedding-0.6B")?;
 let result = provider.embed("hello world")?;
 ```
 
-#### Nomic V2 MoE embedding (candle)
+#### Nomic V2 MoE 임베딩 (candle)
 
-Lightweight MoE model — 8 experts, top-2 routing, 305M active params.
+경량 MoE 모델 — 8개 전문가, top-2 라우팅, 305M 활성 파라미터.
 
 ```rust
 use llm_kernel::embedding::{NomicMoeProvider, EmbeddingProvider};
@@ -370,54 +376,54 @@ let result = provider.embed("hello world")?;
 assert_eq!(result.vector.len(), 768);
 ```
 
-### Safety utilities
+### 안전 유틸리티
 
 ```rust
 use llm_kernel::safety::{mask_secrets, classify_failure, sanitize_output};
 
-// Mask secrets in logs
+// 로그에서 비밀 마스킹
 let safe = mask_secrets("Authorization: Bearer sk-abcdef123456");
 // → "Authorization: Bearer [REDACTED]"
 
-// Classify errors
+// 오류 분류
 let category = classify_failure("connection timed out after 30s");
 // → ErrorCategory::Timeout
 
-// Sanitize untrusted output
+// 신뢰할 수 없는 출력 새니타이즈
 let clean = sanitize_output(user_input)?;
 ```
 
-## Model metadata
+## 모델 메타데이터
 
-Each model in the catalog includes:
+카탈로그의 각 모델은 다음 정보를 포함합니다:
 
-| Field | Description |
-|-------|-------------|
-| `cost` | Per-million-token pricing (input, output, cache_read, cache_write) |
-| `limit` | Context and output token limits |
-| `modalities` | Input/output modalities (text, image, audio) |
-| `capabilities` | Flags: attachment, reasoning, temperature, tool_call, streaming |
-| `knowledge` | Training data cutoff date |
+| 필드 | 설명 |
+|------|------|
+| `cost` | 백만 토큰당 가격 (input, output, cache_read, cache_write) |
+| `limit` | 컨텍스트 및 출력 토큰 제한 |
+| `modalities` | 입력/출력 모달리티 (text, image, audio) |
+| `capabilities` | 플래그: attachment, reasoning, temperature, tool_call, streaming |
+| `knowledge` | 학습 데이터 기준일 |
 
-## Why llm-kernel?
+## 왜 llm-kernel인가?
 
 | | llm-kernel | [rig] | [langchain-rust] |
 |--|-----------|-------|-------------------|
-| Provider catalog | ✅ 16 providers, 114 models built-in | Manual config | Manual config |
-| Feature gates | ✅ 20 independent modules | Monolithic | Monolithic |
-| Local embedding | ✅ 44 ONNX + Qwen3 + Nomic MoE | ❌ | ❌ |
-| MCP server | ✅ JSON-RPC 2.0 | ❌ | ❌ |
-| Knowledge graph | ✅ SQLite + FTS5 + smart recall | ❌ | ❌ |
-| Mandatory deps | `serde` only | `reqwest`, `tokio`, … | Many |
-| Chains / agents | ❌ | ✅ | ✅ |
-| RAG pipelines | ❌ | ✅ | ✅ |
+| 프로바이더 카탈로그 | ✅ 16개 프로바이더, 114개 모델 내장 | 수동 설정 | 수동 설정 |
+| 기능 게이트 | ✅ 20개 독립 모듈 | 모놀리식 | 모놀리식 |
+| 로컬 임베딩 | ✅ 44개 ONNX + Qwen3 + Nomic MoE | ❌ | ❌ |
+| MCP 서버 | ✅ JSON-RPC 2.0 | ❌ | ❌ |
+| 지식 그래프 | ✅ SQLite + FTS5 + 스마트 리콜 | ❌ | ❌ |
+| 필수 의존성 | `serde`만 | `reqwest`, `tokio`, … | 다수 |
+| 체인 / 에이전트 | ❌ | ✅ | ✅ |
+| RAG 파이프라인 | ❌ | ✅ | ✅ |
 
 [rig]: https://github.com/0xPlaygrounds/rig
 [langchain-rust]: https://github.com/Abraxas-365/langchain-rust
 
-llm-kernel is a **lightweight foundation layer** — compose it with rig or langchain-rust when you need chains, agents, or RAG.
+llm-kernel은 **경량 기반 계층**입니다 — 체인, 에이전트 또는 RAG이 필요할 때는 rig이나 langchain-rust와 조합하여 사용하세요.
 
-## Architecture
+## 아키텍처
 
 ```
 ┌──────────────────────────────────────────┐
@@ -436,46 +442,46 @@ llm-kernel is a **lightweight foundation layer** — compose it with rig or lang
 └──────────────────────────────────────────┘
 ```
 
-- **`LLMClient` trait** — unified interface for `OpenAIClient` and `AnthropicClient`
-- **`EmbeddingProvider` trait** — unified interface for `FastembedProvider` (ONNX), `Qwen3Provider` (candle), `NomicMoeProvider` (candle), `OpenAIEmbeddingClient` (remote)
-- **`ProviderIndex`** — zero-copy access to embedded catalog, queryable by provider or model
-- **`McpServer`** — JSON-RPC 2.0 server with stdio transport, Bearer auth, tool registration
-- **`SecretVault`** — `HashMap<String, String>` with dotenv load/save and symlink guards
-- **`graph`** — SQLite knowledge graph with FTS5 search, composite scoring recall, BFS traversal, importance decay
-- **`TelemetryEvent`** — enum-gated variants for structured observability (no PII)
-- **`safety`** — secret masking, error classification, bidi/ANSI/null sanitization
+- **`LLMClient` trait** — `OpenAIClient`과 `AnthropicClient`의 통합 인터페이스
+- **`EmbeddingProvider` trait** — `FastembedProvider` (ONNX), `Qwen3Provider` (candle), `NomicMoeProvider` (candle), `OpenAIEmbeddingClient` (원격)의 통합 인터페이스
+- **`ProviderIndex`** — 내장 카탈로그에 대한 제로 카피 접근, 프로바이더 또는 모델별 조회
+- **`McpServer`** — stdio 전송, Bearer 인증, 도구 등록을 갖춘 JSON-RPC 2.0 서버
+- **`SecretVault`** — dotenv 로드/저장과 심볼릭 링크 가드가 있는 `HashMap<String, String>`
+- **`graph`** — FTS5 검색, 복합 점수 리콜, BFS 순회, 중요도 감쇠를 갖춘 SQLite 지식 그래프
+- **`TelemetryEvent`** — 구조화된 관측 가능성을 위한 enum 게이트 변형 (PII 미포함)
+- **`safety`** — 비밀 마스킹, 오류 분류, 양방향/ANSI/null 새니타이제이션
 
-## Benchmarks
+## 벤치마크
 
-Criterion benchmarks under `benches/`:
+`benches/` 디렉토리에 Criterion 벤치마크가 있습니다:
 
 ```bash
-cargo bench                          # Run all benchmarks
-cargo bench -- graph_bench           # Graph: smart_recall, BFS, neighbors
-cargo bench -- compute_bench         # Token estimation, RRF fusion
+cargo bench                          # 모든 벤치마크 실행
+cargo bench -- graph_bench           # 그래프: smart_recall, BFS, 이웃 조회
+cargo bench -- compute_bench         # 토큰 추정, RRF 퓨전
 ```
 
-## Examples
+## 예제
 
 ```bash
-# List all providers and models (no API key needed)
+# 모든 프로바이더와 모델 나열 (API 키 불필요)
 cargo run --example provider_list
 
-# OpenAI chat (requires OPENAI_API_KEY)
+# OpenAI 채팅 (OPENAI_API_KEY 필요)
 cargo run --example chat_openai --features client-async
 
-# Anthropic streaming (requires ANTHROPIC_API_KEY)
+# Anthropic 스트리밍 (ANTHROPIC_API_KEY 필요)
 cargo run --example stream_anthropic --features client-async
 ```
 
-## Requirements
+## 요구 사항
 
 - Rust 1.92+ (edition 2024)
 
-## Contributing
+## 기여
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). PRs welcome.
+[CONTRIBUTING.md](../../CONTRIBUTING.md)를 참조하세요. PR을 환영합니다.
 
-## License
+## 라이선스
 
-[Apache-2.0](LICENSE) © 2026 EpicCounty
+[Apache-2.0](../../LICENSE) © 2026 EpicCounty
