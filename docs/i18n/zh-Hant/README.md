@@ -1,10 +1,16 @@
-**English** | [한국어](docs/i18n/ko/README.md) | [日本語](docs/i18n/ja/README.md) | [简体中文](docs/i18n/zh-Hans/README.md) | [繁體中文](docs/i18n/zh-Hant/README.md) | [Español](docs/i18n/es/README.md) | [Français](docs/i18n/fr/README.md) | [Deutsch](docs/i18n/de/README.md) | [Português](docs/i18n/pt/README.md) | [Русский](docs/i18n/ru/README.md) | [Italiano](docs/i18n/it/README.md)
+<!-- Translated from README.md @ commit edd4827 (2026-06-06) -->
+<!-- If English README has changed since then, this translation may be outdated -->
+
+[English](../../README.md) | [한국어](../ko/README.md) | [日本語](../ja/README.md) | [简体中文](../zh-Hans/README.md) | **繁體中文** | [Español](../es/README.md) | [Français](../fr/README.md) | [Deutsch](../de/README.md) | [Português](../pt/README.md) | [Русский](../ru/README.md) | [Italiano](../it/README.md)
+
+> 本文件是 [README.md](../../README.md) 的繁體中文翻譯。
+> 英文版本為權威來源，可能包含更新的內容。
 
 <div align="center">
 
 # llm-kernel
 
-> Foundation library for Rust AI-native apps — provider catalog, LLM client, MCP server, search, telemetry, and safety
+> Rust AI 原生應用的基礎函式庫 — 供應商目錄、LLM 客戶端、MCP 伺服器、搜尋、遙測與安全性
 
 [![CI](https://github.com/epicsagas/llm-kernel/actions/workflows/ci.yml/badge.svg)](https://github.com/epicsagas/llm-kernel/actions/workflows/ci.yml)
 [![crates.io](https://img.shields.io/crates/v/llm-kernel)](https://crates.io/crates/llm-kernel)
@@ -13,87 +19,87 @@
 
 </div>
 
-## Overview
+## 概覽
 
-llm-kernel provides the foundational layer for building LLM-powered tools, agents, and servers in Rust:
+llm-kernel 提供了使用 Rust 建構 LLM 驅動工具、代理與伺服器的基礎層：
 
-- **Provider catalog** — 16 built-in providers, 114 models with metadata, pricing, and capabilities
-- **Async client** — trait-based client for OpenAI and Anthropic with SSE streaming
-- **Model discovery** — dynamic model discovery from models.dev, Ollama, OpenAI-compatible endpoints
-- **Credential vault** — dotenv-style API key management with atomic writes
-- **Config loader** — TOML config with auto-create from template
-- **Knowledge graph** — SQLite-backed graph with FTS5 search, smart recall, BFS traversal, async wrappers
-- **MCP server** — JSON-RPC 2.0 server framework with stdio transport and Bearer auth
-- **Embedding** — provider trait + cosine similarity, local ONNX (44 models), Qwen3 candle, Nomic V2 MoE candle, OpenAI remote ([full model list →](EMBEDDING_MODELS.md))
-- **Search** — Reciprocal Rank Fusion for hybrid search result merging
-- **Token estimation** — zero-dependency Unicode-script heuristic token counting
-- **Telemetry** — enum-gated events with no PII, console and noop sinks
-- **Safety** — secret masking, error classification, output sanitization
-- **Install wizard** — MCP config generation for Claude Desktop, Cursor, Copilot, OpenCode, Cline
+- **供應商目錄** — 16 個內建供應商、114 個模型，附帶中繼資料、定價與能力資訊
+- **非同步客戶端** — 基於 trait 的 OpenAI 與 Anthropic 客戶端，支援 SSE 串流
+- **模型探索** — 從 models.dev、Ollama、OpenAI 相容端點動態探索模型
+- **憑證保存庫** — dotenv 風格的 API 金鑰管理，支援原子寫入
+- **設定載入器** — TOML 設定檔載入，可從範本自動建立
+- **知識圖譜** — 以 SQLite 為後端的圖譜，支援 FTS5 搜尋、智慧回憶、BFS 遍歷與非同步封裝
+- **MCP 伺服器** — JSON-RPC 2.0 伺服器框架，支援 stdio 傳輸與 Bearer 認證
+- **嵌入** — 供應商 trait + 餘弦相似度，本地 ONNX（44 個模型）、Qwen3 candle、Nomic V2 MoE candle、OpenAI 遠端（[完整模型列表 →](../../EMBEDDING_MODELS.md)）
+- **搜尋** — Reciprocal Rank Fusion 混合搜尋結果合併
+- **Token 估算** — 零依賴的 Unicode 腳本啟發式 token 計數
+- **遙測** — 列舉閘控事件，不含 PII，提供主控台與空操作接收器
+- **安全性** — 密鑰遮罩、錯誤分類、輸出淨化
+- **安裝精靈** — 為 Claude Desktop、Cursor、Copilot、OpenCode、Cline 產生 MCP 設定
 
-## Feature flags
+## 功能旗標
 
-Each module is gated behind a feature flag so you only pay for what you use.
+每個模組都由功能旗標控制，讓您只需為所使用的功能付出代價。
 
-| Feature | Description | Default |
+| 功能 | 說明 | 預設 |
 |---------|-------------|---------|
-| `provider` | Provider catalog, model descriptors, pricing | ✅ |
-| `client-async` | Async LLM client (reqwest) with streaming | |
-| `discovery` | Dynamic model discovery (models.dev, Ollama, OpenAI-compat) | |
-| `secrets` | SecretVault credential management | |
-| `store` | SQLite init helpers (WAL, FTS5, schema versioning) | |
-| `config` | TOML config loader | |
-| `graph` | Knowledge graph — SQLite, FTS5, smart recall, BFS traversal | |
-| `graph-async` | Async graph wrappers (requires tokio) | |
-| `graph-pool` | Multi-connection async graph pool (`AsyncPoolGraph`, WAL concurrency) | |
-| `mcp` | MCP server — JSON-RPC 2.0, stdio transport, Bearer auth | |
-| `tokens` | Token estimation with Unicode-script heuristics | |
-| `install` | AI tool installation wizard | |
-| `search` | Hybrid search with Reciprocal Rank Fusion | |
-| `embedding` | Embedding provider trait + cosine similarity | |
-| `embedding-openai` | OpenAI text-embedding client (sync HTTP) | |
-| `embedding-fastembed` | Local ONNX embedding via fastembed-rs (44 models) | |
-| `embedding-fastembed-qwen3` | Qwen3 embedding via candle backend | |
-| `embedding-fastembed-nomic-moe` | Nomic V2 MoE embedding via candle backend | |
-| `telemetry` | Enum-gated telemetry events, no PII | |
-| `safety` | Secret masking, error classification, output sanitization | |
-| `full` | All features | |
+| `provider` | 供應商目錄、模型描述、定價 | ✅ |
+| `client-async` | 非同步 LLM 客戶端（reqwest），支援串流 | |
+| `discovery` | 動態模型探索（models.dev、Ollama、OpenAI-compat） | |
+| `secrets` | SecretVault 憑證管理 | |
+| `store` | SQLite 初始化輔助（WAL、FTS5、Schema 版本控制） | |
+| `config` | TOML 設定載入器 | |
+| `graph` | 知識圖譜 — SQLite、FTS5、智慧回憶、BFS 遍歷 | |
+| `graph-async` | 非同步圖譜封裝（需要 tokio） | |
+| `graph-pool` | 多連線非同步圖譜連線池（`AsyncPoolGraph`、WAL 並行） | |
+| `mcp` | MCP 伺服器 — JSON-RPC 2.0、stdio 傳輸、Bearer 認證 | |
+| `tokens` | 使用 Unicode 腳本啟發式的 Token 估算 | |
+| `install` | AI 工具安裝精靈 | |
+| `search` | 使用 Reciprocal Rank Fusion 的混合搜尋 | |
+| `embedding` | 嵌入供應商 trait + 餘弦相似度 | |
+| `embedding-openai` | OpenAI text-embedding 客戶端（同步 HTTP） | |
+| `embedding-fastembed` | 透過 fastembed-rs 的本地 ONNX 嵌入（44 個模型） | |
+| `embedding-fastembed-qwen3` | 透過 candle 後端的 Qwen3 嵌入 | |
+| `embedding-fastembed-nomic-moe` | 透過 candle 後端的 Nomic V2 MoE 嵌入 | |
+| `telemetry` | 列舉閘控遙測事件，不含 PII | |
+| `safety` | 密鑰遮罩、錯誤分類、輸出淨化 | |
+| `full` | 所有功能 | |
 
-## Quick start
+## 快速開始
 
-Add to your `Cargo.toml`:
+在您的 `Cargo.toml` 中加入：
 
 ```toml
 [dependencies]
 llm-kernel = "0.1.0"
 ```
 
-The `provider` feature is enabled by default. For the async client:
+`provider` 功能預設啟用。如需非同步客戶端：
 
 ```toml
 [dependencies]
 llm-kernel = { version = "0.1.0", features = ["client-async"] }
 ```
 
-For the knowledge graph with async wrappers:
+如需附帶非同步封裝的知識圖譜：
 
 ```toml
 [dependencies]
 llm-kernel = { version = "0.1.0", features = ["graph", "graph-async"] }
 ```
 
-For local embedding (ONNX, no API key):
+如需本地嵌入（ONNX，無需 API 金鑰）：
 
 ```toml
 [dependencies]
 llm-kernel = { version = "0.1.0", features = ["embedding-fastembed"] }
 ```
 
-## Usage
+## 使用方式
 
-### Provider catalog
+### 供應商目錄
 
-The embedded catalog contains 16 providers with 114 models aligned to the [models.dev](https://github.com/anomalyco/models.dev) schema.
+內嵌目錄包含 16 個供應商與 114 個模型，符合 [models.dev](https://github.com/anomalyco/models.dev) 結構描述。
 
 ```rust
 use llm_kernel::prelude::*;
@@ -117,7 +123,7 @@ if let Some(model) = catalog.find_model("claude-sonnet-4-20250514") {
 }
 ```
 
-### Async chat completion
+### 非同步聊天補全
 
 ```rust
 use llm_kernel::prelude::*;
@@ -145,7 +151,7 @@ println!("{}", response.content);
 println!("{} tokens used", response.usage.total_tokens);
 ```
 
-### Streaming
+### 串流
 
 ```rust
 use llm_kernel::prelude::*;
@@ -171,7 +177,7 @@ let stream = client.stream_complete(LLMRequest {
 // Stream yields Delta, Usage, and Done events
 ```
 
-### Model discovery
+### 模型探索
 
 ```rust
 use llm_kernel::discovery::{fetch_and_cache, load_cache, fetch_ollama_models};
@@ -194,7 +200,7 @@ for name in &ollama_models {
 }
 ```
 
-### Credential vault
+### 憑證保存庫
 
 ```rust
 use llm_kernel::prelude::*;
@@ -208,7 +214,7 @@ println!("{}", redact_credential("sk-abcdef1234567890"));
 // → "sk-abcd...7890"
 ```
 
-### TOML config
+### TOML 設定
 
 ```rust
 use llm_kernel::config::load_toml_config;
@@ -226,7 +232,7 @@ let config: AppConfig = load_toml_config(
 )?;
 ```
 
-### SQLite store
+### SQLite 儲存
 
 ```rust
 use llm_kernel::store::init_schema;
@@ -236,7 +242,7 @@ let conn = init_schema(&db_path, ddl, 1)?;
 // WAL mode, busy timeout, and schema versioning applied automatically
 ```
 
-### Knowledge graph
+### 知識圖譜
 
 ```rust
 use llm_kernel::prelude::*;
@@ -284,7 +290,7 @@ let stats = compute_stats(&conn).unwrap();
 println!("{} nodes, {} edges", stats.total_nodes, stats.total_edges);
 ```
 
-### MCP server
+### MCP 伺服器
 
 ```rust
 use llm_kernel::mcp::{McpServer, Tool, JsonRpcRequest};
@@ -305,7 +311,7 @@ server.register_tool(Tool {
 server.run_stdio().await?;
 ```
 
-### Token estimation
+### Token 估算
 
 ```rust
 use llm_kernel::tokens::estimate_tokens;
@@ -314,7 +320,7 @@ let tokens = estimate_tokens("Hello, world! こんにちは世界 🌍");
 println!("Estimated tokens: {}", tokens);
 ```
 
-### Embedding + search
+### 嵌入與搜尋
 
 ```rust
 use llm_kernel::embedding::{EmbeddingProvider, cosine_similarity};
@@ -335,9 +341,9 @@ let vector = vec![
 let merged = rrf_fuse(&[bm25, vector], 60);
 ```
 
-#### Local ONNX embedding (fastembed-rs)
+#### 本地 ONNX 嵌入（fastembed-rs）
 
-44 models via ONNX Runtime — no API key, no network after first download.
+透過 ONNX Runtime 提供 44 個模型 — 無需 API 金鑰，首次下載後無需網路。
 
 ```rust
 use llm_kernel::embedding::{EmbeddingModel, FastembedProvider, EmbeddingProvider};
@@ -347,9 +353,9 @@ let result = provider.embed("hello world")?;
 assert_eq!(result.vector.len(), 384);
 ```
 
-#### Qwen3 embedding (candle)
+#### Qwen3 嵌入（candle）
 
-Pure Rust GPU/CPU inference via candle-nn — no ONNX Runtime.
+透過 candle-nn 實現純 Rust GPU/CPU 推論 — 無需 ONNX Runtime。
 
 ```rust
 use llm_kernel::embedding::{Qwen3Provider, EmbeddingProvider};
@@ -358,9 +364,9 @@ let provider = Qwen3Provider::new("Qwen/Qwen3-Embedding-0.6B")?;
 let result = provider.embed("hello world")?;
 ```
 
-#### Nomic V2 MoE embedding (candle)
+#### Nomic V2 MoE 嵌入（candle）
 
-Lightweight MoE model — 8 experts, top-2 routing, 305M active params.
+輕量級 MoE 模型 — 8 個專家、top-2 路由、305M 活躍參數。
 
 ```rust
 use llm_kernel::embedding::{NomicMoeProvider, EmbeddingProvider};
@@ -370,7 +376,7 @@ let result = provider.embed("hello world")?;
 assert_eq!(result.vector.len(), 768);
 ```
 
-### Safety utilities
+### 安全性工具
 
 ```rust
 use llm_kernel::safety::{mask_secrets, classify_failure, sanitize_output};
@@ -387,37 +393,37 @@ let category = classify_failure("connection timed out after 30s");
 let clean = sanitize_output(user_input)?;
 ```
 
-## Model metadata
+## 模型中繼資料
 
-Each model in the catalog includes:
+目錄中每個模型包含：
 
-| Field | Description |
+| 欄位 | 說明 |
 |-------|-------------|
-| `cost` | Per-million-token pricing (input, output, cache_read, cache_write) |
-| `limit` | Context and output token limits |
-| `modalities` | Input/output modalities (text, image, audio) |
-| `capabilities` | Flags: attachment, reasoning, temperature, tool_call, streaming |
-| `knowledge` | Training data cutoff date |
+| `cost` | 每百萬 token 定價（輸入、輸出、快取讀取、快取寫入） |
+| `limit` | 上下文與輸出 token 限制 |
+| `modalities` | 輸入/輸出模態（文字、影像、音訊） |
+| `capabilities` | 旗標：附件、推理、溫度、工具呼叫、串流 |
+| `knowledge` | 訓練資料截止日期 |
 
-## Why llm-kernel?
+## 為何選擇 llm-kernel？
 
 | | llm-kernel | [rig] | [langchain-rust] |
 |--|-----------|-------|-------------------|
-| Provider catalog | ✅ 16 providers, 114 models built-in | Manual config | Manual config |
-| Feature gates | ✅ 20 independent modules | Monolithic | Monolithic |
-| Local embedding | ✅ 44 ONNX + Qwen3 + Nomic MoE | ❌ | ❌ |
-| MCP server | ✅ JSON-RPC 2.0 | ❌ | ❌ |
-| Knowledge graph | ✅ SQLite + FTS5 + smart recall | ❌ | ❌ |
-| Mandatory deps | `serde` only | `reqwest`, `tokio`, … | Many |
-| Chains / agents | ❌ | ✅ | ✅ |
-| RAG pipelines | ❌ | ✅ | ✅ |
+| 供應商目錄 | ✅ 16 個供應商，114 個模型內建 | 手動設定 | 手動設定 |
+| 功能閘控 | ✅ 20 個獨立模組 | 單體式 | 單體式 |
+| 本地嵌入 | ✅ 44 個 ONNX + Qwen3 + Nomic MoE | ❌ | ❌ |
+| MCP 伺服器 | ✅ JSON-RPC 2.0 | ❌ | ❌ |
+| 知識圖譜 | ✅ SQLite + FTS5 + 智慧回憶 | ❌ | ❌ |
+| 必要依賴 | 僅 `serde` | `reqwest`、`tokio`、… | 許多 |
+| 鏈 / 代理 | ❌ | ✅ | ✅ |
+| RAG 管線 | ❌ | ✅ | ✅ |
 
 [rig]: https://github.com/0xPlaygrounds/rig
 [langchain-rust]: https://github.com/Abraxas-365/langchain-rust
 
-llm-kernel is a **lightweight foundation layer** — compose it with rig or langchain-rust when you need chains, agents, or RAG.
+llm-kernel 是一個**輕量級基礎層** — 當您需要鏈、代理或 RAG 時，可將其與 rig 或 langchain-rust 組合使用。
 
-## Architecture
+## 架構
 
 ```
 ┌──────────────────────────────────────────┐
@@ -436,18 +442,18 @@ llm-kernel is a **lightweight foundation layer** — compose it with rig or lang
 └──────────────────────────────────────────┘
 ```
 
-- **`LLMClient` trait** — unified interface for `OpenAIClient` and `AnthropicClient`
-- **`EmbeddingProvider` trait** — unified interface for `FastembedProvider` (ONNX), `Qwen3Provider` (candle), `NomicMoeProvider` (candle), `OpenAIEmbeddingClient` (remote)
-- **`ProviderIndex`** — zero-copy access to embedded catalog, queryable by provider or model
-- **`McpServer`** — JSON-RPC 2.0 server with stdio transport, Bearer auth, tool registration
-- **`SecretVault`** — `HashMap<String, String>` with dotenv load/save and symlink guards
-- **`graph`** — SQLite knowledge graph with FTS5 search, composite scoring recall, BFS traversal, importance decay
-- **`TelemetryEvent`** — enum-gated variants for structured observability (no PII)
-- **`safety`** — secret masking, error classification, bidi/ANSI/null sanitization
+- **`LLMClient` trait** — `OpenAIClient` 與 `AnthropicClient` 的統一介面
+- **`EmbeddingProvider` trait** — `FastembedProvider`（ONNX）、`Qwen3Provider`（candle）、`NomicMoeProvider`（candle）、`OpenAIEmbeddingClient`（遠端）的統一介面
+- **`ProviderIndex`** — 對內嵌目錄的零拷貝存取，可依供應商或模型查詢
+- **`McpServer`** — JSON-RPC 2.0 伺服器，支援 stdio 傳輸、Bearer 認證與工具註冊
+- **`SecretVault`** — `HashMap<String, String>` 附帶 dotenv 載入/儲存與符號連結防護
+- **`graph`** — SQLite 知識圖譜，支援 FTS5 搜尋、複合評分回憶、BFS 遍歷、重要性衰減
+- **`TelemetryEvent`** — 列舉閘控變體，用於結構化可觀測性（不含 PII）
+- **`safety`** — 密鑰遮罩、錯誤分類、雙向/ANSI/null 淨化
 
-## Benchmarks
+## 基準測試
 
-Criterion benchmarks under `benches/`:
+`benches/` 目錄下的 Criterion 基準測試：
 
 ```bash
 cargo bench                          # Run all benchmarks
@@ -455,7 +461,7 @@ cargo bench -- graph_bench           # Graph: smart_recall, BFS, neighbors
 cargo bench -- compute_bench         # Token estimation, RRF fusion
 ```
 
-## Examples
+## 範例
 
 ```bash
 # List all providers and models (no API key needed)
@@ -468,14 +474,14 @@ cargo run --example chat_openai --features client-async
 cargo run --example stream_anthropic --features client-async
 ```
 
-## Requirements
+## 系統需求
 
-- Rust 1.92+ (edition 2024)
+- Rust 1.92+（edition 2024）
 
-## Contributing
+## 貢獻
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). PRs welcome.
+請參閱 [CONTRIBUTING.md](../../CONTRIBUTING.md)。歡迎提交 PR。
 
-## License
+## 授權
 
-[Apache-2.0](LICENSE) © 2026 EpicCounty
+[Apache-2.0](../../LICENSE) © 2026 EpicCounty
