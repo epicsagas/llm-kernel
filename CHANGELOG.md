@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.0] - 2026-06-06
+
+### Changed
+
+- Updated QUICKSTART and README to reflect current API (`prelude::*`, `GraphNode`, `smart_recall`, `SearchResult`, `rrf_fuse`)
+- Fixed feature gate count in comparison table (20 modules)
+
+### Note
+
+First public-ready release. No API changes since 0.0.1 — all public types remain the same.
+
 ## [0.0.1] - 2026-06-05
 
 ### Added
