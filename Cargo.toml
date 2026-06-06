@@ -1,6 +1,6 @@
 [package]
 name         = "llm-kernel"
-version      = "0.2.0"
+version      = "0.2.1"
 edition      = "2024"
 description  = "Foundation library for Rust AI-native apps — provider catalog, LLM client, MCP server, search, telemetry, and safety"
 license      = "Apache-2.0"
@@ -108,7 +108,7 @@ tokio-stream = { version = "0.1", optional = true }
 futures-core = { version = "0.3", optional = true }
 async-trait = { version = "0.1", optional = true }
 regex       = { version = "1", optional = true }
-fastembed   = { version = "5", default-features = false, features = ["hf-hub-native-tls", "ort-download-binaries-native-tls"], optional = true }
+fastembed   = { version = "5", default-features = false, features = ["hf-hub-rustls-tls", "ort-download-binaries-rustls-tls", "ort-load-dynamic"], optional = true }
 # TODO: unpin when ort 2.0.0 stable releases
 ort         = { version = "=2.0.0-rc.12", default-features = false, optional = true }
 candle-core = { version = "0.10", optional = true }
