@@ -213,6 +213,168 @@ impl EmbeddingModel {
         }
     }
 
+    /// Approximate ONNX model size in MB.
+    pub const fn size_mb(self) -> usize {
+        match self {
+            // 40 MB
+            Self::BGESmallENV15 | Self::BGESmallENV15Q => 40,
+            // 80 MB
+            Self::AllMiniLML6V2 | Self::AllMiniLML6V2Q => 80,
+            // 90 MB
+            Self::SnowflakeArcticEmbedXS | Self::SnowflakeArcticEmbedXSQ | Self::BGESmallZHV15 => {
+                90
+            }
+            // 120 MB
+            Self::AllMiniLML12V2 | Self::AllMiniLML12V2Q => 120,
+            // 130 MB
+            Self::SnowflakeArcticEmbedS | Self::SnowflakeArcticEmbedSQ => 130,
+            // 260 MB
+            Self::JinaEmbeddingsV2BaseCode
+            | Self::JinaEmbeddingsV2BaseEN
+            | Self::EmbeddingGemma300M => 260,
+            // 420 MB
+            Self::AllMpnetBaseV2
+            | Self::BGEBaseENV15
+            | Self::BGEBaseENV15Q
+            | Self::GTEBaseENV15
+            | Self::GTEBaseENV15Q => 420,
+            // 430 MB
+            Self::SnowflakeArcticEmbedM
+            | Self::SnowflakeArcticEmbedMQ
+            | Self::SnowflakeArcticEmbedMLong
+            | Self::SnowflakeArcticEmbedMLongQ => 430,
+            // 470 MB
+            Self::ParaphraseMLMiniLML12V2
+            | Self::ParaphraseMLMiniLML12V2Q
+            | Self::MultilingualE5Small => 470,
+            // 550 MB
+            Self::NomicEmbedTextV1 | Self::NomicEmbedTextV15 | Self::NomicEmbedTextV15Q => 550,
+            // 600 MB
+            Self::BGEM3 | Self::ModernBertEmbedLarge | Self::ClipVitB32 => 600,
+            // 970 MB
+            Self::ParaphraseMLMpnetBaseV2 | Self::MultilingualE5Base => 970,
+            // 1300 MB
+            Self::BGELargeENV15
+            | Self::BGELargeENV15Q
+            | Self::BGELargeZHV15
+            | Self::MultilingualE5Large
+            | Self::MxbaiEmbedLargeV1
+            | Self::MxbaiEmbedLargeV1Q
+            | Self::GTELargeENV15
+            | Self::GTELargeENV15Q
+            | Self::SnowflakeArcticEmbedL
+            | Self::SnowflakeArcticEmbedLQ => 1300,
+        }
+    }
+
+    /// HuggingFace repository ID (e.g. `"BAAI/bge-small-en-v1.5"`).
+    pub const fn model_id(self) -> &'static str {
+        match self {
+            Self::BGESmallENV15 => "BAAI/bge-small-en-v1.5",
+            Self::AllMiniLML6V2 => "sentence-transformers/all-MiniLM-L6-v2",
+            Self::AllMiniLML6V2Q => "Xenova/all-MiniLM-L6-v2",
+            Self::AllMiniLML12V2 => "sentence-transformers/all-MiniLM-L12-v2",
+            Self::AllMiniLML12V2Q => "Xenova/all-MiniLM-L12-v2",
+            Self::AllMpnetBaseV2 => "sentence-transformers/all-mpnet-base-v2",
+            Self::BGEBaseENV15 => "BAAI/bge-base-en-v1.5",
+            Self::BGEBaseENV15Q => "Qdrant/bge-base-en-v1.5-onnx-Q",
+            Self::BGELargeENV15 => "BAAI/bge-large-en-v1.5",
+            Self::BGELargeENV15Q => "Qdrant/bge-large-en-v1.5-onnx-Q",
+            Self::BGESmallENV15Q => "Qdrant/bge-small-en-v1.5-onnx-Q",
+            Self::NomicEmbedTextV1 => "nomic-ai/nomic-embed-text-v1",
+            Self::NomicEmbedTextV15 => "nomic-ai/nomic-embed-text-v1.5",
+            Self::NomicEmbedTextV15Q => "nomic-ai/nomic-embed-text-v1.5",
+            Self::ParaphraseMLMiniLML12V2 => {
+                "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+            }
+            Self::ParaphraseMLMiniLML12V2Q => "Xenova/paraphrase-multilingual-MiniLM-L12-v2",
+            Self::ParaphraseMLMpnetBaseV2 => {
+                "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
+            }
+            Self::BGESmallZHV15 => "BAAI/bge-small-zh-v1.5",
+            Self::BGELargeZHV15 => "BAAI/bge-large-zh-v1.5",
+            Self::BGEM3 => "BAAI/bge-m3",
+            Self::ModernBertEmbedLarge => "nomic-ai/modernbert-embed-large",
+            Self::MultilingualE5Small => "intfloat/multilingual-e5-small",
+            Self::MultilingualE5Base => "intfloat/multilingual-e5-base",
+            Self::MultilingualE5Large => "intfloat/multilingual-e5-large",
+            Self::MxbaiEmbedLargeV1 => "mixedbread-ai/mxbai-embed-large-v1",
+            Self::MxbaiEmbedLargeV1Q => "mixedbread-ai/mxbai-embed-large-v1",
+            Self::GTEBaseENV15 => "Alibaba-NLP/gte-base-en-v1.5",
+            Self::GTEBaseENV15Q => "Qdrant/gte-base-en-v1.5-onnx-Q",
+            Self::GTELargeENV15 => "Alibaba-NLP/gte-large-en-v1.5",
+            Self::GTELargeENV15Q => "Qdrant/gte-large-en-v1.5-onnx-Q",
+            Self::ClipVitB32 => "openai/clip-vit-base-patch32",
+            Self::JinaEmbeddingsV2BaseCode => "jinaai/jina-embeddings-v2-base-code",
+            Self::JinaEmbeddingsV2BaseEN => "jinaai/jina-embeddings-v2-base-en",
+            Self::EmbeddingGemma300M => "google/embedding-gemma-300M",
+            Self::SnowflakeArcticEmbedXS => "Snowflake/snowflake-arctic-embed-xs",
+            Self::SnowflakeArcticEmbedXSQ => "Snowflake/snowflake-arctic-embed-xs",
+            Self::SnowflakeArcticEmbedS => "Snowflake/snowflake-arctic-embed-s",
+            Self::SnowflakeArcticEmbedSQ => "Snowflake/snowflake-arctic-embed-s",
+            Self::SnowflakeArcticEmbedM => "Snowflake/snowflake-arctic-embed-m",
+            Self::SnowflakeArcticEmbedMQ => "Snowflake/snowflake-arctic-embed-m",
+            Self::SnowflakeArcticEmbedMLong => "Snowflake/snowflake-arctic-embed-m-long",
+            Self::SnowflakeArcticEmbedMLongQ => "Snowflake/snowflake-arctic-embed-m-long",
+            Self::SnowflakeArcticEmbedL => "Snowflake/snowflake-arctic-embed-l",
+            Self::SnowflakeArcticEmbedLQ => "Snowflake/snowflake-arctic-embed-l",
+        }
+    }
+
+    /// Maximum token context per model.
+    pub const fn max_seq_length(self) -> usize {
+        match self {
+            // 256 tokens
+            Self::AllMiniLML6V2
+            | Self::AllMiniLML6V2Q
+            | Self::AllMiniLML12V2
+            | Self::AllMiniLML12V2Q => 256,
+            // 384 tokens
+            Self::AllMpnetBaseV2 => 384,
+            // 8192 tokens
+            Self::BGEM3
+            | Self::NomicEmbedTextV1
+            | Self::NomicEmbedTextV15
+            | Self::NomicEmbedTextV15Q
+            | Self::JinaEmbeddingsV2BaseCode
+            | Self::JinaEmbeddingsV2BaseEN
+            | Self::EmbeddingGemma300M
+            | Self::SnowflakeArcticEmbedMLong
+            | Self::SnowflakeArcticEmbedMLongQ => 8192,
+            // 512 tokens (default)
+            Self::BGESmallENV15
+            | Self::BGESmallENV15Q
+            | Self::BGEBaseENV15
+            | Self::BGEBaseENV15Q
+            | Self::BGELargeENV15
+            | Self::BGELargeENV15Q
+            | Self::BGESmallZHV15
+            | Self::BGELargeZHV15
+            | Self::ParaphraseMLMiniLML12V2
+            | Self::ParaphraseMLMiniLML12V2Q
+            | Self::ParaphraseMLMpnetBaseV2
+            | Self::ModernBertEmbedLarge
+            | Self::MultilingualE5Small
+            | Self::MultilingualE5Base
+            | Self::MultilingualE5Large
+            | Self::MxbaiEmbedLargeV1
+            | Self::MxbaiEmbedLargeV1Q
+            | Self::GTEBaseENV15
+            | Self::GTEBaseENV15Q
+            | Self::GTELargeENV15
+            | Self::GTELargeENV15Q
+            | Self::ClipVitB32
+            | Self::SnowflakeArcticEmbedXS
+            | Self::SnowflakeArcticEmbedXSQ
+            | Self::SnowflakeArcticEmbedS
+            | Self::SnowflakeArcticEmbedSQ
+            | Self::SnowflakeArcticEmbedM
+            | Self::SnowflakeArcticEmbedMQ
+            | Self::SnowflakeArcticEmbedL
+            | Self::SnowflakeArcticEmbedLQ => 512,
+        }
+    }
+
     /// Whether this is a quantized model (Q suffix).
     pub const fn is_quantized(self) -> bool {
         matches!(
@@ -531,5 +693,22 @@ mod tests {
     #[test]
     fn display_trait() {
         assert_eq!(EmbeddingModel::BGESmallENV15.to_string(), "BGESmallENV15");
+    }
+
+    #[test]
+    fn metadata_nonzero() {
+        for &m in EmbeddingModel::ALL {
+            assert!(m.size_mb() > 0, "{m:?}: size_mb is zero");
+            assert!(!m.model_id().is_empty(), "{m:?}: model_id is empty");
+            assert!(m.max_seq_length() > 0, "{m:?}: max_seq_length is zero");
+        }
+    }
+
+    #[test]
+    fn max_seq_length_values() {
+        assert_eq!(EmbeddingModel::AllMiniLML6V2.max_seq_length(), 256);
+        assert_eq!(EmbeddingModel::AllMpnetBaseV2.max_seq_length(), 384);
+        assert_eq!(EmbeddingModel::BGEM3.max_seq_length(), 8192);
+        assert_eq!(EmbeddingModel::BGESmallENV15.max_seq_length(), 512);
     }
 }
