@@ -60,7 +60,7 @@ impl FastembedProvider {
         use ort::execution_providers::DirectMLExecutionProvider;
         let mut options = fastembed::TextInitOptions::new(model.as_fastembed())
             .with_show_download_progress(false)
-            .with_execution_providers([DirectMLExecutionProvider::default().build()]);
+            .with_execution_providers(vec![DirectMLExecutionProvider::default().build()]);
         if let Some(dir) = cache_dir {
             options = options.with_cache_dir(dir);
         }
