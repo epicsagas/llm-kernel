@@ -53,6 +53,7 @@ impl OpenAIEmbeddingClient {
         model: impl Into<String>,
         dim: usize,
     ) -> Self {
+        assert!(dim > 0, "dim must be non-zero");
         Self {
             api_key: api_key.into(),
             model: model.into(),

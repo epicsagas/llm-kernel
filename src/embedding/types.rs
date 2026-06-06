@@ -121,4 +121,34 @@ mod tests {
         };
         assert_eq!(e.dim(), 3);
     }
+
+    // Regression: f32 accumulation in 512-dim spaces loses enough precision
+    // that self-similarity deviates from 1.0 by > 1e-6. f64 accumulation
+    // keeps it within 1e-10.
+    #[test]
+    fn cosine_similarity_f64_precision_high_dim() {
+        let scale = (512f64).sqrt().recip() as f32;
+        let v: Vec<f32> = vec![scale; 512];
+        let sim = cosine_similarity(&v, &v);
+        assert!(
+            (sim - 1.0).abs() < 1e-10,
+            "self-similarity too far from 1.0: {sim}"
+        );
+    }
+
+    // Regression: with f32 accumulation, near-identical 384-dim vectors can
+    // produce equal similarity scores, flipping ranking order.
+    #[test]
+    fn cosine_similarity_ranking_preserved() {
+        let n = 384;
+        let base: Vec<f32> = vec![1.0f32; n];
+        let mut nudged = base.clone();
+        nudged[0] = 1.0 + 1e-4;
+        let sim_exact = cosine_similarity(&base, &base);
+        let sim_off = cosine_similarity(&base, &nudged);
+        assert!(
+            sim_exact > sim_off,
+            "ranking flip: self-sim {sim_exact} <= nudged {sim_off}"
+        );
+    }
 }
