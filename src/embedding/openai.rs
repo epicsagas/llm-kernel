@@ -7,6 +7,7 @@ use crate::embedding::types::{EmbeddingProvider, EmbeddingResult};
 #[derive(Deserialize)]
 struct EmbeddingData {
     embedding: Vec<f32>,
+    index: usize,
 }
 
 #[derive(Deserialize)]
@@ -18,6 +19,8 @@ struct EmbeddingResponse {
 ///
 /// Uses `text-embedding-3-small` (1536-dim) by default.
 /// Swap model to `text-embedding-3-large` (3072-dim) for higher accuracy.
+///
+/// `api_key` is not exposed via `Debug` to prevent accidental logging.
 pub struct OpenAIEmbeddingClient {
     api_key: String,
     model: String,
@@ -66,10 +69,23 @@ impl OpenAIEmbeddingClient {
     }
 
     /// Create from environment variable `OPENAI_API_KEY`.
+    ///
+    /// Always uses `text-embedding-3-small` (1536-dim). For a different model
+    /// use [`new_with_model`](Self::new_with_model) after reading the key manually.
     pub fn from_env() -> anyhow::Result<Self> {
         let key = std::env::var("OPENAI_API_KEY")
             .map_err(|_| anyhow::anyhow!("OPENAI_API_KEY not set"))?;
         Ok(Self::new_small(key))
+    }
+}
+
+/// Returns up to 64 chars of `text`, appending `…` if truncated.
+///
+/// Uses character boundaries, so multibyte UTF-8 input never panics.
+fn text_preview(text: &str) -> String {
+    match text.char_indices().nth(64) {
+        Some((i, _)) => format!("{}…", &text[..i]),
+        None => text.to_string(),
     }
 }
 
@@ -108,15 +124,9 @@ impl EmbeddingProvider for OpenAIEmbeddingClient {
             .ok_or_else(|| anyhow::anyhow!("empty embedding response"))?
             .embedding;
 
-        let preview = if text.len() > 64 {
-            format!("{}…", &text[..64])
-        } else {
-            text.to_string()
-        };
-
         Ok(EmbeddingResult {
             vector,
-            text_preview: preview,
+            text_preview: text_preview(text),
         })
     }
 
@@ -143,20 +153,25 @@ impl EmbeddingProvider for OpenAIEmbeddingClient {
 
         let payload: EmbeddingResponse = resp.body_mut().read_json()?;
 
-        let results = payload
-            .data
+        // The OpenAI API does not guarantee that `data` is returned in input
+        // order; sort by `index` before zipping with `texts`.
+        let mut data = payload.data;
+        data.sort_unstable_by_key(|d| d.index);
+
+        if data.len() != texts.len() {
+            anyhow::bail!(
+                "API returned {} embeddings for {} inputs",
+                data.len(),
+                texts.len()
+            );
+        }
+
+        let results = data
             .into_iter()
             .zip(texts.iter())
-            .map(|(data, &text)| {
-                let preview = if text.len() > 64 {
-                    format!("{}…", &text[..64])
-                } else {
-                    text.to_string()
-                };
-                EmbeddingResult {
-                    vector: data.embedding,
-                    text_preview: preview,
-                }
+            .map(|(item, &text)| EmbeddingResult {
+                vector: item.embedding,
+                text_preview: text_preview(text),
             })
             .collect();
 
@@ -184,7 +199,9 @@ mod tests {
 
     #[test]
     fn from_env_fails_without_key() {
-        // Safety: test binary is single-threaded when this runs.
+        // SAFETY: `remove_var` is unsafe in Rust 2024 because env mutation is
+        // not thread-safe. Tests run in their own process and this binary does
+        // not spawn threads that read OPENAI_API_KEY concurrently.
         unsafe { std::env::remove_var("OPENAI_API_KEY") };
         assert!(OpenAIEmbeddingClient::from_env().is_err());
     }
@@ -195,6 +212,17 @@ mod tests {
         let payload: EmbeddingResponse = serde_json::from_str(raw).unwrap();
         assert_eq!(payload.data.len(), 1);
         assert_eq!(payload.data[0].embedding, vec![0.1f32, -0.2, 0.3]);
+        assert_eq!(payload.data[0].index, 0);
+    }
+
+    #[test]
+    fn embed_batch_reorders_by_index() {
+        // Simulate an out-of-order API response (index 1 before index 0).
+        let raw = r#"{"object":"list","data":[{"object":"embedding","embedding":[0.2],"index":1},{"object":"embedding","embedding":[0.1],"index":0}],"model":"text-embedding-3-small","usage":{"prompt_tokens":2,"total_tokens":2}}"#;
+        let mut payload: EmbeddingResponse = serde_json::from_str(raw).unwrap();
+        payload.data.sort_unstable_by_key(|d| d.index);
+        assert_eq!(payload.data[0].embedding, vec![0.1f32]);
+        assert_eq!(payload.data[1].embedding, vec![0.2f32]);
     }
 
     #[test]
@@ -218,14 +246,24 @@ mod tests {
     }
 
     #[test]
-    fn preview_truncated_at_64_chars() {
+    fn preview_ascii_truncated() {
         let long = "a".repeat(100);
-        // Simulate the preview logic used in embed()
-        let preview = if long.len() > 64 {
-            format!("{}…", &long[..64])
-        } else {
-            long.clone()
-        };
-        assert_eq!(preview.len(), 64 + "…".len()); // "…" is 3 bytes in UTF-8
+        let preview = text_preview(&long);
+        assert!(preview.ends_with('…'));
+        assert_eq!(preview.chars().filter(|&c| c != '…').count(), 64);
+    }
+
+    #[test]
+    fn preview_short_not_truncated() {
+        assert_eq!(text_preview("hello"), "hello");
+    }
+
+    #[test]
+    fn preview_multibyte_no_panic() {
+        // Each Korean char is 3 bytes; byte-slicing at 64 would panic.
+        let korean = "안녕하세요".repeat(20);
+        let preview = text_preview(&korean);
+        assert!(preview.ends_with('…'));
+        assert_eq!(preview.chars().filter(|&c| c != '…').count(), 64);
     }
 }

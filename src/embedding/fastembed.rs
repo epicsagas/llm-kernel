@@ -51,6 +51,10 @@ impl FastembedProvider {
     /// Requires the `embedding-fastembed-directml` feature and Windows OS.
     /// The DirectML runtime DLL must be present on the target system.
     ///
+    /// **Initialization cost:** the first call initialises the D3D12 device and
+    /// loads the DirectML DLL, which can take hundreds of milliseconds to
+    /// several seconds. Create the provider once and reuse it across requests.
+    ///
     /// `cache_dir` overrides the HuggingFace model cache directory.
     #[cfg(all(feature = "embedding-fastembed-directml", target_os = "windows"))]
     pub fn new_with_directml(
@@ -91,6 +95,16 @@ impl FastembedProvider {
     }
 }
 
+/// Returns up to 64 chars of `text`, appending `…` if truncated.
+///
+/// Uses character boundaries, so multibyte UTF-8 input never panics.
+fn text_preview(text: &str) -> String {
+    match text.char_indices().nth(64) {
+        Some((i, _)) => format!("{}…", &text[..i]),
+        None => text.to_string(),
+    }
+}
+
 impl EmbeddingProvider for FastembedProvider {
     fn dim(&self) -> usize {
         self.model.dimension()
@@ -115,14 +129,9 @@ impl EmbeddingProvider for FastembedProvider {
             .next()
             .ok_or_else(|| anyhow::anyhow!("empty embedding output"))?;
 
-        let preview = if text.len() > 64 {
-            format!("{}…", &text[..64])
-        } else {
-            text.to_string()
-        };
         Ok(EmbeddingResult {
             vector,
-            text_preview: preview,
+            text_preview: text_preview(text),
         })
     }
 
@@ -143,21 +152,14 @@ impl EmbeddingProvider for FastembedProvider {
             .inner
             .lock()
             .map_err(|e| anyhow::anyhow!("lock: {e}"))?;
-        let embeddings = te.embed(prepared.clone(), None)?;
+        let embeddings = te.embed(prepared, None)?;
 
         Ok(embeddings
             .into_iter()
             .zip(texts.iter())
-            .map(|(vector, &text)| {
-                let preview = if text.len() > 64 {
-                    format!("{}…", &text[..64])
-                } else {
-                    text.to_string()
-                };
-                EmbeddingResult {
-                    vector,
-                    text_preview: preview,
-                }
+            .map(|(vector, &text)| EmbeddingResult {
+                vector,
+                text_preview: text_preview(text),
             })
             .collect())
     }
