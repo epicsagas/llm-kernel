@@ -87,5 +87,10 @@ fn bench_cosine_similarity(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, bench_estimate_tokens, bench_rrf_fuse, bench_cosine_similarity);
+criterion_group!(
+    benches,
+    bench_estimate_tokens,
+    bench_rrf_fuse,
+    bench_cosine_similarity
+);
 criterion_main!(benches);
