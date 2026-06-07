@@ -42,3 +42,12 @@ pub use qwen3::Qwen3Provider;
 
 #[cfg(feature = "embedding-fastembed-nomic-moe")]
 pub use nomic_moe::NomicMoeProvider;
+
+/// Re-export `ort` for DirectML execution provider configuration.
+///
+/// Consumers that need `DirectMLExecutionProvider` (e.g. to pass it to
+/// `fastembed::TextInitOptions::with_execution_providers`) should use this
+/// re-export rather than depending on `ort` directly — this ensures the
+/// pinned version stays compatible with fastembed's ONNX Runtime.
+#[cfg(feature = "embedding-fastembed-directml")]
+pub use ort;
