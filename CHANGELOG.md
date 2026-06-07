@@ -11,6 +11,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `embedding`: `NomicEmbedTextV15` and `NomicEmbedTextV15Q` now return correct task instruction prefixes — `search_query:` / `search_document:` — matching the official Nomic v1.5 model requirements. Previously both returned `None`, producing suboptimal embeddings for search/retrieval workloads (fixes #11)
 
+## [0.2.3] - 2026-06-07
+
+### Fixed
+
+- `embedding`: `ort-load-dynamic` now enabled for `aarch64-linux` targets, fixing cross-compile builds on ARM64
+
+## [0.2.2] - 2026-06-07
+
+### Fixed
+
+- `embedding`: `ort-load-dynamic` restricted to Windows only — Unix targets use static linking for reliable cross-platform builds
+
+## [0.2.1] - 2026-06-07
+
+### Fixed
+
+- `embedding`: switched ONNX Runtime backend from native-tls to rustls with dynamic loading (`ort-load-dynamic`) for cross-platform compatibility
+- Restored `Cargo.lock` to version control for reproducible builds
+
 ## [0.2.0] - 2026-06-07
 
 ### Added
