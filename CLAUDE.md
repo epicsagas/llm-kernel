@@ -58,7 +58,8 @@ Two benchmark suites under `benches/`:
 |------|--------|
 | 1. Update version | Edit `Cargo.toml` version |
 | 2. Update CHANGELOG | Add entry with date |
-| 3. Verify | `cargo test --all-features && cargo clippy --all-features -- -D warnings` |
-| 4. Commit | `git commit -m "chore: bump v{version}"` |
-| 5. Tag | `git tag v{version}` |
-| 6. Push | `git push && git push --tags` |
+| 3. Regenerate lockfile | `cargo generate-lockfile` |
+| 4. Verify | `cargo test --all-features && cargo clippy --all-features -- -D warnings` |
+| 5. Commit | `git add Cargo.toml Cargo.lock CHANGELOG.md && git commit -m "chore: bump v{version}"` |
+| 6. Tag | `git tag v{version}` |
+| 7. Push | `git push && git push --tags` |
