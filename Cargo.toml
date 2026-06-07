@@ -1,6 +1,6 @@
 [package]
 name         = "llm-kernel"
-version      = "0.2.5"
+version      = "0.2.6"
 edition      = "2024"
 description  = "Foundation library for Rust AI-native apps — provider catalog, LLM client, MCP server, search, telemetry, and safety"
 license      = "Apache-2.0"
@@ -148,7 +148,8 @@ inherits = "release"
 lto = "thin"
 
 # Windows needs ort-load-dynamic to avoid MSVC linker errors with ort-sys.
-# aarch64-linux cross-compilation fails to link C++ std::filesystem symbols from ort-sys.
-# macOS and x86_64-linux use static linking via ort-download-binaries (works reliably).
-[target.'cfg(any(target_os = "windows", all(target_os = "linux", target_arch = "aarch64")))'.dependencies]
+# Linux needs ort-load-dynamic because ort's prebuilt static libraries require
+# glibc 2.38+ (__isoc23_strtol etc), which is not available on ubuntu-22.04.
+# macOS uses static linking via ort-download-binaries (works reliably).
+[target.'cfg(any(target_os = "windows", target_os = "linux"))'.dependencies]
 fastembed   = { version = "5", default-features = false, features = ["hf-hub-rustls-tls", "ort-download-binaries-rustls-tls", "ort-load-dynamic"], optional = true }
