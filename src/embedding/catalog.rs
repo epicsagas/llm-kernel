@@ -187,6 +187,7 @@ impl EmbeddingModel {
             Self::MultilingualE5Small | Self::MultilingualE5Base | Self::MultilingualE5Large => {
                 Some("query: ")
             }
+            Self::NomicEmbedTextV15 | Self::NomicEmbedTextV15Q => Some("search_query: "),
             Self::SnowflakeArcticEmbedXS
             | Self::SnowflakeArcticEmbedXSQ
             | Self::SnowflakeArcticEmbedS
@@ -209,6 +210,7 @@ impl EmbeddingModel {
             Self::MultilingualE5Small | Self::MultilingualE5Base | Self::MultilingualE5Large => {
                 Some("passage: ")
             }
+            Self::NomicEmbedTextV15 | Self::NomicEmbedTextV15Q => Some("search_document: "),
             _ => None,
         }
     }
@@ -739,6 +741,17 @@ mod tests {
             assert!(m.query_prefix().is_some());
             assert!(m.doc_prefix().is_none());
         }
+        // Nomic v1.5 models have query + doc prefixes
+        for &m in &[
+            EmbeddingModel::NomicEmbedTextV15,
+            EmbeddingModel::NomicEmbedTextV15Q,
+        ] {
+            assert_eq!(m.query_prefix(), Some("search_query: "));
+            assert_eq!(m.doc_prefix(), Some("search_document: "));
+        }
+        // Nomic v1 has no prefixes
+        assert!(EmbeddingModel::NomicEmbedTextV1.query_prefix().is_none());
+        assert!(EmbeddingModel::NomicEmbedTextV1.doc_prefix().is_none());
         // Most models have no prefixes
         assert!(EmbeddingModel::BGESmallENV15.query_prefix().is_none());
         assert!(EmbeddingModel::BGESmallENV15.doc_prefix().is_none());
