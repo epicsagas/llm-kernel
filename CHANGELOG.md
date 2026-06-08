@@ -7,10 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-06-08
+
 ### Added
 
 - `embedding`: `VectorIndex` trait — abstract interface for compressed vector indexes, zero dependencies. Concrete implementation: `crates/llm-kernel-vector-index` (TurboQuant)
 - `embedding`: `SearchHit` type (`{ id: u64, score: f32 }`) for vector index search results
+- `embedding`: `SearchHit::partial_cmp` — sorts by descending score with ascending ID tiebreak
+- `embedding`: `VectorIndex::remove(&mut self, ids: &[u64])` — delete vectors by external ID (O(1) per ID)
+- `llm-kernel-vector-index`: cross-validation of index dim/bit_width vs sidecar meta.json on load
+- `llm-kernel-vector-index`: criterion benchmarks for add (1k/10k), search, filtered search, save/load (2-bit vs 4-bit)
 
 ## [0.2.6] - 2026-06-08
 
