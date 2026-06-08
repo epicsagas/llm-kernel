@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `embedding`: `vector-index` feature gate — compressed vector indexing via [turbovec](https://github.com/RyanCodrai/turbovec) (TurboQuant algorithm). Provides `TurbovecIndex` with 2-bit/4-bit quantization (up to 16x memory reduction), SIMD-accelerated ANN search, filtered search with allowlists, and persistence. Opt-in feature, not included in `full` (#13)
+- `embedding`: `SearchHit` type (`{ id: u64, score: f32 }`) returned by vector index search operations
+
+## [0.2.6] - 2026-06-08
+
+### Fixed
+
+- `embedding`: `ort-load-dynamic` restricted to Windows only — Unix targets use static linking for reliable cross-platform builds
+- `embedding`: switched ONNX Runtime backend from native-tls to rustls with dynamic loading for cross-platform compatibility
+- Restored `Cargo.lock` to version control for reproducible builds
+
+### Changed
+
+- `embedding`: `NomicEmbedTextV15` and `NomicEmbedTextV15Q` now return correct task instruction prefixes (`search_query:` / `search_document:`) matching the official Nomic v1.5 model requirements
+
+## [0.2.5] - 2026-06-08
+
+### Fixed
+
+- `embedding`: use `ort-load-dynamic` for all linux targets to avoid glibc 2.38 dependency (`__isoc23_strtol` etc on ubuntu-22.04)
+
+### Added
+
+- `embedding`: re-export `ort` for DirectML execution provider configuration
+- **docs**: add `cargo generate-lockfile` to version bump checklist
+
 ## [0.2.4] - 2026-06-07
 
 ### Fixed
