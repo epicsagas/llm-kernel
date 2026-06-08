@@ -63,6 +63,8 @@ Ogni modulo è protetto da una flag di feature, così paghi solo per ciò che ut
 | `embedding-fastembed-nomic-moe` | Embedding Nomic V2 MoE via backend candle | |
 | `telemetry` | Eventi di telemetria con gating enum, senza PII | |
 | `safety` | Mascheramento segreti, classificazione errori, sanificazione output | |
+| `eval` | CLI di valutazione qualità — token, sicurezza, embedding, ricerca | |
+| `eval-full` | Tutti i moduli di valutazione incluso il grafo | |
 | `full` | Tutte le feature | |
 
 ## Guida rapida
@@ -412,6 +414,7 @@ Ogni modello nel catalogo include:
 | Catalogo provider | ✅ 16 provider, 114 modelli integrati | Configurazione manuale | Configurazione manuale |
 | Feature gate | ✅ 20 moduli indipendenti | Monolitico | Monolitico |
 | Embedding locale | ✅ 44 ONNX + Qwen3 + Nomic MoE | ❌ | ❌ |
+| Valutazione qualità | ✅ 5 moduli, regressione baseline, CI | ❌ | ❌ |
 | Server MCP | ✅ JSON-RPC 2.0 | ❌ | ❌ |
 | Grafo di conoscenza | ✅ SQLite + FTS5 + richiamo intelligente | ❌ | ❌ |
 | Dipendenze obbligatorie | Solo `serde` | `reqwest`, `tokio`, … | Molte |
@@ -450,6 +453,34 @@ llm-kernel è uno **strato fondamentale leggero** — componilo con rig o langch
 - **`graph`** — grafo di conoscenza SQLite con ricerca FTS5, richiamo con punteggio composito, attraversamento BFS, decadimento dell'importanza
 - **`TelemetryEvent`** — varianti con gating enum per osservabilità strutturata (senza PII)
 - **`safety`** — mascheramento segreti, classificazione errori, sanificazione bidi/ANSI/null
+
+## Valutazione qualità
+
+Il CLI di valutazione integrato misura la qualità dei moduli rispetto a dataset di test curati:
+
+```bash
+# Eseguire tutte le valutazioni (token, sicurezza, embedding, ricerca)
+cargo run --bin llm-kernel-eval --features eval -- all
+
+# Includere la valutazione del grafo
+cargo run --bin llm-kernel-eval --features eval-full -- all
+
+# Verifica di regressione rispetto allo snapshot baseline (uscita con codice 1 in caso di regressione)
+cargo run --bin llm-kernel-eval --features eval-full -- --baseline eval/baseline.json all
+
+# Output JSON per strumenti
+cargo run --bin llm-kernel-eval --features eval -- --format json all
+```
+
+| Modulo | Metriche |
+|--------|----------|
+| tokens | MAE, max_error, %±3, %±10%, analisi per categoria |
+| safety | exact_match_rate, precision, recall, F1, missed_secrets |
+| embedding | identity_accuracy, orthogonality, symmetry, bounds |
+| search | precision@5, recall@5, MRR |
+| graph | precision, recall, F1 per tipo di query |
+
+Passare `--baseline eval/baseline.json` per confrontare con uno snapshot di riferimento — il CLI esce con codice 1 in caso di regressione di qualsiasi metrica. Il CI esegue questo automaticamente ad ogni push e PR tramite il job `eval`.
 
 ## Benchmark
 
