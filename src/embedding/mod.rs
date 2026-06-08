@@ -56,4 +56,4 @@ pub use nomic_moe::NomicMoeProvider;
 pub use ort;
 
 #[cfg(feature = "vector-index")]
-pub use vector_index::{SearchHit, TurbovecIndex};
+pub use vector_index::{SearchHit, TurbovecIndex, VectorIndex};

@@ -5,7 +5,7 @@
 //! memory reduction). SIMD-accelerated on ARM (NEON) and x86 (AVX-512BW / AVX2).
 //!
 //! ```
-//! use llm_kernel::embedding::vector_index::TurbovecIndex;
+//! use llm_kernel::embedding::vector_index::{TurbovecIndex, VectorIndex};
 //!
 //! let mut idx = TurbovecIndex::new(128, 4).unwrap();
 //! idx.add(&[vec![0.1; 128], vec![0.2; 128]]);
@@ -23,6 +23,43 @@ pub struct SearchHit {
     pub id: u64,
     /// Similarity score (higher = more similar).
     pub score: f32,
+}
+
+/// Trait for compressed vector indexes.
+///
+/// Implementations provide approximate nearest neighbor search with
+/// quantization-based compression. Follows the same pattern as
+/// [`EmbeddingProvider`](crate::embedding::EmbeddingProvider).
+pub trait VectorIndex: Send + Sync {
+    /// Add vectors with auto-assigned sequential IDs.
+    fn add(&mut self, vectors: &[Vec<f32>]) -> Result<()>;
+
+    /// Add vectors with explicit external IDs.
+    fn add_with_ids(&mut self, vectors: &[Vec<f32>], ids: &[u64]) -> Result<()>;
+
+    /// Search for the `k` nearest neighbors of `query`.
+    fn search(&self, query: &[f32], k: usize) -> Result<Vec<SearchHit>>;
+
+    /// Search restricted to an allowlist of candidate IDs.
+    fn search_filtered(&self, query: &[f32], k: usize, allowlist: &[u64])
+    -> Result<Vec<SearchHit>>;
+
+    /// Number of vectors currently indexed.
+    fn len(&self) -> usize;
+
+    /// Whether the index is empty.
+    fn is_empty(&self) -> bool;
+
+    /// Vector dimensionality.
+    fn dim(&self) -> usize;
+
+    /// Persist the index to disk.
+    fn save(&self, path: &Path) -> Result<()>;
+
+    /// Load a previously saved index from disk.
+    fn load(path: &Path) -> Result<Self>
+    where
+        Self: Sized;
 }
 
 /// Compressed vector index backed by TurboQuant.
@@ -56,9 +93,24 @@ impl TurbovecIndex {
         })
     }
 
-    /// Add vectors to the index. IDs are assigned sequentially starting
-    /// from the current index length.
-    pub fn add(&mut self, vectors: &[Vec<f32>]) -> Result<()> {
+    /// Quantization bit width (2 or 4).
+    pub fn bit_width(&self) -> u8 {
+        self.bit_width
+    }
+
+    fn validate_dim(&self, v: &[f32]) -> Result<()> {
+        ensure!(
+            v.len() == self.dim,
+            "vector dimension mismatch: expected {}, got {}",
+            self.dim,
+            v.len(),
+        );
+        Ok(())
+    }
+}
+
+impl VectorIndex for TurbovecIndex {
+    fn add(&mut self, vectors: &[Vec<f32>]) -> Result<()> {
         if vectors.is_empty() {
             return Ok(());
         }
@@ -70,8 +122,7 @@ impl TurbovecIndex {
         self.add_with_ids(vectors, &ids)
     }
 
-    /// Add vectors with explicit external IDs.
-    pub fn add_with_ids(&mut self, vectors: &[Vec<f32>], ids: &[u64]) -> Result<()> {
+    fn add_with_ids(&mut self, vectors: &[Vec<f32>], ids: &[u64]) -> Result<()> {
         ensure!(
             vectors.len() == ids.len(),
             "vectors ({} entries) and ids ({} entries) must have the same length",
@@ -81,8 +132,6 @@ impl TurbovecIndex {
         for v in vectors {
             self.validate_dim(v)?;
         }
-        // Flatten vectors into a single buffer — turbovec expects &[f32] with
-        // dim*N elements.
         let flat: Vec<f32> = vectors.iter().flat_map(|v| v.iter().copied()).collect();
         self.inner
             .add_with_ids_2d(&flat, self.dim, ids)
@@ -90,11 +139,7 @@ impl TurbovecIndex {
         Ok(())
     }
 
-    /// Search for the `k` nearest neighbors of `query`.
-    ///
-    /// Returns up to `k` results sorted by descending similarity.
-    /// Returns an empty vector if the index is empty.
-    pub fn search(&self, query: &[f32], k: usize) -> Result<Vec<SearchHit>> {
+    fn search(&self, query: &[f32], k: usize) -> Result<Vec<SearchHit>> {
         self.validate_dim(query)?;
         if self.inner.is_empty() {
             return Ok(vec![]);
@@ -107,14 +152,7 @@ impl TurbovecIndex {
             .collect())
     }
 
-    /// Search restricted to an allowlist of candidate IDs.
-    ///
-    /// Useful for hybrid retrieval: first narrow candidates via BM25 or
-    /// metadata filter, then dense-rerank within that set. Filtering
-    /// happens inside the SIMD kernel — no over-fetching.
-    ///
-    /// Returns up to `min(k, allowlist.len())` results.
-    pub fn search_filtered(
+    fn search_filtered(
         &self,
         query: &[f32],
         k: usize,
@@ -132,31 +170,19 @@ impl TurbovecIndex {
             .collect())
     }
 
-    /// Number of vectors currently indexed.
-    pub fn len(&self) -> usize {
+    fn len(&self) -> usize {
         self.inner.len()
     }
 
-    /// Whether the index is empty.
-    pub fn is_empty(&self) -> bool {
+    fn is_empty(&self) -> bool {
         self.inner.is_empty()
     }
 
-    /// Vector dimensionality this index was created for.
-    pub fn dim(&self) -> usize {
+    fn dim(&self) -> usize {
         self.dim
     }
 
-    /// Quantization bit width (2 or 4).
-    pub fn bit_width(&self) -> u8 {
-        self.bit_width
-    }
-
-    /// Persist the index and metadata to disk.
-    ///
-    /// Creates two files: `{path}` (binary index) and `{path}.meta.json`
-    /// (dimension and bit width for correct deserialization).
-    pub fn save(&self, path: &Path) -> Result<()> {
+    fn save(&self, path: &Path) -> Result<()> {
         self.inner
             .write(path)
             .map_err(|e| anyhow!("failed to save vector index: {e}"))?;
@@ -170,8 +196,7 @@ impl TurbovecIndex {
         Ok(())
     }
 
-    /// Load a previously saved index from disk.
-    pub fn load(path: &Path) -> Result<Self> {
+    fn load(path: &Path) -> Result<Self> {
         let inner = turbovec::IdMapIndex::load(path)
             .map_err(|e| anyhow!("failed to load vector index: {e}"))?;
         let meta_path = path.with_extension("meta.json");
@@ -181,16 +206,6 @@ impl TurbovecIndex {
             dim: meta.dim,
             bit_width: meta.bit_width,
         })
-    }
-
-    fn validate_dim(&self, v: &[f32]) -> Result<()> {
-        ensure!(
-            v.len() == self.dim,
-            "vector dimension mismatch: expected {}, got {}",
-            self.dim,
-            v.len(),
-        );
-        Ok(())
     }
 }
 
