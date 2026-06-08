@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `eval` feature gate: quality evaluation CLI (`llm-kernel-eval`) measuring token estimation accuracy, secret masking completeness, embedding correctness, search quality, and graph query precision
+- `eval-full` feature gate: includes graph evaluation module on top of `eval`
+- `--baseline <path>` flag for regression detection — compares current metrics against a golden JSON snapshot and exits 1 on any regression
+- `eval/baseline.json` — golden baseline snapshot for CI regression checks
+- CI `eval` job runs quality regression check on every push and PR
+- `llm-kernel-vector-index` eval CLI (`llm-kernel-vector-index-eval`) measuring ANN recall, quantization impact, filtered search accuracy, and persistence round-trip integrity
+- `llm-kernel-vector-index` `--baseline` flag for vector-index regression detection
+
 ## [0.3.0] - 2026-06-08
 
 ### Added

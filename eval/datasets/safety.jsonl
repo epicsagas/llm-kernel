@@ -1,0 +1,39 @@
+{"input":"Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.abc","expected_masked":"Authorization: Bearer ****","pattern_type":"bearer"}
+{"input":"Bearer sk-proj-abc123def456","expected_masked":"Bearer ****","pattern_type":"bearer"}
+{"input":"Auth: Bearer token123","expected_masked":"Auth: Bearer ****","pattern_type":"bearer"}
+{"input":"Bearer my-secret-token-here","expected_masked":"Bearer ****","pattern_type":"bearer"}
+{"input":"Authorization: Bearer abc Bearer def","expected_masked":"Authorization: Bearer **** Bearer ****","pattern_type":"bearer"}
+{"input":"header: Bearer ","expected_masked":"header: Bearer ","pattern_type":"bearer"}
+{"input":"password=secret123","expected_masked":"password=****","pattern_type":"password"}
+{"input":"password=hunter2 user input","expected_masked":"password=**** user input","pattern_type":"password"}
+{"input":"token=abc123def","expected_masked":"token=****","pattern_type":"token"}
+{"input":"token=my-jwt-token rest of line","expected_masked":"token=**** rest of line","pattern_type":"token"}
+{"input":"key=AKIAIOSFODNN7EXAMPLE","expected_masked":"key=****","pattern_type":"token"}
+{"input":"secret=my-super-secret-value","expected_masked":"secret=****","pattern_type":"token"}
+{"input":"password=p1 password=p2","expected_masked":"password=**** password=****","pattern_type":"password"}
+{"input":"token=t1 key=k1 secret=s1","expected_masked":"token=**** key=**** secret=****","pattern_type":"mixed"}
+{"input":"sk-proj-abc123def456ghi789","expected_masked":"****","pattern_type":"sk-key"}
+{"input":"key=sk-ant-api03-token123","expected_masked":"key=****","pattern_type":"sk-key"}
+{"input":"using sk-1234 and sk-5678","expected_masked":"using **** and ****","pattern_type":"sk-key"}
+{"input":"API key is sk-live-abc123xyz","expected_masked":"API key is ****","pattern_type":"sk-key"}
+{"input":"sk-","expected_masked":"****","pattern_type":"sk-key"}
+{"input":"no secrets here just plain text","expected_masked":"no secrets here just plain text","pattern_type":"none"}
+{"input":"the quick brown fox","expected_masked":"the quick brown fox","pattern_type":"none"}
+{"input":"password= Bearer sk-abc","expected_masked":"password= Bearer ****","pattern_type":"mixed"}
+{"input":"Bearer abc password=def sk-ghi","expected_masked":"Bearer **** password=**** ****","pattern_type":"mixed"}
+{"input":"token=abc123 password=def456 secret=ghi789","expected_masked":"token=**** password=**** secret=****","pattern_type":"mixed"}
+{"input":"password=abc\ntoken=def\nkey=ghi","expected_masked":"password=****\ntoken=****\nkey=****","pattern_type":"multiline"}
+{"input":"line1 Bearer token123\nline2 password=secret","expected_masked":"line1 Bearer ****\nline2 password=****","pattern_type":"multiline"}
+{"input":"{\"api_key\": \"sk-proj-abc123\"}","expected_masked":"{\"api_key\": \"****\"}","pattern_type":"nested"}
+{"input":"config: {password=secret123}","expected_masked":"config: {password=****}","pattern_type":"nested"}
+{"input":"url: https://user:password=secret@host/path","expected_masked":"url: https://user:password=****@host/path","pattern_type":"api-url"}
+{"input":"https://api.example.com?token=abc123&key=def","expected_masked":"https://api.example.com?token=****&key=****","pattern_type":"api-url"}
+{"input":"sk-test-key Bearer mytoken password=mypass","expected_masked":"**** Bearer **** password=****","pattern_type":"mixed"}
+{"input":"Authorization: Bearer tok1\nAuthorization: Bearer tok2","expected_masked":"Authorization: Bearer ****\nAuthorization: Bearer ****","pattern_type":"multiline"}
+{"input":"export API_KEY=sk-abc123\nexport SECRET=secret123","expected_masked":"export API_KEY=sk-abc123\nexport SECRET=****","pattern_type":"multiline"}
+{"input":"password=P@ssw0rd!#$% key=k3y-v@lue","expected_masked":"password=**** key=****","pattern_type":"mixed"}
+{"input":"key=sk-abc123","expected_masked":"key=****","pattern_type":"sk-key"}
+{"input":"debug: got token=abc-123-def then key=xyz-789","expected_masked":"debug: got token=**** then key=****","pattern_type":"mixed"}
+{"input":"secret=","expected_masked":"secret=","pattern_type":"none"}
+{"input":"Bearer abc123def456ghi789jkl012mno345pqr678","expected_masked":"Bearer ****","pattern_type":"bearer"}
+{"input":"sk-proj-1234567890abcdefghijklmnop","expected_masked":"****","pattern_type":"sk-key"}
