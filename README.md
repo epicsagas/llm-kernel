@@ -57,6 +57,8 @@ Each module is gated behind a feature flag so you only pay for what you use.
 | `embedding-fastembed-nomic-moe` | Nomic V2 MoE embedding via candle backend | |
 | `telemetry` | Enum-gated telemetry events, no PII | |
 | `safety` | Secret masking, error classification, output sanitization | |
+| `eval` | Quality evaluation CLI — tokens, safety, embedding, search | |
+| `eval-full` | All eval modules including graph | |
 | `full` | All features | |
 
 ## Quick start
@@ -418,6 +420,7 @@ Each model in the catalog includes:
 | Feature gates | ✅ 20 independent modules | Monolithic | Monolithic |
 | Local embedding | ✅ 44 ONNX + Qwen3 + Nomic MoE | ❌ | ❌ |
 | Vector indexing | ✅ VectorIndex trait + separate crate | ❌ | ❌ |
+| Quality eval | ✅ 5 modules, baseline regression, CI | ❌ | ❌ |
 | MCP server | ✅ JSON-RPC 2.0 | ❌ | ❌ |
 | Knowledge graph | ✅ SQLite + FTS5 + smart recall | ❌ | ❌ |
 | Mandatory deps | `serde` only | `reqwest`, `tokio`, … | Many |
@@ -457,6 +460,34 @@ llm-kernel is a **lightweight foundation layer** — compose it with rig or lang
 - **`graph`** — SQLite knowledge graph with FTS5 search, composite scoring recall, BFS traversal, importance decay
 - **`TelemetryEvent`** — enum-gated variants for structured observability (no PII)
 - **`safety`** — secret masking, error classification, bidi/ANSI/null sanitization
+
+## Quality evaluation
+
+Built-in evaluation CLI measures module quality against curated test datasets:
+
+```bash
+# Run all evaluations (tokens, safety, embedding, search)
+cargo run --bin llm-kernel-eval --features eval -- all
+
+# Include graph evaluation
+cargo run --bin llm-kernel-eval --features eval-full -- all
+
+# Regression check against baseline snapshot (exit 1 on regression)
+cargo run --bin llm-kernel-eval --features eval-full -- --baseline eval/baseline.json all
+
+# JSON output for tooling
+cargo run --bin llm-kernel-eval --features eval -- --format json all
+```
+
+| Module | Metrics |
+|--------|---------|
+| tokens | MAE, max_error, %±3, %±10%, by-category breakdown |
+| safety | exact_match_rate, precision, recall, F1, missed_secrets |
+| embedding | identity_accuracy, orthogonality, symmetry, bounds |
+| search | precision@5, recall@5, MRR |
+| graph | precision, recall, F1 by query type |
+
+Pass `--baseline eval/baseline.json` to compare against a golden snapshot — the CLI exits with code 1 on any metric regression. CI runs this automatically on every push and PR via the `eval` job.
 
 ## Benchmarks
 

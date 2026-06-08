@@ -63,6 +63,8 @@ Chaque module est derriere un indicateur de fonctionnalite afin que vous ne payi
 | `embedding-fastembed-nomic-moe` | Embedding Nomic V2 MoE via le backend candle | |
 | `telemetry` | Evenements de telemetrie gates par enum, sans PII | |
 | `safety` | Masquage de secrets, classification d'erreurs, nettoyage de sorties | |
+| `eval` | CLI d'evaluation de qualite -- tokens, securite, embedding, recherche | |
+| `eval-full` | Tous les modules d'evaluation, y compris le graphe | |
 | `full` | Toutes les fonctionnalites | |
 
 ## Demarrage rapide
@@ -412,6 +414,7 @@ Chaque modele du catalogue inclut :
 | Catalogue de fournisseurs | Oui 16 fournisseurs, 114 modeles integres | Config manuelle | Config manuelle |
 | Indicateurs de fonctionnalite | Oui 20 modules independants | Monolithique | Monolithique |
 | Embedding local | Oui 44 ONNX + Qwen3 + Nomic MoE | Non | Non |
+| Evaluation qualite | Oui 5 modules, regression de base, CI | Non | Non |
 | Serveur MCP | Oui JSON-RPC 2.0 | Non | Non |
 | Graphe de connaissances | Oui SQLite + FTS5 + rappel intelligent | Non | Non |
 | Dependances obligatoires | `serde` uniquement | `reqwest`, `tokio`, ... | Nombreuses |
@@ -450,6 +453,34 @@ llm-kernel est une **couche fondatrice legere** -- composez-le avec rig ou langc
 - **`graph`** -- graphe de connaissances SQLite avec recherche FTS5, rappel a score composite, parcours BFS et decroissance d'importance
 - **`TelemetryEvent`** -- variantes gates par enum pour l'observabilite structuree (sans PII)
 - **`safety`** -- masquage de secrets, classification d'erreurs, nettoyage bidi/ANSI/null
+
+## Evaluation de qualite
+
+Le CLI d'evaluation integre mesure la qualite des modules par rapport a des jeux de donnees de test selectionnes :
+
+```bash
+# Executer toutes les evaluations (tokens, securite, embedding, recherche)
+cargo run --bin llm-kernel-eval --features eval -- all
+
+# Inclure l'evaluation du graphe
+cargo run --bin llm-kernel-eval --features eval-full -- all
+
+# Verification de regression par rapport a un snapshot de reference (code de sortie 1 en cas de regression)
+cargo run --bin llm-kernel-eval --features eval-full -- --baseline eval/baseline.json all
+
+# Sortie JSON pour les outils
+cargo run --bin llm-kernel-eval --features eval -- --format json all
+```
+
+| Module | Metriques |
+|--------|-----------|
+| tokens | MAE, max_error, %±3, %±10%, ventilation par categorie |
+| safety | exact_match_rate, precision, recall, F1, missed_secrets |
+| embedding | identity_accuracy, orthogonality, symmetry, bounds |
+| search | precision@5, recall@5, MRR |
+| graph | precision, recall, F1 par type de requete |
+
+Passez `--baseline eval/baseline.json` pour comparer avec un snapshot de reference -- le CLI quitte avec le code 1 en cas de regression de toute metrique. Le CI execute cette verification automatiquement a chaque push et PR via le job `eval`.
 
 ## Benchmarks
 
