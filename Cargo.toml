@@ -71,6 +71,9 @@ embedding-fastembed-nomic-moe = ["embedding-fastembed", "fastembed/nomic-v2-moe"
 # DirectML GPU execution provider for FastembedProvider (Windows only)
 embedding-fastembed-directml = ["embedding-fastembed", "dep:ort"]
 
+# Compressed vector indexing via TurboQuant (16x compression, SIMD search)
+vector-index = ["embedding", "dep:turbovec", "dep:serde_json"]
+
 # Knowledge graph with async wrappers (requires tokio)
 graph-async = ["graph", "dep:tokio"]
 
@@ -113,6 +116,7 @@ fastembed   = { version = "5", default-features = false, features = ["hf-hub-rus
 ort         = { version = "=2.0.0-rc.12", default-features = false, optional = true }
 candle-core = { version = "0.10", optional = true }
 indexmap    = { version = "2", optional = true }
+turbovec    = { version = "0.8", optional = true }
 
 [dev-dependencies]
 tempfile = "3"

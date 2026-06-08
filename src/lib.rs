@@ -21,6 +21,7 @@
 //! | `embedding`   | [`embedding`] | Embedding provider trait + cosine similarity |
 //! | `telemetry`   | [`telemetry`] | Telemetry framework — enum-gated events, no PII |
 //! | `safety`      | [`safety`]    | Secret masking, error classification, output sanitization |
+//! | `vector-index`| [`embedding`] | Compressed vector indexing (TurboQuant, 16x, SIMD search) |
 //!
 //! ## Quick start
 //!
