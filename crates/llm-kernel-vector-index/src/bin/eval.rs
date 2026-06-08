@@ -9,6 +9,7 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 use llm_kernel::embedding::VectorIndex;
 use llm_kernel_vector_index::TurbovecIndex;
+use serde::{Deserialize, Serialize};
 
 // ── CLI ──────────────────────────────────────────────────────────────────────
 
@@ -22,6 +23,10 @@ struct Cli {
     /// Output format
     #[arg(long, default_value = "markdown")]
     format: String,
+
+    /// Baseline JSON to compare against (regression detection mode)
+    #[arg(long)]
+    baseline: Option<std::path::PathBuf>,
 }
 
 #[derive(Subcommand)]
@@ -40,8 +45,9 @@ enum Commands {
 
 // ── Report types ─────────────────────────────────────────────────────────────
 
+#[derive(Serialize, Deserialize)]
 struct EvalReport {
-    module: &'static str,
+    module: String,
     metrics: serde_json::Value,
     passed: bool,
 }
@@ -73,6 +79,7 @@ impl std::fmt::Display for EvalReport {
     }
 }
 
+#[derive(Serialize, Deserialize)]
 struct EvalSummary {
     results: Vec<EvalReport>,
 }
@@ -86,7 +93,7 @@ impl std::fmt::Display for EvalSummary {
         writeln!(f, "├─────────────────────────────────────────────┤")?;
         for r in &self.results {
             let status = if r.passed { "PASS" } else { "FAIL" };
-            writeln!(f, "│  {:<15} │ {status}", r.module)?;
+            writeln!(f, "│  {:<15} │ {status}", r.module.as_str())?;
         }
         writeln!(f, "├─────────────────────────────────────────────┤")?;
         writeln!(
@@ -175,7 +182,7 @@ fn eval_recall() -> EvalReport {
     let avg_recall = total_recall / scenarios as f64;
 
     EvalReport {
-        module: "recall",
+        module: "recall".into(),
         metrics: serde_json::json!({
             "dim": dim,
             "n_vectors": vectors.len(),
@@ -228,7 +235,7 @@ fn eval_quantization() -> EvalReport {
     let degradation = bw2_recall - bw4_recall;
 
     EvalReport {
-        module: "quantization",
+        module: "quantization".into(),
         metrics: serde_json::json!({
             "dim": dim,
             "n_vectors": vectors.len(),
@@ -279,7 +286,7 @@ fn eval_filtered() -> EvalReport {
     let avg_precision = total_precision / scenarios as f64;
 
     EvalReport {
-        module: "filtered",
+        module: "filtered".into(),
         metrics: serde_json::json!({
             "dim": dim,
             "n_vectors": vectors.len(),
@@ -328,7 +335,7 @@ fn eval_persistence() -> EvalReport {
     let meta_file_exists = path.with_extension("meta.json").exists();
 
     EvalReport {
-        module: "persistence",
+        module: "persistence".into(),
         metrics: serde_json::json!({
             "dim": dim,
             "n_vectors": vectors.len(),
@@ -342,6 +349,82 @@ fn eval_persistence() -> EvalReport {
 }
 
 // ── Main ─────────────────────────────────────────────────────────────────────
+
+fn compare_reports(current: &[EvalReport], baseline: &[EvalReport]) -> (Vec<String>, bool) {
+    let base_metrics: std::collections::HashMap<&str, &serde_json::Map<String, serde_json::Value>> =
+        baseline
+            .iter()
+            .filter(|r| r.metrics.get("error").is_none())
+            .filter_map(|r| r.metrics.as_object().map(|m| (r.module.as_str(), m)))
+            .collect();
+
+    let higher = [
+        "avg_recall_at_k",
+        "avg_filtered_precision",
+        "recall_2bit",
+        "recall_4bit",
+    ];
+    let lower = ["degradation_2bit_vs_4bit"];
+
+    let mut diffs = Vec::new();
+    let mut has_regression = false;
+
+    for report in current {
+        if report.metrics.get("error").is_some() {
+            continue;
+        }
+        let (Some(base_obj), Some(cur_obj)) = (
+            base_metrics.get(report.module.as_str()),
+            report.metrics.as_object(),
+        ) else {
+            continue;
+        };
+
+        for (key, cur_val) in cur_obj {
+            let (Some(cur_f), Some(base_f)) =
+                (cur_val.as_f64(), base_obj.get(key).and_then(|v| v.as_f64()))
+            else {
+                continue;
+            };
+            let delta = cur_f - base_f;
+            if delta.abs() < 1e-10 {
+                continue;
+            }
+
+            let (arrow, is_regression) = if higher.contains(&key.as_str()) {
+                if delta < 0.0 {
+                    ("↓", true)
+                } else {
+                    ("↑", false)
+                }
+            } else if lower.contains(&key.as_str()) {
+                if delta > 0.0 {
+                    ("↑ (worse)", true)
+                } else {
+                    ("↓ (better)", false)
+                }
+            } else {
+                ("~", false)
+            };
+
+            if is_regression {
+                has_regression = true;
+            }
+
+            diffs.push(format!(
+                "  {}.{}: {:.4} → {:.4} {arrow} ({:+.4}){}",
+                report.module,
+                key,
+                base_f,
+                cur_f,
+                delta,
+                if is_regression { " ⚠ REGRESSION" } else { "" },
+            ));
+        }
+    }
+
+    (diffs, has_regression)
+}
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -362,27 +445,28 @@ fn main() -> Result<()> {
     let summary = EvalSummary { results: reports };
 
     match cli.format.as_str() {
-        "json" => {
-            let passed = summary.results.iter().filter(|r| r.passed).count();
-            let json_reports: Vec<serde_json::Value> = summary
-                .results
-                .iter()
-                .map(|r| {
-                    serde_json::json!({
-                        "module": r.module,
-                        "passed": r.passed,
-                        "metrics": r.metrics,
-                    })
-                })
-                .collect();
-            let output = serde_json::json!({
-                "passed": passed,
-                "total": summary.results.len(),
-                "results": json_reports,
-            });
-            println!("{output}");
-        }
+        "json" => println!("{}", serde_json::to_string_pretty(&summary).unwrap()),
         _ => println!("{summary}"),
+    }
+
+    if let Some(ref path) = cli.baseline {
+        let data = std::fs::read_to_string(path)?;
+        let baseline: EvalSummary = serde_json::from_str(&data)?;
+        let (diffs, has_regression) = compare_reports(&summary.results, &baseline.results);
+        if diffs.is_empty() {
+            eprintln!("\n✅ No metric changes detected vs baseline.");
+        } else {
+            eprintln!("\n## Baseline Diff");
+            for line in &diffs {
+                eprintln!("{line}");
+            }
+            if has_regression {
+                eprintln!("\n❌ Regression detected.");
+                std::process::exit(1);
+            } else {
+                eprintln!("\n✅ No regression — all changes are improvements or neutral.");
+            }
+        }
     }
 
     Ok(())

@@ -4,10 +4,11 @@ use std::fmt;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
+use std::process::exit;
 
 use clap::{Parser, Subcommand};
-use serde::Serialize;
 use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize};
 
 // ── CLI ──────────────────────────────────────────────────────────────────────
 
@@ -27,6 +28,10 @@ struct Cli {
     /// Datasets directory
     #[arg(long, default_value = "eval/datasets", global = true)]
     datasets_dir: PathBuf,
+
+    /// Baseline JSON to compare against (regression detection mode)
+    #[arg(long, global = true)]
+    baseline: Option<PathBuf>,
 }
 
 #[derive(Subcommand)]
@@ -48,14 +53,14 @@ enum Commands {
 
 // ── Common types ─────────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct EvalReport {
     module: String,
     metrics: serde_json::Value,
     passed: bool,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct EvalSummary {
     results: Vec<EvalReport>,
 }
@@ -709,6 +714,108 @@ mod eval_graph {
 
 // ── Main ─────────────────────────────────────────────────────────────────────
 
+/// Metrics where higher is better. Absent keys are treated as neutral.
+const HIGHER_IS_BETTER: &[&str] = &[
+    "pct_within_3",
+    "pct_within_10pct",
+    "exact_match_rate",
+    "avg_precision",
+    "avg_recall",
+    "avg_f1",
+    "avg_precision_at_5",
+    "avg_recall_at_5",
+    "avg_mrr",
+    "avg_recall_at_k",
+    "avg_filtered_precision",
+    "recall_2bit",
+    "recall_4bit",
+    "identity_accuracy",
+    "orthogonality_accuracy",
+    "symmetry_accuracy",
+    "range_accuracy",
+];
+
+/// Metrics where lower is better.
+const LOWER_IS_BETTER: &[&str] = &[
+    "mae",
+    "max_error",
+    "missed_secrets",
+    "degradation_2bit_vs_4bit",
+];
+
+fn compare_reports(current: &[EvalReport], baseline: &[EvalReport]) -> (Vec<String>, bool) {
+    let mut diffs = Vec::new();
+    let mut has_regression = false;
+
+    let base_metrics: std::collections::HashMap<&str, &serde_json::Map<String, serde_json::Value>> =
+        baseline
+            .iter()
+            .filter(|r| r.metrics.get("error").is_none())
+            .filter_map(|r| r.metrics.as_object().map(|m| (r.module.as_str(), m)))
+            .collect();
+
+    for report in current {
+        if report.metrics.get("error").is_some() {
+            continue;
+        }
+        let Some(base_obj) = base_metrics.get(report.module.as_str()) else {
+            continue;
+        };
+        let Some(cur_obj) = report.metrics.as_object() else {
+            continue;
+        };
+
+        for (key, cur_val) in cur_obj {
+            let Some(cur_f) = cur_val.as_f64() else {
+                continue;
+            };
+            let Some(base_val) = base_obj.get(key) else {
+                continue;
+            };
+            let Some(base_f) = base_val.as_f64() else {
+                continue;
+            };
+
+            let delta = cur_f - base_f;
+            if delta.abs() < 1e-10 {
+                continue;
+            }
+
+            let (arrow, is_regression) = if HIGHER_IS_BETTER.contains(&key.as_str()) {
+                if delta < 0.0 {
+                    ("↓", true)
+                } else {
+                    ("↑", false)
+                }
+            } else if LOWER_IS_BETTER.contains(&key.as_str()) {
+                if delta > 0.0 {
+                    ("↑ (worse)", true)
+                } else {
+                    ("↓ (better)", false)
+                }
+            } else {
+                ("~", false)
+            };
+
+            if is_regression {
+                has_regression = true;
+            }
+
+            diffs.push(format!(
+                "  {}.{}: {:.4} → {:.4} {arrow} ({:+.4}){}",
+                report.module,
+                key,
+                base_f,
+                cur_f,
+                delta,
+                if is_regression { " ⚠ REGRESSION" } else { "" },
+            ));
+        }
+    }
+
+    (diffs, has_regression)
+}
+
 fn main() {
     let cli = Cli::parse();
     let mut reports = Vec::new();
@@ -739,8 +846,33 @@ fn main() {
 
     let summary = EvalSummary { results: reports };
 
+    // Load baseline if provided.
+    let baseline: Option<EvalSummary> = cli.baseline.as_ref().and_then(|path| {
+        let data = std::fs::read_to_string(path).ok()?;
+        serde_json::from_str(&data).ok()
+    });
+
     match cli.format.as_str() {
         "json" => println!("{}", serde_json::to_string_pretty(&summary).unwrap()),
         _ => print!("{summary}"),
+    }
+
+    // Diff against baseline.
+    if let Some(ref base) = baseline {
+        let (diffs, has_regression) = compare_reports(&summary.results, &base.results);
+        if diffs.is_empty() {
+            eprintln!("\n✅ No metric changes detected vs baseline.");
+        } else {
+            eprintln!("\n## Baseline Diff");
+            for line in &diffs {
+                eprintln!("{line}");
+            }
+            if has_regression {
+                eprintln!("\n❌ Regression detected — at least one metric worsened.");
+                exit(1);
+            } else {
+                eprintln!("\n✅ No regression — all changes are improvements or neutral.");
+            }
+        }
     }
 }
