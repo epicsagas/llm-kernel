@@ -25,6 +25,9 @@ pub mod qwen3;
 #[cfg(feature = "embedding-fastembed-nomic-moe")]
 pub mod nomic_moe;
 
+#[cfg(feature = "vector-index")]
+pub mod vector_index;
+
 pub use catalog::EmbeddingModel;
 pub use types::{EmbeddingProvider, EmbeddingResult, cosine_similarity};
 
@@ -51,3 +54,6 @@ pub use nomic_moe::NomicMoeProvider;
 /// pinned version stays compatible with fastembed's ONNX Runtime.
 #[cfg(feature = "embedding-fastembed-directml")]
 pub use ort;
+
+#[cfg(feature = "vector-index")]
+pub use vector_index::{SearchHit, TurbovecIndex};
