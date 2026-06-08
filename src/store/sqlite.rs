@@ -94,13 +94,18 @@ pub fn init_schema_with_migrations(
         return Ok(conn);
     }
 
-    // Incremental migration
-    let new_version = migrate.unwrap()(&conn, current_version)?;
-    conn.execute(
+    // Incremental migration — wrapped in a transaction for atomicity
+    let tx = conn
+        .unchecked_transaction()
+        .map_err(|e| KernelError::Store(format!("Transaction begin failed: {}", e)))?;
+    let new_version = migrate.unwrap()(&tx, current_version)?;
+    tx.execute(
         "INSERT OR REPLACE INTO _meta (key, value) VALUES ('schema_version', ?1)",
         [new_version.to_string()],
     )
     .map_err(|e| KernelError::Store(e.to_string()))?;
+    tx.commit()
+        .map_err(|e| KernelError::Store(format!("Transaction commit failed: {}", e)))?;
 
     Ok(conn)
 }
@@ -290,5 +295,37 @@ mod tests {
             )
             .unwrap();
         assert_eq!(version, "2");
+    }
+
+    #[test]
+    fn migration_failure_rolls_back() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("test.db");
+        let ddl = "CREATE TABLE IF NOT EXISTS _meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+                   INSERT OR IGNORE INTO _meta (key, value) VALUES ('schema_version', '0');
+                   CREATE TABLE IF NOT EXISTS items (id TEXT PRIMARY KEY);";
+
+        // Init at version 1
+        let conn1 = init_schema(&path, ddl, 1).unwrap();
+        drop(conn1);
+
+        // Migration that fails — schema should remain at version 1
+        let fail_migrate = |_conn: &Connection, _current: u32| -> Result<u32> {
+            Err(KernelError::Store("migration failed".into()))
+        };
+
+        let result = init_schema_with_migrations(&path, ddl, 3, Some(fail_migrate as MigrationFn));
+        assert!(result.is_err());
+
+        // Verify version is still 1 (rolled back)
+        let conn2 = Connection::open(&path).unwrap();
+        let version: String = conn2
+            .query_row(
+                "SELECT value FROM _meta WHERE key = 'schema_version'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(version, "1");
     }
 }

@@ -2,29 +2,42 @@
 
 /// Mask known secret patterns in a string.
 ///
-/// Handles `Bearer` tokens, `sk-*` API keys, and `password=`, `token=`,
-/// `key=`, `secret=` values. All occurrences are masked.
+/// Handles `Bearer`/`Basic` auth headers, `sk-*` API keys, AWS keys (`AKIA...`),
+/// GitHub tokens (`ghp_`/`gho_`/`ghs_`/`ghu_`), and `password=`, `token=`,
+/// `key=`, `secret=`, `api_key=`, `apikey=`, `access_token=`, `private_key=` values.
+/// All occurrences are masked. Bearer matching is case-insensitive.
 pub fn mask_secrets(input: &str) -> String {
     let mut result = input.to_string();
 
-    // Mask all Bearer tokens
-    let mut search_from = 0;
-    while let Some(rel_pos) = result[search_from..].find("Bearer ") {
-        let value_start = search_from + rel_pos + "Bearer ".len();
-        if value_start >= result.len() {
-            break;
-        }
-        if let Some(value_end) = result[value_start..].find(|c: char| c.is_whitespace()) {
-            result.replace_range(value_start..value_start + value_end, "****");
-            search_from = value_start + 4;
-        } else {
-            result.replace_range(value_start.., "****");
-            break;
+    // Mask all Bearer/Basic tokens (case-insensitive)
+    for prefix in &["Bearer ", "bearer ", "Basic "] {
+        let mut search_from = 0;
+        while let Some(rel_pos) = result[search_from..].find(prefix) {
+            let value_start = search_from + rel_pos + prefix.len();
+            if value_start >= result.len() {
+                break;
+            }
+            if let Some(value_end) = result[value_start..].find(|c: char| c.is_whitespace()) {
+                result.replace_range(value_start..value_start + value_end, "****");
+                search_from = value_start + 4;
+            } else {
+                result.replace_range(value_start.., "****");
+                break;
+            }
         }
     }
 
-    // Mask all password=, token=, key=, secret= values
-    for prefix in &["password=", "token=", "key=", "secret="] {
+    // Mask all key=value patterns
+    for prefix in &[
+        "password=",
+        "token=",
+        "key=",
+        "secret=",
+        "api_key=",
+        "apikey=",
+        "access_token=",
+        "private_key=",
+    ] {
         let mut search_from = 0;
         while let Some(rel_pos) = result[search_from..].find(prefix) {
             let value_start = search_from + rel_pos + prefix.len();
@@ -54,7 +67,38 @@ pub fn mask_secrets(input: &str) -> String {
         }
     }
 
+    // Mask AWS access keys (AKIA followed by 16 alphanumeric chars)
+    mask_prefix_pattern(&mut result, "AKIA", |c: char| c.is_ascii_alphanumeric());
+
+    // Mask GitHub tokens (ghp_, gho_, ghs_, ghu_ followed by alphanumeric)
+    for prefix in &["ghp_", "gho_", "ghs_", "ghu_"] {
+        mask_prefix_pattern(&mut result, prefix, |c: char| c.is_ascii_alphanumeric());
+    }
+
     result
+}
+
+/// Mask a prefix-based token pattern where the value continues while `is_value_char` returns true.
+fn mask_prefix_pattern(result: &mut String, prefix: &str, is_value_char: impl Fn(char) -> bool) {
+    let mut search_from = 0;
+    while let Some(rel_pos) = result[search_from..].find(prefix) {
+        let value_start = search_from + rel_pos;
+        let remainder = &result[value_start..];
+        let value_len = remainder.len().min(
+            prefix.len()
+                + remainder[prefix.len()..]
+                    .chars()
+                    .take_while(|&c| is_value_char(c))
+                    .collect::<String>()
+                    .len(),
+        );
+        if value_len <= prefix.len() {
+            search_from = value_start + prefix.len();
+            continue;
+        }
+        result.replace_range(value_start..value_start + value_len, "****");
+        search_from = value_start + 4;
+    }
 }
 
 /// Remove ANSI escape sequences from text.
@@ -184,6 +228,69 @@ mod tests {
         let masked = mask_secrets("key is sk-proj-abc123 here");
         assert!(masked.contains("****"), "got: {masked}");
         assert!(!masked.contains("sk-proj"), "got: {masked}");
+    }
+
+    #[test]
+    fn mask_api_key_value() {
+        let masked = mask_secrets("api_key=my-secret-key other=ok");
+        assert!(masked.contains("api_key=****"));
+        assert!(masked.contains("other=ok"));
+    }
+
+    #[test]
+    fn mask_apikey_nounderscore() {
+        let masked = mask_secrets("apikey=abc123");
+        assert!(masked.contains("apikey=****"));
+    }
+
+    #[test]
+    fn mask_access_token_value() {
+        let masked = mask_secrets("access_token=eyJhbGciOiJI");
+        assert!(masked.contains("access_token=****"));
+    }
+
+    #[test]
+    fn mask_private_key_value() {
+        let masked = mask_secrets("private_key=-----BEGIN RSA");
+        assert!(masked.contains("private_key=****"));
+    }
+
+    #[test]
+    fn mask_basic_auth() {
+        let masked = mask_secrets("Authorization: Basic dXNlcjpwYXNz");
+        assert!(masked.contains("Basic ****"));
+    }
+
+    #[test]
+    fn mask_bearer_case_insensitive() {
+        let masked = mask_secrets("auth: bearer token123 here");
+        assert!(masked.contains("bearer ****"));
+    }
+
+    #[test]
+    fn mask_aws_access_key() {
+        let masked = mask_secrets("key=AKIAIOSFODNN7EXAMPLE end");
+        assert!(masked.contains("key=****"));
+    }
+
+    #[test]
+    fn mask_standalone_aws_key() {
+        let masked = mask_secrets("found AKIAIOSFODNN7EXAMPLE in config");
+        assert!(!masked.contains("AKIAIOSFODNN7EXAMPLE"), "got: {masked}");
+        assert!(masked.contains("****"));
+    }
+
+    #[test]
+    fn mask_github_pat() {
+        let masked = mask_secrets("token ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefgh end");
+        assert!(!masked.contains("ghp_"), "got: {masked}");
+        assert!(masked.contains("****"));
+    }
+
+    #[test]
+    fn mask_github_oauth() {
+        let masked = mask_secrets("using gho_ABCDEF1234567890 here");
+        assert!(!masked.contains("gho_"), "got: {masked}");
     }
 
     #[test]
