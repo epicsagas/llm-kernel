@@ -1,0 +1,59 @@
+{
+  "results": [
+    {
+      "module": "tokens",
+      "metrics": {
+        "entries": 49,
+        "mae": 4.122448979591836,
+        "max_error": 16.0,
+        "pct_within_10pct": 16.3265306122449,
+        "pct_within_3": 44.89795918367347
+      },
+      "passed": true
+    },
+    {
+      "module": "safety",
+      "metrics": {
+        "avg_f1": 0.9756493531708983,
+        "avg_precision": 0.9668932617769826,
+        "avg_recall": 0.98456548247769,
+        "entries": 39,
+        "exact_match_rate": 0.8461538461538461,
+        "missed_secrets": 4
+      },
+      "passed": true
+    },
+    {
+      "module": "embedding",
+      "metrics": {
+        "identity_accuracy": 1.0,
+        "orthogonality_accuracy": 1.0,
+        "range_accuracy": 1.0,
+        "symmetry_accuracy": 1.0,
+        "total_checks": 17,
+        "total_passed": 17
+      },
+      "passed": true
+    },
+    {
+      "module": "search",
+      "metrics": {
+        "avg_mrr": 1.0,
+        "avg_precision_at_5": 0.805,
+        "avg_recall_at_5": 1.0,
+        "entries": 10
+      },
+      "passed": true
+    },
+    {
+      "module": "graph",
+      "metrics": {
+        "avg_f1": 0.9800000000000001,
+        "avg_precision": 0.9666666666666666,
+        "avg_recall": 1.0,
+        "scenarios_run": 10
+      },
+      "passed": true
+    }
+  ]
+}

@@ -90,6 +90,10 @@ telemetry = ["dep:serde_json"]
 # Safety utilities (secret masking, error classification)
 safety = ["dep:regex"]
 
+# Quality evaluation CLI (datasets-based metrics)
+eval = ["dep:clap", "tokens", "safety", "embedding", "search"]
+eval-full = ["eval", "graph"]
+
 # Everything except Windows-only execution backends.
 # embedding-fastembed-directml is intentionally excluded: it pulls in the ort
 # RC dependency which is not appropriate for cross-platform builds.
@@ -119,6 +123,7 @@ fastembed   = { version = "5", default-features = false, features = ["hf-hub-rus
 ort         = { version = "=2.0.0-rc.12", default-features = false, optional = true }
 candle-core = { version = "0.10", optional = true }
 indexmap    = { version = "2", optional = true }
+clap        = { version = "4", features = ["derive"], optional = true }
 
 [dev-dependencies]
 tempfile = "3"
@@ -133,6 +138,11 @@ required-features = ["graph"]
 name = "compute_bench"
 harness = false
 required-features = ["search", "tokens", "embedding"]
+
+[[bin]]
+name = "llm-kernel-eval"
+path = "src/bin/eval.rs"
+required-features = ["eval"]
 
 [profile.dev]
 opt-level = 0
