@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `embedding`: `VectorIndex` trait — abstract interface for compressed vector indexes, zero dependencies. Concrete implementations live in separate crates (e.g., [`llm-kernel-vector-index`](https://github.com/epicsagas/llm-kernel-vector-index))
+- `embedding`: `VectorIndex` trait — abstract interface for compressed vector indexes, zero dependencies. Concrete implementation: `crates/llm-kernel-vector-index` (TurboQuant)
 - `embedding`: `SearchHit` type (`{ id: u64, score: f32 }`) for vector index search results
 
 ## [0.2.6] - 2026-06-08
