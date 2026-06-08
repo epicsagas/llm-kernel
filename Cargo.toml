@@ -13,6 +13,12 @@ documentation = "https://docs.rs/llm-kernel"
 readme       = "README.md"
 exclude      = [".github/", "target/"]
 
+[workspace]
+members = [
+    ".",
+    "crates/llm-kernel-vector-index",
+]
+
 [lib]
 name = "llm_kernel"
 path = "src/lib.rs"

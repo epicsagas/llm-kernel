@@ -25,6 +25,10 @@ pub mod qwen3;
 #[cfg(feature = "embedding-fastembed-nomic-moe")]
 pub mod nomic_moe;
 
+/// Vector index trait and types (zero dependencies).
+/// Concrete implementations live in separate crates (e.g., `llm-kernel-vector-index`).
+pub mod vector_index;
+
 pub use catalog::EmbeddingModel;
 pub use types::{EmbeddingProvider, EmbeddingResult, cosine_similarity};
 
@@ -51,3 +55,5 @@ pub use nomic_moe::NomicMoeProvider;
 /// pinned version stays compatible with fastembed's ONNX Runtime.
 #[cfg(feature = "embedding-fastembed-directml")]
 pub use ort;
+
+pub use vector_index::{SearchHit, VectorIndex};
