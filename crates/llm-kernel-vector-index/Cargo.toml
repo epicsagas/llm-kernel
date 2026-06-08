@@ -1,0 +1,47 @@
+[package]
+name         = "llm-kernel-vector-index"
+version      = "0.1.0"
+edition      = "2024"
+description  = "TurboQuant vector index for llm-kernel — 16x compression, SIMD-accelerated ANN search"
+license      = "Apache-2.0"
+repository   = "https://github.com/epicsagas/llm-kernel"
+homepage     = "https://github.com/epicsagas/llm-kernel"
+rust-version = "1.92"
+keywords     = ["vector", "index", "ann", "turboquant", "embedding"]
+categories   = ["algorithms", "science"]
+documentation = "https://docs.rs/llm-kernel-vector-index"
+readme       = "README.md"
+exclude      = [".github/", "target/"]
+
+[lib]
+name = "llm_kernel_vector_index"
+path = "src/lib.rs"
+
+[features]
+default = ["simd"]
+simd = []
+
+[dependencies]
+llm-kernel = { path = "../..", default-features = false, features = ["embedding"] }
+turbovec   = "0.8"
+anyhow     = "1"
+serde      = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.dev]
+opt-level = 0
+debug = 1
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
+panic = "abort"
+
+[profile.release.package."*"]
+opt-level = 3
+codegen-units = 4

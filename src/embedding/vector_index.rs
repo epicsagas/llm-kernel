@@ -47,7 +47,7 @@ pub trait VectorIndex: Send + Sync {
     /// Useful for hybrid retrieval: first narrow candidates via BM25 or
     /// metadata filter, then dense-rerank within that set.
     fn search_filtered(&self, query: &[f32], k: usize, allowlist: &[u64])
-        -> Result<Vec<SearchHit>>;
+    -> Result<Vec<SearchHit>>;
 
     /// Number of vectors currently indexed.
     fn len(&self) -> usize;
@@ -73,7 +73,10 @@ mod tests {
 
     #[test]
     fn search_hit_fields() {
-        let hit = SearchHit { id: 42, score: 0.95 };
+        let hit = SearchHit {
+            id: 42,
+            score: 0.95,
+        };
         assert_eq!(hit.id, 42);
         assert!((hit.score - 0.95).abs() < f32::EPSILON);
     }

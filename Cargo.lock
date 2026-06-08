@@ -2022,8 +2022,19 @@ dependencies = [
  "tokio-stream",
  "toml",
  "tracing",
- "turbovec",
  "ureq",
+]
+
+[[package]]
+name = "llm-kernel-vector-index"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "llm-kernel",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "turbovec",
 ]
 
 [[package]]
