@@ -24,7 +24,7 @@ llm-kernel provides the foundational layer for building LLM-powered tools, agent
 - **Config loader** — TOML config with auto-create from template
 - **Knowledge graph** — SQLite-backed graph with FTS5 search, smart recall, BFS traversal, async wrappers
 - **MCP server** — JSON-RPC 2.0 server framework with stdio transport and Bearer auth
-- **Embedding** — provider trait + cosine similarity, local ONNX (44 models), Qwen3 candle, Nomic V2 MoE candle, OpenAI remote ([full model list →](EMBEDDING_MODELS.md))
+- **Embedding** — provider trait + cosine similarity, local ONNX (44 models), Qwen3 candle, Nomic V2 MoE candle, OpenAI remote, compressed vector indexing ([full model list →](EMBEDDING_MODELS.md))
 - **Search** — Reciprocal Rank Fusion for hybrid search result merging
 - **Token estimation** — zero-dependency Unicode-script heuristic token counting
 - **Telemetry** — enum-gated events with no PII, console and noop sinks
@@ -55,6 +55,7 @@ Each module is gated behind a feature flag so you only pay for what you use.
 | `embedding-fastembed` | Local ONNX embedding via fastembed-rs (44 models) | |
 | `embedding-fastembed-qwen3` | Qwen3 embedding via candle backend | |
 | `embedding-fastembed-nomic-moe` | Nomic V2 MoE embedding via candle backend | |
+| `vector-index` | Compressed vector indexing (TurboQuant, 16x, SIMD search) | |
 | `telemetry` | Enum-gated telemetry events, no PII | |
 | `safety` | Secret masking, error classification, output sanitization | |
 | `full` | All features | |
@@ -370,7 +371,31 @@ let result = provider.embed("hello world")?;
 assert_eq!(result.vector.len(), 768);
 ```
 
-### Safety utilities
+#### Vector indexing (TurboQuant)
+
+Compress and index embedding vectors for fast ANN search — 16x memory reduction with SIMD-accelerated scoring.
+
+```rust
+use llm_kernel::embedding::{TurbovecIndex, VectorIndex};
+
+// Create index (4-bit quantization = 8x compression, recommended)
+let mut idx = TurbovecIndex::new(384, 4)?;
+
+// Index vectors
+idx.add(&[vec1, vec2, vec3])?;
+// Or with explicit IDs
+idx.add_with_ids(&[vec4], &[42u64])?;
+
+// ANN search
+let hits = idx.search(&query, 10)?;
+
+// Filtered search (hybrid retrieval: BM25 candidates → dense rerank)
+let hits = idx.search_filtered(&query, 10, &allowed_ids)?;
+
+// Persist
+idx.save(&path)?;
+let loaded = TurbovecIndex::load(&path)?;
+```
 
 ```rust
 use llm_kernel::safety::{mask_secrets, classify_failure, sanitize_output};
@@ -404,8 +429,9 @@ Each model in the catalog includes:
 | | llm-kernel | [rig] | [langchain-rust] |
 |--|-----------|-------|-------------------|
 | Provider catalog | ✅ 16 providers, 114 models built-in | Manual config | Manual config |
-| Feature gates | ✅ 20 independent modules | Monolithic | Monolithic |
+| Feature gates | ✅ 21 independent modules | Monolithic | Monolithic |
 | Local embedding | ✅ 44 ONNX + Qwen3 + Nomic MoE | ❌ | ❌ |
+| Vector indexing | ✅ TurboQuant (16x compression, SIMD) | ❌ | ❌ |
 | MCP server | ✅ JSON-RPC 2.0 | ❌ | ❌ |
 | Knowledge graph | ✅ SQLite + FTS5 + smart recall | ❌ | ❌ |
 | Mandatory deps | `serde` only | `reqwest`, `tokio`, … | Many |
@@ -428,7 +454,7 @@ llm-kernel is a **lightweight foundation layer** — compose it with rig or lang
 │   provider    │  client  │   discovery   │  ← catalog, async LLM, model discovery
 │   catalog     │  async   │               │
 ├───────────────┴──────────┴───────────────┤
-│  graph  │  mcp  │  embedding  │  search  │  ← graph, MCP, ONNX/Qwen3/Nomic embed, RRF
+│  graph  │  mcp  │  embedding  │  search  │  ← graph, MCP, ONNX/Qwen3/Nomic embed, RRF, vector index
 ├──────────────────────────────────────────┤
 │ tokens │ telemetry │ safety │ install    │  ← token est., events, masking, wizard
 ├──────────────────────────────────────────┤
@@ -438,6 +464,7 @@ llm-kernel is a **lightweight foundation layer** — compose it with rig or lang
 
 - **`LLMClient` trait** — unified interface for `OpenAIClient` and `AnthropicClient`
 - **`EmbeddingProvider` trait** — unified interface for `FastembedProvider` (ONNX), `Qwen3Provider` (candle), `NomicMoeProvider` (candle), `OpenAIEmbeddingClient` (remote)
+- **`VectorIndex` trait** — unified interface for compressed vector indexes; `TurbovecIndex` (TurboQuant) implements 2-bit/4-bit quantized ANN search with SIMD kernels
 - **`ProviderIndex`** — zero-copy access to embedded catalog, queryable by provider or model
 - **`McpServer`** — JSON-RPC 2.0 server with stdio transport, Bearer auth, tool registration
 - **`SecretVault`** — `HashMap<String, String>` with dotenv load/save and symlink guards
