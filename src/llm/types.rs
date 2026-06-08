@@ -1,14 +1,24 @@
+//! Core types for the LLM client module.
+#![deny(missing_docs)]
+
 use std::pin::Pin;
 
 use serde::{Deserialize, Serialize};
 
+/// Configuration for a specific LLM model and provider.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelConfig {
+    /// Provider name (e.g. `"openai"`, `"anthropic"`).
     pub provider: String,
+    /// Model identifier (e.g. `"gpt-4o"`, `"claude-sonnet-4-6"`).
     pub model: String,
+    /// Environment variable name holding the API key.
     pub api_key_env: String,
+    /// Optional base URL override for the provider API.
     pub base_url: Option<String>,
+    /// Sampling temperature (0.0–2.0).
     pub temperature: f32,
+    /// Maximum tokens to generate in the response.
     pub max_tokens: Option<u32>,
 }
 
@@ -25,22 +35,58 @@ impl Default for ModelConfig {
     }
 }
 
+/// A chat completion request to an LLM provider.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LLMRequest {
+    /// Optional system prompt prepended to the conversation.
     pub system: Option<String>,
+    /// Ordered list of chat messages forming the conversation.
     pub messages: Vec<ChatMessage>,
+    /// Sampling temperature (0.0–2.0).
     pub temperature: f32,
+    /// Maximum tokens to generate. `None` uses the provider default.
     pub max_tokens: Option<u32>,
+    /// Model override for this request. `None` uses the client default.
     pub model: Option<String>,
 }
 
+impl LLMRequest {
+    /// Convert into OpenAI-format messages, consuming the request.
+    ///
+    /// Prepends a system message if `self.system` is set.
+    pub fn into_openai_messages(self) -> Vec<(String, String)> {
+        let mut out = Vec::with_capacity(self.messages.len() + 1);
+        if let Some(system) = self.system {
+            out.push(("system".into(), system));
+        }
+        for msg in self.messages {
+            out.push((msg.role, msg.content));
+        }
+        out
+    }
+
+    /// Convert into Anthropic-format messages, consuming the request.
+    ///
+    /// Returns only user/assistant messages (system is handled separately by Anthropic API).
+    pub fn into_anthropic_messages(self) -> Vec<(String, String)> {
+        self.messages
+            .into_iter()
+            .map(|m| (m.role, m.content))
+            .collect()
+    }
+}
+
+/// A single message in a chat conversation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatMessage {
+    /// Role of the message sender (e.g. `"system"`, `"user"`, `"assistant"`).
     pub role: String,
+    /// Text content of the message.
     pub content: String,
 }
 
 impl ChatMessage {
+    /// Create a system message.
     pub fn system(content: impl Into<String>) -> Self {
         Self {
             role: "system".into(),
@@ -48,6 +94,7 @@ impl ChatMessage {
         }
     }
 
+    /// Create a user message.
     pub fn user(content: impl Into<String>) -> Self {
         Self {
             role: "user".into(),
@@ -55,6 +102,7 @@ impl ChatMessage {
         }
     }
 
+    /// Create an assistant message.
     pub fn assistant(content: impl Into<String>) -> Self {
         Self {
             role: "assistant".into(),
@@ -63,17 +111,25 @@ impl ChatMessage {
     }
 }
 
+/// A chat completion response from an LLM provider.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LLMResponse {
+    /// Generated text content.
     pub content: String,
+    /// Model that produced this response.
     pub model: String,
+    /// Token usage statistics.
     pub usage: TokenUsage,
 }
 
+/// Token usage statistics from an LLM response.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct TokenUsage {
+    /// Number of tokens in the prompt.
     pub prompt_tokens: u32,
+    /// Number of tokens in the completion.
     pub completion_tokens: u32,
+    /// Total tokens (prompt + completion).
     pub total_tokens: u32,
 }
 
@@ -81,7 +137,10 @@ pub struct TokenUsage {
 #[derive(Debug, Clone)]
 pub enum StreamEvent {
     /// Partial text content arrived.
-    Delta { content: String },
+    Delta {
+        /// The partial text chunk.
+        content: String,
+    },
     /// Final token usage statistics.
     Usage(TokenUsage),
     /// Stream has ended.

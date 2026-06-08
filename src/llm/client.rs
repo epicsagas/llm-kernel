@@ -1,7 +1,18 @@
+use std::time::Duration;
+
 use async_trait::async_trait;
 
 use crate::error::{KernelError, Result};
 use crate::llm::types::{LLMRequest, LLMResponse, LLMStream, ModelConfig, StreamEvent, TokenUsage};
+
+/// Build a `reqwest::Client` with connect and total timeouts.
+fn http_client() -> Result<reqwest::Client> {
+    reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(10))
+        .timeout(Duration::from_secs(120))
+        .build()
+        .map_err(|e| KernelError::Config(format!("Failed to build HTTP client: {}", e)))
+}
 
 #[async_trait]
 pub trait LLMClient: Send + Sync {
@@ -34,7 +45,7 @@ impl OpenAIClient {
                 .base_url
                 .clone()
                 .unwrap_or_else(|| "https://api.openai.com/v1".into()),
-            client: reqwest::Client::new(),
+            client: http_client()?,
         })
     }
 
@@ -43,7 +54,7 @@ impl OpenAIClient {
             api_key: api_key.into(),
             model: model.into(),
             base_url: "https://api.openai.com/v1".into(),
-            client: reqwest::Client::new(),
+            client: http_client().unwrap_or_default(),
         }
     }
 
@@ -105,25 +116,20 @@ struct OpenAIUsage {
 #[async_trait]
 impl LLMClient for OpenAIClient {
     async fn complete(&self, request: LLMRequest) -> Result<LLMResponse> {
-        let mut messages = Vec::new();
-        if let Some(system) = &request.system {
-            messages.push(OpenAIChatMessage {
-                role: "system".into(),
-                content: system.clone(),
-            });
-        }
-        for msg in &request.messages {
-            messages.push(OpenAIChatMessage {
-                role: msg.role.clone(),
-                content: msg.content.clone(),
-            });
-        }
+        let model = request.model.clone().unwrap_or_else(|| self.model.clone());
+        let temperature = request.temperature;
+        let max_tokens = request.max_tokens;
+        let messages: Vec<_> = request
+            .into_openai_messages()
+            .into_iter()
+            .map(|(role, content)| OpenAIChatMessage { role, content })
+            .collect();
 
         let body = OpenAIChatRequest {
-            model: request.model.unwrap_or_else(|| self.model.clone()),
+            model,
             messages,
-            temperature: request.temperature,
-            max_tokens: request.max_tokens,
+            temperature,
+            max_tokens,
             stream: false,
         };
 
@@ -182,25 +188,20 @@ impl LLMClient for OpenAIClient {
     }
 
     async fn stream_complete(&self, request: LLMRequest) -> Result<LLMStream> {
-        let mut messages = Vec::new();
-        if let Some(system) = &request.system {
-            messages.push(OpenAIChatMessage {
-                role: "system".into(),
-                content: system.clone(),
-            });
-        }
-        for msg in &request.messages {
-            messages.push(OpenAIChatMessage {
-                role: msg.role.clone(),
-                content: msg.content.clone(),
-            });
-        }
+        let model = request.model.clone().unwrap_or_else(|| self.model.clone());
+        let temperature = request.temperature;
+        let max_tokens = request.max_tokens;
+        let messages: Vec<_> = request
+            .into_openai_messages()
+            .into_iter()
+            .map(|(role, content)| OpenAIChatMessage { role, content })
+            .collect();
 
         let body = OpenAIChatRequest {
-            model: request.model.unwrap_or_else(|| self.model.clone()),
+            model,
             messages,
-            temperature: request.temperature,
-            max_tokens: request.max_tokens,
+            temperature,
+            max_tokens,
             stream: true,
         };
 
@@ -369,7 +370,7 @@ impl AnthropicClient {
                 .base_url
                 .clone()
                 .unwrap_or_else(|| "https://api.anthropic.com/v1".into()),
-            client: reqwest::Client::new(),
+            client: http_client()?,
         })
     }
 
@@ -378,7 +379,7 @@ impl AnthropicClient {
             api_key: api_key.into(),
             model: model.into(),
             base_url: "https://api.anthropic.com/v1".into(),
-            client: reqwest::Client::new(),
+            client: http_client().unwrap_or_default(),
         }
     }
 
@@ -435,19 +436,19 @@ struct AnthropicUsage {
 #[async_trait]
 impl LLMClient for AnthropicClient {
     async fn complete(&self, request: LLMRequest) -> Result<LLMResponse> {
+        let model = request.model.clone().unwrap_or_else(|| self.model.clone());
+        let max_tokens = request.max_tokens.unwrap_or(4096);
+        let system = request.system.clone();
         let messages: Vec<AnthropicMessage> = request
-            .messages
+            .into_anthropic_messages()
             .into_iter()
-            .map(|m| AnthropicMessage {
-                role: m.role,
-                content: m.content,
-            })
+            .map(|(role, content)| AnthropicMessage { role, content })
             .collect();
 
         let body = AnthropicRequest {
-            model: request.model.unwrap_or_else(|| self.model.clone()),
-            max_tokens: request.max_tokens.unwrap_or(4096),
-            system: request.system,
+            model,
+            max_tokens,
+            system,
             messages,
             stream: false,
         };
@@ -507,19 +508,19 @@ impl LLMClient for AnthropicClient {
     }
 
     async fn stream_complete(&self, request: LLMRequest) -> Result<LLMStream> {
+        let model = request.model.clone().unwrap_or_else(|| self.model.clone());
+        let max_tokens = request.max_tokens.unwrap_or(4096);
+        let system = request.system.clone();
         let messages: Vec<AnthropicMessage> = request
-            .messages
-            .iter()
-            .map(|m| AnthropicMessage {
-                role: m.role.clone(),
-                content: m.content.clone(),
-            })
+            .into_anthropic_messages()
+            .into_iter()
+            .map(|(role, content)| AnthropicMessage { role, content })
             .collect();
 
         let body = AnthropicRequest {
-            model: request.model.clone().unwrap_or_else(|| self.model.clone()),
-            max_tokens: request.max_tokens.unwrap_or(4096),
-            system: request.system.clone(),
+            model,
+            max_tokens,
+            system,
             messages,
             stream: true,
         };

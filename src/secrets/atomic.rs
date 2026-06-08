@@ -1,14 +1,16 @@
 use std::io::Write;
 use std::path::Path;
 
+use crate::error::{KernelError, Result};
+
 /// Write data to a file atomically using a temp file + rename.
 ///
 /// On Unix, sets the file mode to `mode` (e.g. `0o600` for secrets).
-pub fn write_atomic(path: &str, data: &[u8], mode: u32) -> anyhow::Result<()> {
+pub fn write_atomic(path: &str, data: &[u8], mode: u32) -> Result<()> {
     let target = Path::new(path);
     let parent = target
         .parent()
-        .ok_or_else(|| anyhow::anyhow!("path has no parent directory: {path}"))?;
+        .ok_or_else(|| KernelError::Vault(format!("path has no parent directory: {path}")))?;
     std::fs::create_dir_all(parent)?;
 
     let mut tmp = tempfile::NamedTempFile::new_in(parent)?;
@@ -21,7 +23,8 @@ pub fn write_atomic(path: &str, data: &[u8], mode: u32) -> anyhow::Result<()> {
             .set_permissions(std::fs::Permissions::from_mode(mode))?;
     }
 
-    tmp.persist(target)?;
+    tmp.persist(target)
+        .map_err(|e| KernelError::Vault(format!("atomic persist failed: {}", e)))?;
     Ok(())
 }
 
