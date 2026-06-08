@@ -24,7 +24,7 @@ llm-kernel provides the foundational layer for building LLM-powered tools, agent
 - **Config loader** — TOML config with auto-create from template
 - **Knowledge graph** — SQLite-backed graph with FTS5 search, smart recall, BFS traversal, async wrappers
 - **MCP server** — JSON-RPC 2.0 server framework with stdio transport and Bearer auth
-- **Embedding** — provider trait + cosine similarity, local ONNX (44 models), Qwen3 candle, Nomic V2 MoE candle, OpenAI remote ([full model list →](EMBEDDING_MODELS.md))
+- **Embedding** — provider trait + cosine similarity, local ONNX (44 models), Qwen3 candle, Nomic V2 MoE candle, OpenAI remote, compressed vector indexing ([full model list →](EMBEDDING_MODELS.md))
 - **Search** — Reciprocal Rank Fusion for hybrid search result merging
 - **Token estimation** — zero-dependency Unicode-script heuristic token counting
 - **Telemetry** — enum-gated events with no PII, console and noop sinks
@@ -370,7 +370,18 @@ let result = provider.embed("hello world")?;
 assert_eq!(result.vector.len(), 768);
 ```
 
-### Safety utilities
+### Vector indexing
+
+The `VectorIndex` trait is defined in llm-kernel (zero dependencies). For a concrete implementation with TurboQuant compression (up to 16x, SIMD search), see [`llm-kernel-vector-index`](https://github.com/epicsagas/llm-kernel-vector-index).
+
+```rust
+use llm_kernel::embedding::VectorIndex;
+use llm_kernel_vector_index::TurbovecIndex;
+
+let mut idx = TurbovecIndex::new(384, 4)?;
+idx.add(&[vec1, vec2, vec3])?;
+let hits = idx.search(&query, 10)?;
+```
 
 ```rust
 use llm_kernel::safety::{mask_secrets, classify_failure, sanitize_output};
@@ -406,6 +417,7 @@ Each model in the catalog includes:
 | Provider catalog | ✅ 16 providers, 114 models built-in | Manual config | Manual config |
 | Feature gates | ✅ 20 independent modules | Monolithic | Monolithic |
 | Local embedding | ✅ 44 ONNX + Qwen3 + Nomic MoE | ❌ | ❌ |
+| Vector indexing | ✅ VectorIndex trait + separate crate | ❌ | ❌ |
 | MCP server | ✅ JSON-RPC 2.0 | ❌ | ❌ |
 | Knowledge graph | ✅ SQLite + FTS5 + smart recall | ❌ | ❌ |
 | Mandatory deps | `serde` only | `reqwest`, `tokio`, … | Many |
@@ -438,6 +450,7 @@ llm-kernel is a **lightweight foundation layer** — compose it with rig or lang
 
 - **`LLMClient` trait** — unified interface for `OpenAIClient` and `AnthropicClient`
 - **`EmbeddingProvider` trait** — unified interface for `FastembedProvider` (ONNX), `Qwen3Provider` (candle), `NomicMoeProvider` (candle), `OpenAIEmbeddingClient` (remote)
+- **`VectorIndex` trait** — unified interface for compressed vector indexes; `TurbovecIndex` (TurboQuant) implements 2-bit/4-bit quantized ANN search with SIMD kernels
 - **`ProviderIndex`** — zero-copy access to embedded catalog, queryable by provider or model
 - **`McpServer`** — JSON-RPC 2.0 server with stdio transport, Bearer auth, tool registration
 - **`SecretVault`** — `HashMap<String, String>` with dotenv load/save and symlink guards
