@@ -16,12 +16,28 @@ use std::path::Path;
 use anyhow::Result;
 
 /// A single search hit from vector index lookup.
+///
+/// Sorts by **descending** score (highest similarity first). Ties are broken
+/// by ascending ID for deterministic ordering.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SearchHit {
     /// External identifier for the matched vector.
     pub id: u64,
     /// Similarity score (higher = more similar).
     pub score: f32,
+}
+
+impl PartialOrd for SearchHit {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        // f32 is not Ord, so we use total_cmp for a total ordering.
+        // Reverse score order: highest score first, then ascending ID.
+        Some(
+            other
+                .score
+                .total_cmp(&self.score)
+                .then_with(|| self.id.cmp(&other.id)),
+        )
+    }
 }
 
 /// Trait for compressed vector indexes.
@@ -42,6 +58,12 @@ pub trait VectorIndex: Send + Sync {
 
     /// Add vectors with explicit external IDs.
     fn add_with_ids(&mut self, vectors: &[Vec<f32>], ids: &[u64]) -> Result<()>;
+
+    /// Remove vectors by their external IDs.
+    ///
+    /// IDs that do not exist in the index are silently ignored.
+    /// Passing an empty slice is a no-op.
+    fn remove(&mut self, ids: &[u64]) -> Result<()>;
 
     /// Search for the `k` nearest neighbors of `query`.
     fn search(&self, query: &[f32], k: usize) -> Result<Vec<SearchHit>>;
@@ -86,5 +108,31 @@ mod tests {
         let copied = hit; // Copy semantics — no .clone() needed
         assert_eq!(copied.id, hit.id);
         assert_eq!(copied.score, hit.score);
+    }
+
+    #[test]
+    fn search_hit_sort_descending_by_score() {
+        let mut hits = vec![
+            SearchHit { id: 1, score: 0.3 },
+            SearchHit { id: 2, score: 0.9 },
+            SearchHit { id: 3, score: 0.5 },
+        ];
+        hits.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        assert_eq!(hits[0].id, 2); // highest score first
+        assert_eq!(hits[1].id, 3);
+        assert_eq!(hits[2].id, 1);
+    }
+
+    #[test]
+    fn search_hit_tie_break_by_id() {
+        let mut hits = vec![
+            SearchHit { id: 30, score: 0.5 },
+            SearchHit { id: 10, score: 0.5 },
+            SearchHit { id: 20, score: 0.5 },
+        ];
+        hits.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        assert_eq!(hits[0].id, 10);
+        assert_eq!(hits[1].id, 20);
+        assert_eq!(hits[2].id, 30);
     }
 }

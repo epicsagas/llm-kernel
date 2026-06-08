@@ -71,6 +71,23 @@ impl TurbovecIndex {
             "corrupted index meta: dim must be positive, got {}",
             meta.dim,
         );
+
+        // Cross-validate: loaded index vs sidecar metadata.
+        let inner_dim = inner.dim();
+        ensure!(
+            inner_dim == 0 || inner_dim == meta.dim,
+            "index-meta mismatch: index dim={}, meta dim={}",
+            inner_dim,
+            meta.dim,
+        );
+        let inner_bw = inner.bit_width();
+        ensure!(
+            inner_bw == meta.bit_width as usize,
+            "index-meta mismatch: index bit_width={}, meta bit_width={}",
+            inner_bw,
+            meta.bit_width,
+        );
+
         Ok(Self {
             inner,
             dim: meta.dim,
@@ -124,6 +141,13 @@ impl VectorIndex for TurbovecIndex {
         self.inner
             .add_with_ids_2d(&flat, self.dim, ids)
             .map_err(|e| anyhow!("add failed: {e}"))?;
+        Ok(())
+    }
+
+    fn remove(&mut self, ids: &[u64]) -> Result<()> {
+        for &id in ids {
+            self.inner.remove(id);
+        }
         Ok(())
     }
 
@@ -419,5 +443,79 @@ mod tests {
         idx.add(&[random_vector(64, 1.0)]).unwrap();
         assert_eq!(idx.len(), 1);
         assert!(!idx.is_empty());
+    }
+
+    #[test]
+    fn remove_existing_id() {
+        let mut idx = make_index(64, 4);
+        idx.add_with_ids(
+            &[
+                random_vector(64, 1.0),
+                random_vector(64, 2.0),
+                random_vector(64, 3.0),
+            ],
+            &[10u64, 20u64, 30u64],
+        )
+        .unwrap();
+        assert_eq!(idx.len(), 3);
+
+        idx.remove(&[20u64]).unwrap();
+        assert_eq!(idx.len(), 2);
+
+        // Verify removed ID no longer appears in search results.
+        let hits = idx.search(&random_vector(64, 2.0), 10).unwrap();
+        let ids: Vec<u64> = hits.iter().map(|h| h.id).collect();
+        assert!(!ids.contains(&20));
+    }
+
+    #[test]
+    fn remove_nonexistent_id() {
+        let mut idx = make_index(64, 4);
+        idx.add_with_ids(&[random_vector(64, 1.0)], &[1u64])
+            .unwrap();
+        // Removing a non-existent ID should succeed silently.
+        idx.remove(&[999u64]).unwrap();
+        assert_eq!(idx.len(), 1);
+    }
+
+    #[test]
+    fn remove_empty_ids() {
+        let mut idx = make_index(64, 4);
+        idx.add(&[random_vector(64, 1.0)]).unwrap();
+        idx.remove(&[]).unwrap();
+        assert_eq!(idx.len(), 1);
+    }
+
+    #[test]
+    fn remove_via_trait_object() {
+        let mut idx: Box<dyn VectorIndex> = Box::new(make_index(64, 4));
+        idx.add_with_ids(&[random_vector(64, 1.0)], &[42u64])
+            .unwrap();
+        idx.remove(&[42u64]).unwrap();
+        assert!(idx.is_empty());
+    }
+
+    #[test]
+    fn load_detects_dim_mismatch() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("mismatch.tvim");
+
+        let mut idx = make_index(64, 4);
+        idx.add(&[random_vector(64, 1.0)]).unwrap();
+        idx.save(&path).unwrap();
+
+        // Tamper with meta to report wrong dim.
+        let meta_path = path.with_extension("meta.json");
+        let bad_meta = r#"{"dim": 128, "bit_width": 4}"#;
+        std::fs::write(&meta_path, bad_meta).unwrap();
+
+        let result = TurbovecIndex::load(&path);
+        // Should error because inner.dim() == 64 but meta says 128.
+        assert!(result.is_err());
+        let msg = result.unwrap_err().to_string();
+        assert!(
+            msg.contains("mismatch") || msg.contains("dim"),
+            "expected mismatch error, got: {msg}"
+        );
     }
 }
