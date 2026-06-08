@@ -55,7 +55,6 @@ Each module is gated behind a feature flag so you only pay for what you use.
 | `embedding-fastembed` | Local ONNX embedding via fastembed-rs (44 models) | |
 | `embedding-fastembed-qwen3` | Qwen3 embedding via candle backend | |
 | `embedding-fastembed-nomic-moe` | Nomic V2 MoE embedding via candle backend | |
-| `vector-index` | Compressed vector indexing (TurboQuant, 16x, SIMD search) | |
 | `telemetry` | Enum-gated telemetry events, no PII | |
 | `safety` | Secret masking, error classification, output sanitization | |
 | `full` | All features | |
@@ -371,30 +370,17 @@ let result = provider.embed("hello world")?;
 assert_eq!(result.vector.len(), 768);
 ```
 
-#### Vector indexing (TurboQuant)
+### Vector indexing
 
-Compress and index embedding vectors for fast ANN search — 16x memory reduction with SIMD-accelerated scoring.
+The `VectorIndex` trait is defined in llm-kernel (zero dependencies). For a concrete implementation with TurboQuant compression (up to 16x, SIMD search), see [`llm-kernel-vector-index`](https://github.com/epicsagas/llm-kernel-vector-index).
 
 ```rust
-use llm_kernel::embedding::{TurbovecIndex, VectorIndex};
+use llm_kernel::embedding::VectorIndex;
+use llm_kernel_vector_index::TurbovecIndex;
 
-// Create index (4-bit quantization = 8x compression, recommended)
 let mut idx = TurbovecIndex::new(384, 4)?;
-
-// Index vectors
 idx.add(&[vec1, vec2, vec3])?;
-// Or with explicit IDs
-idx.add_with_ids(&[vec4], &[42u64])?;
-
-// ANN search
 let hits = idx.search(&query, 10)?;
-
-// Filtered search (hybrid retrieval: BM25 candidates → dense rerank)
-let hits = idx.search_filtered(&query, 10, &allowed_ids)?;
-
-// Persist
-idx.save(&path)?;
-let loaded = TurbovecIndex::load(&path)?;
 ```
 
 ```rust
@@ -429,9 +415,9 @@ Each model in the catalog includes:
 | | llm-kernel | [rig] | [langchain-rust] |
 |--|-----------|-------|-------------------|
 | Provider catalog | ✅ 16 providers, 114 models built-in | Manual config | Manual config |
-| Feature gates | ✅ 21 independent modules | Monolithic | Monolithic |
+| Feature gates | ✅ 20 independent modules | Monolithic | Monolithic |
 | Local embedding | ✅ 44 ONNX + Qwen3 + Nomic MoE | ❌ | ❌ |
-| Vector indexing | ✅ TurboQuant (16x compression, SIMD) | ❌ | ❌ |
+| Vector indexing | ✅ VectorIndex trait + separate crate | ❌ | ❌ |
 | MCP server | ✅ JSON-RPC 2.0 | ❌ | ❌ |
 | Knowledge graph | ✅ SQLite + FTS5 + smart recall | ❌ | ❌ |
 | Mandatory deps | `serde` only | `reqwest`, `tokio`, … | Many |
@@ -454,7 +440,7 @@ llm-kernel is a **lightweight foundation layer** — compose it with rig or lang
 │   provider    │  client  │   discovery   │  ← catalog, async LLM, model discovery
 │   catalog     │  async   │               │
 ├───────────────┴──────────┴───────────────┤
-│  graph  │  mcp  │  embedding  │  search  │  ← graph, MCP, ONNX/Qwen3/Nomic embed, RRF, vector index
+│  graph  │  mcp  │  embedding  │  search  │  ← graph, MCP, ONNX/Qwen3/Nomic embed, RRF
 ├──────────────────────────────────────────┤
 │ tokens │ telemetry │ safety │ install    │  ← token est., events, masking, wizard
 ├──────────────────────────────────────────┤
