@@ -9,9 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `embedding`: `vector-index` feature gate — compressed vector indexing via [turbovec](https://github.com/RyanCodrai/turbovec) (TurboQuant algorithm). Provides `VectorIndex` trait, `TurbovecIndex` implementation with 2-bit/4-bit quantization (up to 16x memory reduction), SIMD-accelerated ANN search, filtered search with allowlists, and persistence. Opt-in feature, not included in `full` (#13)
-- `embedding`: `SearchHit` type (`{ id: u64, score: f32 }`) returned by vector index search operations
-- `embedding`: `VectorIndex` trait — abstract interface for compressed vector indexes, matching the `EmbeddingProvider` trait pattern
+- `embedding`: `VectorIndex` trait — abstract interface for compressed vector indexes, zero dependencies. Concrete implementations live in separate crates (e.g., [`llm-kernel-vector-index`](https://github.com/epicsagas/llm-kernel-vector-index))
+- `embedding`: `SearchHit` type (`{ id: u64, score: f32 }`) for vector index search results
 
 ## [0.2.6] - 2026-06-08
 

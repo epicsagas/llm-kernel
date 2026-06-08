@@ -22,8 +22,6 @@ jobs:
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
-      - name: Install system dependencies
-        run: sudo apt-get update && sudo apt-get install -y libopenblas-dev
       - name: Clippy (all features)
         run: cargo clippy --all-features -- -D warnings
       - name: Format
@@ -48,8 +46,6 @@ jobs:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - name: Install system dependencies
-        run: sudo apt-get update && sudo apt-get install -y libopenblas-dev
       - name: Test (${{ matrix.features }})
         run: cargo test ${{ matrix.features }}
 
@@ -59,8 +55,6 @@ jobs:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - name: Install system dependencies
-        run: sudo apt-get update && sudo apt-get install -y libopenblas-dev
       - name: Build docs
         run: cargo doc --all-features --no-deps
         env:
