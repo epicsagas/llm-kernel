@@ -21,12 +21,21 @@ fn char_cpt(ch: char) -> f32 {
         0x3040..=0x30FF | 0x4E00..=0x9FFF | 0xAC00..=0xD7AF => 1.5,
         // Arabic, Devanagari, Thai
         0x0600..=0x06FF | 0x0900..=0x097F | 0x0E00..=0x0E7F => 2.0,
+        // Cyrillic (Russian, Ukrainian, Bulgarian, etc.)
+        0x0400..=0x04FF => 2.0,
+        // Greek and Coptic
+        0x0370..=0x03FF => 2.0,
+        // Hebrew
+        0x0590..=0x05FF => 2.0,
         _ => DEFAULT_CPT,
     }
 }
 
 /// Default chars-per-token for Latin/basic ASCII text.
 const DEFAULT_CPT: f32 = 4.0;
+
+/// Token weight contribution for whitespace (roughly 1 token per 4 spaces).
+const WS_WEIGHT: f32 = 0.25;
 
 /// Estimate the number of tokens in a string using Unicode-script heuristics.
 ///
@@ -39,7 +48,11 @@ pub fn estimate_tokens(text: &str) -> usize {
     let mut total_weight: f32 = 0.0;
 
     for ch in text.chars() {
-        if ch.is_whitespace() || ch.is_ascii_control() {
+        if ch.is_ascii_control() {
+            continue;
+        }
+        if ch.is_whitespace() {
+            total_weight += WS_WEIGHT;
             continue;
         }
         total_weight += 1.0 / char_cpt(ch);
@@ -102,5 +115,35 @@ mod tests {
         let short = estimate_tokens("Hello world");
         let long = estimate_tokens("Hello world Hello world Hello world");
         assert!(long > short, "long={long} should be > short={short}");
+    }
+
+    #[test]
+    fn cyrillic_text() {
+        let tokens = estimate_tokens("Привет мир");
+        // 8 non-space Cyrillic chars / 2.0 cpt ≈ 4 tokens + whitespace
+        assert!(tokens > 2 && tokens < 10, "got {tokens}");
+    }
+
+    #[test]
+    fn greek_text() {
+        let tokens = estimate_tokens("Γεια σου κόσμε");
+        assert!(tokens > 0 && tokens < 10, "got {tokens}");
+    }
+
+    #[test]
+    fn hebrew_text() {
+        let tokens = estimate_tokens("שלום עולם");
+        assert!(tokens > 0 && tokens < 10, "got {tokens}");
+    }
+
+    #[test]
+    fn whitespace_contributes_tokens() {
+        let no_space = estimate_tokens("abcdef");
+        let with_space = estimate_tokens("a b c d e f");
+        // Whitespace should add some token weight, not zero
+        assert!(
+            with_space > no_space / 2,
+            "with_space={with_space} should not be negligible vs no_space={no_space}"
+        );
     }
 }

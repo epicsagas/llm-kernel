@@ -2,6 +2,8 @@ use std::collections::HashMap;
 use std::ops::{Deref, DerefMut};
 use std::path::Path;
 
+use crate::error::{KernelError, Result};
+
 use super::atomic::write_atomic;
 
 /// Credential store backed by a dotenv-style file.
@@ -16,7 +18,7 @@ impl SecretVault {
         Self(HashMap::new())
     }
 
-    pub fn load_from(path: impl AsRef<Path>) -> anyhow::Result<Self> {
+    pub fn load_from(path: impl AsRef<Path>) -> Result<Self> {
         let path = path.as_ref();
 
         // Symlink check BEFORE read to prevent TOCTOU race.
@@ -38,17 +40,26 @@ impl SecretVault {
                 !trimmed.is_empty() && !trimmed.starts_with('#')
             })
             .try_fold(Self::empty(), |mut acc, (i, line)| {
-                let text = std::str::from_utf8(line)?.trim();
-                let (key, raw_val) = text
-                    .split_once('=')
-                    .ok_or_else(|| anyhow::anyhow!("invalid secrets file line {}", i + 1))?;
-                anyhow::ensure!(is_valid_env_key(key), "invalid secrets file line {}", i + 1);
+                let text = std::str::from_utf8(line)
+                    .map_err(|e| {
+                        KernelError::Vault(format!("invalid UTF-8 on line {}: {}", i + 1, e))
+                    })?
+                    .trim();
+                let (key, raw_val) = text.split_once('=').ok_or_else(|| {
+                    KernelError::Vault(format!("invalid secrets file line {}", i + 1))
+                })?;
+                if !is_valid_env_key(key) {
+                    return Err(KernelError::Vault(format!(
+                        "invalid secrets file line {}",
+                        i + 1
+                    )));
+                }
                 acc.0.insert(key.to_owned(), decode_shell_value(raw_val)?);
                 Ok(acc)
             })
     }
 
-    pub fn persist_to(&self, path: impl AsRef<Path>) -> anyhow::Result<()> {
+    pub fn persist_to(&self, path: impl AsRef<Path>) -> Result<()> {
         let p = path.as_ref();
         if let Some(parent) = p.parent() {
             std::fs::create_dir_all(parent)?;
@@ -72,10 +83,13 @@ impl SecretVault {
         Ok(())
     }
 
-    fn guard_not_symlink(path: &Path) -> anyhow::Result<()> {
+    fn guard_not_symlink(path: &Path) -> Result<()> {
         let meta = std::fs::symlink_metadata(path)?;
         if meta.file_type().is_symlink() {
-            anyhow::bail!("secrets file is a symlink: {}", path.display());
+            return Err(KernelError::Vault(format!(
+                "secrets file is a symlink: {}",
+                path.display()
+            )));
         }
         Ok(())
     }
@@ -139,7 +153,7 @@ fn is_valid_env_key(key: &str) -> bool {
     })
 }
 
-fn decode_shell_value(value: &str) -> anyhow::Result<String> {
+fn decode_shell_value(value: &str) -> Result<String> {
     let b = value.as_bytes();
     match b.first() {
         Some(b'\'') if b.last() == Some(&b'\'') && b.len() >= 2 => {
@@ -155,7 +169,7 @@ fn decode_shell_value(value: &str) -> anyhow::Result<String> {
     }
 }
 
-fn unescape_ansi(s: &str) -> anyhow::Result<String> {
+fn unescape_ansi(s: &str) -> Result<String> {
     let mut out = String::with_capacity(s.len());
     let mut chars = s.as_bytes().iter().copied().peekable();
     while let Some(b) = chars.next() {
@@ -164,7 +178,7 @@ fn unescape_ansi(s: &str) -> anyhow::Result<String> {
             continue;
         }
         match chars.next() {
-            None => anyhow::bail!("unterminated escape"),
+            None => return Err(KernelError::Vault("unterminated escape".into())),
             Some(b'n') => out.push('\n'),
             Some(b't') => out.push('\t'),
             Some(b'\\') => out.push('\\'),

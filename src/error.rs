@@ -27,6 +27,10 @@ pub enum KernelError {
     #[error("Store error: {0}")]
     Store(String),
 
+    /// A secrets vault error.
+    #[error("Vault error: {0}")]
+    Vault(String),
+
     /// An I/O error.
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
