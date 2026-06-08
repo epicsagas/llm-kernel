@@ -20,6 +20,7 @@ path = "src/lib.rs"
 [features]
 default = ["simd"]
 simd = []
+eval = ["dep:clap"]
 
 [dependencies]
 llm-kernel = { path = "../..", default-features = false, features = ["embedding"] }
@@ -27,6 +28,12 @@ turbovec   = "0.8"
 anyhow     = "1"
 serde      = { version = "1", features = ["derive"] }
 serde_json = "1"
+clap       = { version = "4", features = ["derive"], optional = true }
+
+[[bin]]
+name = "llm-kernel-vector-index-eval"
+path = "src/bin/eval.rs"
+required-features = ["eval"]
 
 [dev-dependencies]
 tempfile = "3"
