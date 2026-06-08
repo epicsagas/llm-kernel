@@ -1,0 +1,49 @@
+{"text":"Hello world this is a simple test","model":"gpt-4o","actual_tokens":8,"category":"ascii"}
+{"text":"The quick brown fox jumps over the lazy dog","model":"gpt-4o","actual_tokens":10,"category":"ascii"}
+{"text":"Rust is a systems programming language focused on safety and performance","model":"gpt-4o","actual_tokens":13,"category":"ascii"}
+{"text":"Machine learning models require large amounts of training data to achieve good performance","model":"gpt-4o","actual_tokens":16,"category":"ascii"}
+{"text":"The function takes two arguments and returns their sum as a floating point number","model":"gpt-4o","actual_tokens":15,"category":"ascii"}
+{"text":"In computer science a hash table is a data structure that implements an associative array","model":"gpt-4o","actual_tokens":17,"category":"ascii"}
+{"text":"API endpoints should validate all incoming requests before processing them","model":"gpt-4o","actual_tokens":12,"category":"ascii"}
+{"text":"The database connection pool manages multiple concurrent connections efficiently","model":"gpt-4o","actual_tokens":11,"category":"ascii"}
+{"text":"안녕하세요 이것은 한국어 테스트입니다","model":"gpt-4o","actual_tokens":9,"category":"cjk"}
+{"text":"機械学習は大量のトレーニングデータを必要とします","model":"gpt-4o","actual_tokens":11,"category":"cjk"}
+{"text":"深度学习模型需要大量的训练数据","model":"gpt-4o","actual_tokens":8,"category":"cjk"}
+{"text":"プログラミング言語の選択は重要です","model":"gpt-4o","actual_tokens":8,"category":"cjk"}
+{"text":"データベースの接続プールを管理する","model":"gpt-4o","actual_tokens":7,"category":"cjk"}
+{"text":"Rust言語は安全性と性能に焦点を当てています","model":"gpt-4o","actual_tokens":10,"category":"cjk"}
+{"text":"한국어 자연어 처리는 점점 발전하고 있습니다","model":"gpt-4o","actual_tokens":9,"category":"cjk"}
+{"text":"The function 파라미터를 받아서 결과를 반환합니다","model":"gpt-4o","actual_tokens":11,"category":"mixed"}
+{"text":"API 엔드포인트는 모든 요청을 검증해야 합니다","model":"gpt-4o","actual_tokens":10,"category":"mixed"}
+{"text":"Use the `cargo test` command to run 테스트","model":"gpt-4o","actual_tokens":10,"category":"mixed"}
+{"text":"이 프로젝트는 Rust로 작성된 library입니다","model":"gpt-4o","actual_tokens":10,"category":"mixed"}
+{"text":"데이터베이스 connection pool을 설정합니다","model":"gpt-4o","actual_tokens":8,"category":"mixed"}
+{"text":"Machine 학습 모델은 training data가 필요합니다","model":"gpt-4o","actual_tokens":12,"category":"mixed"}
+{"text":"🎉🚀✨🎯💡🔥","model":"gpt-4o","actual_tokens":9,"category":"emoji"}
+{"text":"Great job! 👏 Keep it up 💪","model":"gpt-4o","actual_tokens":9,"category":"emoji"}
+{"text":"🤖 AI is the future 🌟","model":"gpt-4o","actual_tokens":8,"category":"emoji"}
+{"text":"Error 404: Page not found ❌ Try again 🔄","model":"gpt-4o","actual_tokens":12,"category":"emoji"}
+{"text":"🎉 Party time! Let's celebrate 🥳🎊🎈","model":"gpt-4o","actual_tokens":10,"category":"emoji"}
+{"text":"💡 Tip: Use `cargo clippy` for linting ✅","model":"gpt-4o","actual_tokens":13,"category":"emoji"}
+{"text":"fn main() {\n    println!(\"Hello, world!\");\n}","model":"gpt-4o","actual_tokens":15,"category":"code"}
+{"text":"pub fn add(a: i32, b: i32) -> i32 {\n    a + b\n}","model":"gpt-4o","actual_tokens":18,"category":"code"}
+{"text":"use std::collections::HashMap;\n\nlet mut map = HashMap::new();\nmap.insert(\"key\", \"value\");","model":"gpt-4o","actual_tokens":25,"category":"code"}
+{"text":"async fn fetch_data(url: &str) -> Result<String, reqwest::Error> {\n    reqwest::get(url).await?.text().await\n}","model":"gpt-4o","actual_tokens":30,"category":"code"}
+{"text":"#[derive(Debug, Clone, Serialize, Deserialize)]\npub struct User {\n    pub name: String,\n    pub email: String,\n}","model":"gpt-4o","actual_tokens":28,"category":"code"}
+{"text":"impl<T> Option<T> {\n    pub fn unwrap_or(self, default: T) -> T {\n        match self {\n            Some(v) => v,\n            None => default,\n        }\n    }\n}","model":"gpt-4o","actual_tokens":38,"category":"code"}
+{"text":"# Getting Started\n\nThis guide will help you set up the project.\n\n## Prerequisites\n\n- Rust 1.92+\n- Cargo\n\n## Installation\n\n```bash\ncargo install llm-kernel\n```","model":"gpt-4o","actual_tokens":40,"category":"markdown"}
+{"text":"## API Reference\n\n### `embed(text: &str) -> Result<Vec<f32>>`\n\nGenerate an embedding vector for the given text.\n\n**Parameters:**\n- `text` - Input text to embed\n\n**Returns:** A vector of f32 values","model":"gpt-4o","actual_tokens":45,"category":"markdown"}
+{"text":"# Changelog\n\n## v0.3.0\n\n- Added vector index support\n- Improved embedding accuracy\n- Fixed token estimation for CJK text\n\n## v0.2.0\n\n- Initial release","model":"gpt-4o","actual_tokens":38,"category":"markdown"}
+{"text":"The **key** feature is its `performance`.\n\n> Note: This is a _breaking change_.\n\n| Feature | Status |\n|---------|--------|\n| Auth    | ✅     |\n| Cache   | ✅     |","model":"gpt-4o","actual_tokens":35,"category":"markdown"}
+{"text":"```rust\nlet result = function(arg)?;\n```\n\nSee [docs](https://example.com) for details.","model":"gpt-4o","actual_tokens":20,"category":"markdown"}
+{"text":"# Configuration\n\nSet `LLM_KERNEL_HOME` in your `.env` file:\n\n```\nLLM_KERNEL_HOME=/path/to/config\n```\n\nThen run `cargo build --release`.","model":"gpt-4o","actual_tokens":35,"category":"markdown"}
+{"text":"Tokenization is the process of breaking text into smaller units called tokens","model":"gpt-4o","actual_tokens":14,"category":"ascii"}
+{"text":"Vector databases enable semantic search over high dimensional embeddings","model":"gpt-4o","actual_tokens":12,"category":"ascii"}
+{"text":"Concurrency and parallelism are related but distinct concepts in computer science","model":"gpt-4o","actual_tokens":13,"category":"ascii"}
+{"text":"The implementation uses a hash map for O(1) average case lookup time complexity","model":"gpt-4o","actual_tokens":15,"category":"ascii"}
+{"text":"Embedding models transform text into dense numerical representations in vector space","model":"gpt-4o","actual_tokens":13,"category":"ascii"}
+{"text":"시스템 프로그래밍 언어로서 Rust는 메모리 안전성을 보장합니다","model":"gpt-4o","actual_tokens":10,"category":"cjk"}
+{"text":"자연어 처리에서 임베딩은 텍스트를 벡터로 변환합니다","model":"gpt-4o","actual_tokens":8,"category":"cjk"}
+{"text":"벡터 데이터베이스는 시맨틱 검색을 가능하게 합니다","model":"gpt-4o","actual_tokens":7,"category":"cjk"}
+{"text":"The output of `EmbeddingProvider` is a Vec<f32> 임베딩 벡터","model":"gpt-4o","actual_tokens":14,"category":"mixed"}
+{"text":"TCP/IP stack의 각 계층은 encapsulation을 수행합니다","model":"gpt-4o","actual_tokens":10,"category":"mixed"}
