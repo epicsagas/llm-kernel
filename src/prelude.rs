@@ -76,6 +76,26 @@ pub use crate::safety::{
     FailureCategory, classify_failure, mask_secrets, sanitize_output, strip_ansi,
 };
 
+// --- Discovery ---
+
+#[cfg(feature = "discovery")]
+pub use crate::discovery::{
+    ModelEntry, ModelLimits, ModelsDevPayload, fetch_and_cache, fetch_ollama_models,
+    fetch_openai_compatible_models, load_cache,
+};
+
+// --- Store ---
+
+#[cfg(feature = "store")]
+pub use crate::store::{
+    MigrationFn, SchemaVersion, init_in_memory, init_schema, init_schema_with_migrations,
+};
+
+// --- Config ---
+
+#[cfg(feature = "config")]
+pub use crate::config::{default_config_template, load_toml_config};
+
 // --- Install ---
 
 #[cfg(feature = "install")]
