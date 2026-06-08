@@ -16,6 +16,16 @@ pub struct TurbovecIndex {
     bit_width: u8,
 }
 
+impl std::fmt::Debug for TurbovecIndex {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TurbovecIndex")
+            .field("dim", &self.dim)
+            .field("bit_width", &self.bit_width)
+            .field("len", &self.inner.len())
+            .finish()
+    }
+}
+
 impl TurbovecIndex {
     /// Create a new index for vectors of the given dimension.
     ///
@@ -41,6 +51,33 @@ impl TurbovecIndex {
         self.bit_width
     }
 
+    /// Load a previously saved index from disk.
+    ///
+    /// This is an inherent method (not on the `VectorIndex` trait) so that the
+    /// trait remains fully object-safe. Callers must use the concrete type:
+    /// `TurbovecIndex::load(path)`.
+    pub fn load(path: &Path) -> Result<Self> {
+        let inner = turbovec::IdMapIndex::load(path)
+            .map_err(|e| anyhow!("failed to load vector index: {e}"))?;
+        let meta_path = path.with_extension("meta.json");
+        let meta: IndexMeta = serde_json::from_str(&std::fs::read_to_string(&meta_path)?)?;
+        ensure!(
+            meta.bit_width == 2 || meta.bit_width == 4,
+            "corrupted index meta: bit_width must be 2 or 4, got {}",
+            meta.bit_width,
+        );
+        ensure!(
+            meta.dim > 0,
+            "corrupted index meta: dim must be positive, got {}",
+            meta.dim,
+        );
+        Ok(Self {
+            inner,
+            dim: meta.dim,
+            bit_width: meta.bit_width,
+        })
+    }
+
     fn validate_dim(&self, v: &[f32]) -> Result<()> {
         ensure!(
             v.len() == self.dim,
@@ -50,6 +87,13 @@ impl TurbovecIndex {
         );
         Ok(())
     }
+
+    fn validate_dims(&self, vectors: &[Vec<f32>]) -> Result<()> {
+        for v in vectors {
+            self.validate_dim(v)?;
+        }
+        Ok(())
+    }
 }
 
 impl VectorIndex for TurbovecIndex {
@@ -57,12 +101,15 @@ impl VectorIndex for TurbovecIndex {
         if vectors.is_empty() {
             return Ok(());
         }
-        for v in vectors {
-            self.validate_dim(v)?;
-        }
+        self.validate_dims(vectors)?;
         let start_id = self.inner.len() as u64;
         let ids: Vec<u64> = (start_id..start_id + vectors.len() as u64).collect();
-        self.add_with_ids(vectors, &ids)
+        // Skip validation — already checked above.
+        let flat: Vec<f32> = vectors.iter().flat_map(|v| v.iter().copied()).collect();
+        self.inner
+            .add_with_ids_2d(&flat, self.dim, &ids)
+            .map_err(|e| anyhow!("add failed: {e}"))?;
+        Ok(())
     }
 
     fn add_with_ids(&mut self, vectors: &[Vec<f32>], ids: &[u64]) -> Result<()> {
@@ -72,9 +119,7 @@ impl VectorIndex for TurbovecIndex {
             vectors.len(),
             ids.len(),
         );
-        for v in vectors {
-            self.validate_dim(v)?;
-        }
+        self.validate_dims(vectors)?;
         let flat: Vec<f32> = vectors.iter().flat_map(|v| v.iter().copied()).collect();
         self.inner
             .add_with_ids_2d(&flat, self.dim, ids)
@@ -126,29 +171,36 @@ impl VectorIndex for TurbovecIndex {
     }
 
     fn save(&self, path: &Path) -> Result<()> {
+        // Atomic save: write to temp files, fsync, then rename.
+        let tmp_index = path.with_extension("tvim.tmp");
+        let tmp_meta = path.with_extension("meta.tmp");
+
+        // Write index to temp file.
         self.inner
-            .write(path)
-            .map_err(|e| anyhow!("failed to save vector index: {e}"))?;
+            .write(&tmp_index)
+            .map_err(|e| anyhow!("failed to write vector index: {e}"))?;
+
+        // Write meta to temp file.
         let meta = IndexMeta {
             dim: self.dim,
             bit_width: self.bit_width,
         };
-        let meta_path = path.with_extension("meta.json");
         let json = serde_json::to_string_pretty(&meta)?;
-        std::fs::write(&meta_path, json)?;
-        Ok(())
-    }
+        std::fs::write(&tmp_meta, &json)?;
 
-    fn load(path: &Path) -> Result<Self> {
-        let inner = turbovec::IdMapIndex::load(path)
-            .map_err(|e| anyhow!("failed to load vector index: {e}"))?;
-        let meta_path = path.with_extension("meta.json");
-        let meta: IndexMeta = serde_json::from_str(&std::fs::read_to_string(&meta_path)?)?;
-        Ok(Self {
-            inner,
-            dim: meta.dim,
-            bit_width: meta.bit_width,
-        })
+        // Fsync temp files to ensure data is on disk.
+        if let Ok(f) = std::fs::File::open(&tmp_index) {
+            let _ = f.sync_all();
+        }
+        if let Ok(f) = std::fs::File::open(&tmp_meta) {
+            let _ = f.sync_all();
+        }
+
+        // Atomic rename — POSIX guarantees rename is atomic.
+        std::fs::rename(&tmp_meta, path.with_extension("meta.json"))?;
+        std::fs::rename(&tmp_index, path)?;
+
+        Ok(())
     }
 }
 
@@ -260,7 +312,7 @@ mod tests {
     fn search_dimension_mismatch() {
         let mut idx = make_index(64, 4);
         idx.add(&[random_vector(64, 1.0)]).unwrap();
-        let result = idx.search(&vec![0.0; 32], 1);
+        let result = idx.search(&[0.0; 32], 1);
         assert!(result.is_err());
     }
 
@@ -314,6 +366,44 @@ mod tests {
         assert_eq!(loaded.dim(), 64);
         assert_eq!(loaded.bit_width(), 4);
         assert_eq!(loaded.len(), 2);
+    }
+
+    #[test]
+    fn load_rejects_corrupted_meta() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("corrupt.tvim");
+
+        // Create a valid index and save it.
+        let mut idx = make_index(64, 4);
+        idx.add(&[random_vector(64, 1.0)]).unwrap();
+        idx.save(&path).unwrap();
+
+        // Corrupt the meta file with invalid bit_width.
+        let meta_path = path.with_extension("meta.json");
+        let bad_meta = r#"{"dim": 64, "bit_width": 7}"#;
+        std::fs::write(&meta_path, bad_meta).unwrap();
+
+        let result = TurbovecIndex::load(&path);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("bit_width"));
+    }
+
+    #[test]
+    fn load_rejects_zero_dim() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("zero.tvim");
+
+        let mut idx = make_index(64, 4);
+        idx.add(&[random_vector(64, 1.0)]).unwrap();
+        idx.save(&path).unwrap();
+
+        let meta_path = path.with_extension("meta.json");
+        let bad_meta = r#"{"dim": 0, "bit_width": 4}"#;
+        std::fs::write(&meta_path, bad_meta).unwrap();
+
+        let result = TurbovecIndex::load(&path);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("dim"));
     }
 
     #[test]

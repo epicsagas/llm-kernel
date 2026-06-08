@@ -16,7 +16,7 @@ use std::path::Path;
 use anyhow::Result;
 
 /// A single search hit from vector index lookup.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SearchHit {
     /// External identifier for the matched vector.
     pub id: u64,
@@ -32,6 +32,10 @@ pub struct SearchHit {
 ///
 /// The trait is defined here with zero dependencies. Concrete implementations
 /// live in separate crates (e.g., `llm-kernel-vector-index` with TurboQuant).
+///
+/// This trait is fully object-safe — `load` is intentionally not included
+/// because it requires `Self: Sized`. Concrete types provide their own
+/// `load` inherent methods instead.
 pub trait VectorIndex: Send + Sync {
     /// Add vectors with auto-assigned sequential IDs.
     fn add(&mut self, vectors: &[Vec<f32>]) -> Result<()>;
@@ -60,11 +64,6 @@ pub trait VectorIndex: Send + Sync {
 
     /// Persist the index to disk.
     fn save(&self, path: &Path) -> Result<()>;
-
-    /// Load a previously saved index from disk.
-    fn load(path: &Path) -> Result<Self>
-    where
-        Self: Sized;
 }
 
 #[cfg(test)]
@@ -82,10 +81,10 @@ mod tests {
     }
 
     #[test]
-    fn search_hit_clone() {
+    fn search_hit_copy() {
         let hit = SearchHit { id: 1, score: 0.5 };
-        let cloned = hit.clone();
-        assert_eq!(cloned.id, hit.id);
-        assert_eq!(cloned.score, hit.score);
+        let copied = hit; // Copy semantics — no .clone() needed
+        assert_eq!(copied.id, hit.id);
+        assert_eq!(copied.score, hit.score);
     }
 }
