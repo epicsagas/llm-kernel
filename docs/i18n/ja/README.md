@@ -74,28 +74,28 @@ llm-kernelは、RustでLLM搭載ツール、エージェント、サーバーを
 
 ```toml
 [dependencies]
-llm-kernel = "0.1.0"
+llm-kernel = "0.3.2"
 ```
 
 `provider`フィーチャーはデフォルトで有効です。非同期クライアントを使用する場合：
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.1.0", features = ["client-async"] }
+llm-kernel = { version = "0.3.2", features = ["client-async"] }
 ```
 
 非同期ラッパー付きナレッジグラフを使用する場合：
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.1.0", features = ["graph", "graph-async"] }
+llm-kernel = { version = "0.3.2", features = ["graph", "graph-async"] }
 ```
 
 ローカルエンベディング（ONNX、APIキー不要）を使用する場合：
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.1.0", features = ["embedding-fastembed"] }
+llm-kernel = { version = "0.3.2", features = ["embedding-fastembed"] }
 ```
 
 ## 使用方法

@@ -14,6 +14,20 @@ fn http_client() -> Result<reqwest::Client> {
         .map_err(|e| KernelError::Config(format!("Failed to build HTTP client: {}", e)))
 }
 
+/// Check for HTTP 429 rate-limit response and extract `retry-after` header.
+fn check_rate_limit(resp: &reqwest::Response) -> Result<()> {
+    if resp.status().as_u16() == 429 {
+        let retry = resp
+            .headers()
+            .get("retry-after")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(60);
+        return Err(KernelError::RateLimited(retry));
+    }
+    Ok(())
+}
+
 #[async_trait]
 pub trait LLMClient: Send + Sync {
     async fn complete(&self, request: LLMRequest) -> Result<LLMResponse>;
@@ -142,16 +156,9 @@ impl LLMClient for OpenAIClient {
             .await
             .map_err(|e| KernelError::LlmApi(e.to_string()))?;
 
+        check_rate_limit(&resp)?;
+
         let status = resp.status();
-        if status.as_u16() == 429 {
-            let retry = resp
-                .headers()
-                .get("retry-after")
-                .and_then(|v| v.to_str().ok())
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(60);
-            return Err(KernelError::RateLimited(retry));
-        }
 
         if !status.is_success() {
             let text = resp.text().await.unwrap_or_default();
@@ -214,16 +221,9 @@ impl LLMClient for OpenAIClient {
             .await
             .map_err(|e| KernelError::LlmApi(e.to_string()))?;
 
+        check_rate_limit(&resp)?;
+
         let status = resp.status();
-        if status.as_u16() == 429 {
-            let retry = resp
-                .headers()
-                .get("retry-after")
-                .and_then(|v| v.to_str().ok())
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(60);
-            return Err(KernelError::RateLimited(retry));
-        }
         if !status.is_success() {
             let text = resp.text().await.unwrap_or_default();
             return Err(KernelError::LlmApi(format!("HTTP {}: {}", status, text)));
@@ -402,6 +402,7 @@ impl AnthropicClient {
 struct AnthropicRequest {
     model: String,
     max_tokens: u32,
+    temperature: f32,
     #[serde(skip_serializing_if = "Option::is_none")]
     system: Option<String>,
     messages: Vec<AnthropicMessage>,
@@ -438,6 +439,7 @@ impl LLMClient for AnthropicClient {
     async fn complete(&self, request: LLMRequest) -> Result<LLMResponse> {
         let model = request.model.clone().unwrap_or_else(|| self.model.clone());
         let max_tokens = request.max_tokens.unwrap_or(4096);
+        let temperature = request.temperature;
         let system = request.system.clone();
         let messages: Vec<AnthropicMessage> = request
             .into_anthropic_messages()
@@ -448,6 +450,7 @@ impl LLMClient for AnthropicClient {
         let body = AnthropicRequest {
             model,
             max_tokens,
+            temperature,
             system,
             messages,
             stream: false,
@@ -464,16 +467,9 @@ impl LLMClient for AnthropicClient {
             .await
             .map_err(|e| KernelError::LlmApi(e.to_string()))?;
 
+        check_rate_limit(&resp)?;
+
         let status = resp.status();
-        if status.as_u16() == 429 {
-            let retry = resp
-                .headers()
-                .get("retry-after")
-                .and_then(|v| v.to_str().ok())
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(60);
-            return Err(KernelError::RateLimited(retry));
-        }
 
         if !status.is_success() {
             let text = resp.text().await.unwrap_or_default();
@@ -510,6 +506,7 @@ impl LLMClient for AnthropicClient {
     async fn stream_complete(&self, request: LLMRequest) -> Result<LLMStream> {
         let model = request.model.clone().unwrap_or_else(|| self.model.clone());
         let max_tokens = request.max_tokens.unwrap_or(4096);
+        let temperature = request.temperature;
         let system = request.system.clone();
         let messages: Vec<AnthropicMessage> = request
             .into_anthropic_messages()
@@ -520,6 +517,7 @@ impl LLMClient for AnthropicClient {
         let body = AnthropicRequest {
             model,
             max_tokens,
+            temperature,
             system,
             messages,
             stream: true,
@@ -536,16 +534,9 @@ impl LLMClient for AnthropicClient {
             .await
             .map_err(|e| KernelError::LlmApi(e.to_string()))?;
 
+        check_rate_limit(&resp)?;
+
         let status = resp.status();
-        if status.as_u16() == 429 {
-            let retry = resp
-                .headers()
-                .get("retry-after")
-                .and_then(|v| v.to_str().ok())
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(60);
-            return Err(KernelError::RateLimited(retry));
-        }
         if !status.is_success() {
             let text = resp.text().await.unwrap_or_default();
             return Err(KernelError::LlmApi(format!("HTTP {}: {}", status, text)));
