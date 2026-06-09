@@ -74,28 +74,28 @@ Adicione ao seu `Cargo.toml`:
 
 ```toml
 [dependencies]
-llm-kernel = "0.1.0"
+llm-kernel = "0.3.2"
 ```
 
 A feature `provider` é habilitada por padrão. Para o cliente assíncrono:
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.1.0", features = ["client-async"] }
+llm-kernel = { version = "0.3.2", features = ["client-async"] }
 ```
 
 Para o grafo de conhecimento com wrappers assíncronos:
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.1.0", features = ["graph", "graph-async"] }
+llm-kernel = { version = "0.3.2", features = ["graph", "graph-async"] }
 ```
 
 Para embedding local (ONNX, sem chave de API):
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.1.0", features = ["embedding-fastembed"] }
+llm-kernel = { version = "0.3.2", features = ["embedding-fastembed"] }
 ```
 
 ## Uso
