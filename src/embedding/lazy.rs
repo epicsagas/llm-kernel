@@ -26,7 +26,8 @@ use std::time::{Duration, Instant};
 use indexmap::IndexMap;
 
 use super::catalog::EmbeddingModel;
-use super::fastembed::{FastembedProvider, text_preview};
+use super::fastembed::FastembedProvider;
+use super::types::text_preview;
 use super::types::{EmbeddingProvider, EmbeddingResult};
 
 // ---------------------------------------------------------------------------

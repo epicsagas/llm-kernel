@@ -1,7 +1,7 @@
 //! Telemetry framework for Rust AI tools.
 //!
 //! Provides enum-gated event tracking (no free strings, no PII) with
-//! adapters for PostHog analytics and Sentry error monitoring.
+//! console and no-op sinks.
 //!
 //! ```
 //! use llm_kernel::telemetry::{TelemetryEvent, TelemetrySink, ConsoleSink, ToolName};

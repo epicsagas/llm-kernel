@@ -79,15 +79,7 @@ impl OpenAIEmbeddingClient {
     }
 }
 
-/// Returns up to 64 chars of `text`, appending `…` if truncated.
-///
-/// Uses character boundaries, so multibyte UTF-8 input never panics.
-fn text_preview(text: &str) -> String {
-    match text.char_indices().nth(64) {
-        Some((i, _)) => format!("{}…", &text[..i]),
-        None => text.to_string(),
-    }
-}
+use super::types::text_preview;
 
 impl EmbeddingProvider for OpenAIEmbeddingClient {
     fn dim(&self) -> usize {

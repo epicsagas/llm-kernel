@@ -95,6 +95,17 @@ jobs:
       - name: Clippy DirectML feature (Windows native)
         run: cargo clippy --features embedding-fastembed-directml -- -D warnings
 
+  macos-check:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Check (macOS)
+        run: cargo check --all-features
+      - name: Test (macOS)
+        run: cargo test --all-features
+
   secrets:
     runs-on: ubuntu-latest
     steps:
