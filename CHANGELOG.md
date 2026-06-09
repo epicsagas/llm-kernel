@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-06-09
+
+### Fixed
+
+- **llm**: add connect and total timeouts to reqwest Client to prevent indefinite hangs (#21)
+- **safety**: expand `mask_secrets` patterns — `api_key`, `access_token`, `private_key`, `Basic` auth, AWS `AKIA`, GitHub tokens (#22)
+- **store**: wrap SQLite migration in a transaction for atomicity (#23)
+
+### Changed
+
+- **errors**: unify `vault.rs` from `anyhow` to `KernelError::Vault`, add `discovery`/`store`/`config` prelude exports (#24)
+- **llm**: extract `into_openai_messages`/`into_anthropic_messages` methods on `LLMRequest`, deduplicate 4 message builder blocks (#25)
+
+### Added
+
+- **tokens**: extend token estimation for Cyrillic, Greek, and Hebrew scripts; count whitespace at 0.25 token weight; add doc comments with `#![deny(missing_docs)]` (#26)
+
+### Docs
+
+- Update badge styles in README files (all 12 languages) for better visibility
+
+## [0.3.0] - 2026-06-08
+
 ### Added
 
 - `eval` feature gate: quality evaluation CLI (`llm-kernel-eval`) measuring token estimation accuracy, secret masking completeness, embedding correctness, search quality, and graph query precision
