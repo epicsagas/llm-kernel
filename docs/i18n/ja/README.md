@@ -62,6 +62,7 @@ llm-kernelは、RustでLLM搭載ツール、エージェント、サーバーを
 | `embedding-fastembed` | fastembed-rsによるローカルONNXエンベディング（44モデル） | |
 | `embedding-fastembed-qwen3` | candleバックエンドによるQwen3エンベディング | |
 | `embedding-fastembed-nomic-moe` | candleバックエンドによるNomic V2 MoEエンベディング | |
+| `vector-index` | TurboQuant圧縮ベクトルインデックス — 2ビット/4ビット、SIMD ANN検索 | |
 | `telemetry` | enumゲート方式のテレメトリイベント、PIIなし | |
 | `safety` | シークレットマスキング、エラー分類、出力サニタイズ | |
 | `eval` | 品質評価CLI — トークン、セーフティ、エンベディング、検索 | |
@@ -74,7 +75,7 @@ llm-kernelは、RustでLLM搭載ツール、エージェント、サーバーを
 
 ```toml
 [dependencies]
-llm-kernel = "0.3.2"
+llm-kernel = "0.3.4"
 ```
 
 `provider`フィーチャーはデフォルトで有効です。非同期クライアントを使用する場合：

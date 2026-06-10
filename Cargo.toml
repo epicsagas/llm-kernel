@@ -16,7 +16,6 @@ exclude      = [".github/", "target/"]
 [workspace]
 members = [
     ".",
-    "crates/llm-kernel-vector-index",
 ]
 
 [lib]
@@ -62,6 +61,9 @@ search = ["dep:serde_json"]
 # Embedding provider trait + cosine similarity
 embedding = []
 
+# TurboQuant compressed vector index (2-bit/4-bit, SIMD ANN search)
+vector-index = ["embedding", "dep:turbovec", "dep:serde_json"]
+
 # OpenAI text-embedding provider (requires ureq for sync HTTP)
 embedding-openai = ["embedding", "dep:ureq", "dep:serde_json"]
 
@@ -97,7 +99,7 @@ eval-full = ["eval", "graph"]
 # Everything except Windows-only execution backends.
 # embedding-fastembed-directml is intentionally excluded: it pulls in the ort
 # RC dependency which is not appropriate for cross-platform builds.
-full = ["provider", "discovery", "client-async", "secrets", "store", "config", "graph", "graph-async", "graph-pool", "mcp", "tokens", "install", "search", "embedding", "embedding-openai", "embedding-fastembed", "embedding-fastembed-qwen3", "embedding-fastembed-nomic-moe", "telemetry", "safety"]
+full = ["provider", "discovery", "client-async", "secrets", "store", "config", "graph", "graph-async", "graph-pool", "mcp", "tokens", "install", "search", "embedding", "embedding-openai", "embedding-fastembed", "embedding-fastembed-qwen3", "embedding-fastembed-nomic-moe", "vector-index", "telemetry", "safety"]
 
 [dependencies]
 # Always required
@@ -124,6 +126,7 @@ ort         = { version = "=2.0.0-rc.12", default-features = false, optional = t
 candle-core = { version = "0.10", optional = true }
 indexmap    = { version = "2", optional = true }
 clap        = { version = "4", features = ["derive"], optional = true }
+turbovec    = { version = "0.8", optional = true }
 
 [dev-dependencies]
 tempfile = "3"

@@ -62,6 +62,7 @@ Chaque module est derriere un indicateur de fonctionnalite afin que vous ne payi
 | `embedding-fastembed` | Embedding ONNX local via fastembed-rs (44 modeles) | |
 | `embedding-fastembed-qwen3` | Embedding Qwen3 via le backend candle | |
 | `embedding-fastembed-nomic-moe` | Embedding Nomic V2 MoE via le backend candle | |
+| `vector-index` | Index vectoriel compresse TurboQuant -- 2 bits/4 bits, recherche ANN par SIMD | |
 | `telemetry` | Evenements de telemetrie gates par enum, sans PII | |
 | `safety` | Masquage de secrets, classification d'erreurs, nettoyage de sorties | |
 | `eval` | CLI d'evaluation de qualite -- tokens, securite, embedding, recherche | |
@@ -74,7 +75,7 @@ Ajoutez a votre `Cargo.toml` :
 
 ```toml
 [dependencies]
-llm-kernel = "0.3.2"
+llm-kernel = "0.3.4"
 ```
 
 La fonctionnalite `provider` est activee par defaut. Pour le client asynchrone :

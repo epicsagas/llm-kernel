@@ -26,8 +26,10 @@ pub mod qwen3;
 pub mod nomic_moe;
 
 /// Vector index trait and types (zero dependencies).
-/// Concrete implementations live in separate crates (e.g., `llm-kernel-vector-index`).
 pub mod vector_index;
+
+#[cfg(feature = "vector-index")]
+pub mod turbovec;
 
 pub use catalog::EmbeddingModel;
 pub use types::{EmbeddingProvider, EmbeddingResult, cosine_similarity};
@@ -57,3 +59,6 @@ pub use nomic_moe::NomicMoeProvider;
 pub use ort;
 
 pub use vector_index::{SearchHit, VectorIndex};
+
+#[cfg(feature = "vector-index")]
+pub use turbovec::TurbovecIndex;

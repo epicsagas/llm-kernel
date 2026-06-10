@@ -56,6 +56,7 @@ Each module is gated behind a feature flag so you only pay for what you use.
 | `embedding-fastembed` | Local ONNX embedding via fastembed-rs (44 models) | |
 | `embedding-fastembed-qwen3` | Qwen3 embedding via candle backend | |
 | `embedding-fastembed-nomic-moe` | Nomic V2 MoE embedding via candle backend | |
+| `vector-index` | TurboQuant compressed vector index — 2-bit/4-bit, SIMD ANN search | |
 | `telemetry` | Enum-gated telemetry events, no PII | |
 | `safety` | Secret masking, error classification, output sanitization | |
 | `eval` | Quality evaluation CLI — tokens, safety, embedding, search | |
@@ -68,28 +69,28 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-llm-kernel = "0.3.2"
+llm-kernel = "0.3.4"
 ```
 
 The `provider` feature is enabled by default. For the async client:
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.3.2", features = ["client-async"] }
+llm-kernel = { version = "0.3.4", features = ["client-async"] }
 ```
 
 For the knowledge graph with async wrappers:
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.3.2", features = ["graph", "graph-async"] }
+llm-kernel = { version = "0.3.4", features = ["graph", "graph-async"] }
 ```
 
 For local embedding (ONNX, no API key):
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.3.2", features = ["embedding-fastembed"] }
+llm-kernel = { version = "0.3.4", features = ["embedding-fastembed"] }
 ```
 
 ## Usage
