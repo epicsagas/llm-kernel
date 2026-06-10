@@ -88,6 +88,7 @@ impl TurbovecIndex {
             meta.bit_width,
         );
 
+
         Ok(Self {
             inner,
             dim: meta.dim,
