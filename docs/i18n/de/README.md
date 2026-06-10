@@ -62,6 +62,7 @@ Jedes Modul wird durch ein Feature-Flag gesteuert, sodass Sie nur bezahlen, was 
 | `embedding-fastembed` | Lokales ONNX-Embedding über fastembed-rs (44 Modelle) | |
 | `embedding-fastembed-qwen3` | Qwen3-Embedding über Candle-Backend | |
 | `embedding-fastembed-nomic-moe` | Nomic V2 MoE-Embedding über Candle-Backend | |
+| `vector-index` | TurboQuant-komprimierter Vektorindex — 2-Bit/4-Bit, SIMD-ANN-Suche | |
 | `telemetry` | Enum-gesteuerte Telemetrie-Ereignisse, keine PII | |
 | `safety` | Geheimnismaskierung, Fehlerklassifizierung, Ausgabebereinigung | |
 | `eval` | Qualitätsbewertungs-CLI — Tokens, Sicherheit, Embedding, Suche | |
@@ -74,7 +75,7 @@ Zu Ihrer `Cargo.toml` hinzufügen:
 
 ```toml
 [dependencies]
-llm-kernel = "0.3.2"
+llm-kernel = "0.3.4"
 ```
 
 Das `provider`-Feature ist standardmäßig aktiviert. Für den Async-Client:

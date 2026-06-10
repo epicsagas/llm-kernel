@@ -24,6 +24,7 @@ impl EmbeddingResult {
 /// Returns up to 64 chars of `text`, appending `…` if truncated.
 ///
 /// Uses character boundaries, so multibyte UTF-8 input never panics.
+#[allow(dead_code)]
 pub(crate) fn text_preview(text: &str) -> String {
     match text.char_indices().nth(64) {
         Some((i, _)) => format!("{}…", &text[..i]),

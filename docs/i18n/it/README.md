@@ -62,6 +62,7 @@ Ogni modulo è protetto da una flag di feature, così paghi solo per ciò che ut
 | `embedding-fastembed` | Embedding ONNX locale via fastembed-rs (44 modelli) | |
 | `embedding-fastembed-qwen3` | Embedding Qwen3 via backend candle | |
 | `embedding-fastembed-nomic-moe` | Embedding Nomic V2 MoE via backend candle | |
+| `vector-index` | Indice vettoriale compresso TurboQuant — 2 bit/4 bit, ricerca ANN con SIMD | |
 | `telemetry` | Eventi di telemetria con gating enum, senza PII | |
 | `safety` | Mascheramento segreti, classificazione errori, sanificazione output | |
 | `eval` | CLI di valutazione qualità — token, sicurezza, embedding, ricerca | |
@@ -74,7 +75,7 @@ Aggiungi al tuo `Cargo.toml`:
 
 ```toml
 [dependencies]
-llm-kernel = "0.3.2"
+llm-kernel = "0.3.4"
 ```
 
 La feature `provider` è abilitata per impostazione predefinita. Per il client asincrono:

@@ -62,6 +62,7 @@ Cada módulo está detrás de un flag de característica para que solo pagues po
 | `embedding-fastembed` | Embedding ONNX local vía fastembed-rs (44 modelos) | |
 | `embedding-fastembed-qwen3` | Embedding Qwen3 vía backend candle | |
 | `embedding-fastembed-nomic-moe` | Embedding Nomic V2 MoE vía backend candle | |
+| `vector-index` | Índice de vectores comprimido TurboQuant — 2 bits/4 bits, búsqueda ANN con SIMD | |
 | `telemetry` | Eventos de telemetría con enum-gating, sin PII | |
 | `safety` | Enmascaramiento de secretos, clasificación de errores, sanitización de salida | |
 | `eval` | CLI de evaluación de calidad — tokens, seguridad, embedding, búsqueda | |
@@ -74,7 +75,7 @@ Añade a tu `Cargo.toml`:
 
 ```toml
 [dependencies]
-llm-kernel = "0.3.2"
+llm-kernel = "0.3.4"
 ```
 
 La característica `provider` está habilitada por defecto. Para el cliente asíncrono:

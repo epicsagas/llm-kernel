@@ -3,7 +3,8 @@
 use std::path::Path;
 
 use anyhow::{Result, anyhow, ensure};
-use llm_kernel::embedding::{SearchHit, VectorIndex};
+
+use super::vector_index::{SearchHit, VectorIndex};
 
 /// Compressed vector index backed by TurboQuant.
 ///
@@ -199,12 +200,10 @@ impl VectorIndex for TurbovecIndex {
         let tmp_index = path.with_extension("tvim.tmp");
         let tmp_meta = path.with_extension("meta.tmp");
 
-        // Write index to temp file.
         self.inner
             .write(&tmp_index)
             .map_err(|e| anyhow!("failed to write vector index: {e}"))?;
 
-        // Write meta to temp file.
         let meta = IndexMeta {
             dim: self.dim,
             bit_width: self.bit_width,
@@ -237,7 +236,6 @@ struct IndexMeta {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use llm_kernel::embedding::VectorIndex;
     use tempfile::TempDir;
 
     fn make_index(dim: usize, bit_width: u8) -> TurbovecIndex {
@@ -326,7 +324,6 @@ mod tests {
             &[0u64, 1u64, 2u64],
         )
         .unwrap();
-
         let hits = idx.search(&target, 1).unwrap();
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].id, 1);
@@ -352,7 +349,6 @@ mod tests {
             &[10u64, 20u64, 30u64],
         )
         .unwrap();
-
         let hits = idx
             .search_filtered(&random_vector(64, 1.0), 10, &[20u64, 30u64])
             .unwrap();
@@ -376,17 +372,14 @@ mod tests {
     fn save_load_roundtrip() {
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("test.tvim");
-
         let mut idx = make_index(64, 4);
         idx.add_with_ids(
             &[random_vector(64, 1.0), random_vector(64, 2.0)],
             &[100u64, 200u64],
         )
         .unwrap();
-
         idx.save(&path).unwrap();
         let loaded = TurbovecIndex::load(&path).unwrap();
-
         assert_eq!(loaded.dim(), 64);
         assert_eq!(loaded.bit_width(), 4);
         assert_eq!(loaded.len(), 2);
@@ -396,17 +389,11 @@ mod tests {
     fn load_rejects_corrupted_meta() {
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("corrupt.tvim");
-
-        // Create a valid index and save it.
         let mut idx = make_index(64, 4);
         idx.add(&[random_vector(64, 1.0)]).unwrap();
         idx.save(&path).unwrap();
-
-        // Corrupt the meta file with invalid bit_width.
         let meta_path = path.with_extension("meta.json");
-        let bad_meta = r#"{"dim": 64, "bit_width": 7}"#;
-        std::fs::write(&meta_path, bad_meta).unwrap();
-
+        std::fs::write(&meta_path, r#"{"dim": 64, "bit_width": 7}"#).unwrap();
         let result = TurbovecIndex::load(&path);
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("bit_width"));
@@ -416,15 +403,11 @@ mod tests {
     fn load_rejects_zero_dim() {
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("zero.tvim");
-
         let mut idx = make_index(64, 4);
         idx.add(&[random_vector(64, 1.0)]).unwrap();
         idx.save(&path).unwrap();
-
         let meta_path = path.with_extension("meta.json");
-        let bad_meta = r#"{"dim": 0, "bit_width": 4}"#;
-        std::fs::write(&meta_path, bad_meta).unwrap();
-
+        std::fs::write(&meta_path, r#"{"dim": 0, "bit_width": 4}"#).unwrap();
         let result = TurbovecIndex::load(&path);
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("dim"));
@@ -458,11 +441,8 @@ mod tests {
         )
         .unwrap();
         assert_eq!(idx.len(), 3);
-
         idx.remove(&[20u64]).unwrap();
         assert_eq!(idx.len(), 2);
-
-        // Verify removed ID no longer appears in search results.
         let hits = idx.search(&random_vector(64, 2.0), 10).unwrap();
         let ids: Vec<u64> = hits.iter().map(|h| h.id).collect();
         assert!(!ids.contains(&20));
@@ -473,7 +453,6 @@ mod tests {
         let mut idx = make_index(64, 4);
         idx.add_with_ids(&[random_vector(64, 1.0)], &[1u64])
             .unwrap();
-        // Removing a non-existent ID should succeed silently.
         idx.remove(&[999u64]).unwrap();
         assert_eq!(idx.len(), 1);
     }
@@ -499,18 +478,12 @@ mod tests {
     fn load_detects_dim_mismatch() {
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("mismatch.tvim");
-
         let mut idx = make_index(64, 4);
         idx.add(&[random_vector(64, 1.0)]).unwrap();
         idx.save(&path).unwrap();
-
-        // Tamper with meta to report wrong dim.
         let meta_path = path.with_extension("meta.json");
-        let bad_meta = r#"{"dim": 128, "bit_width": 4}"#;
-        std::fs::write(&meta_path, bad_meta).unwrap();
-
+        std::fs::write(&meta_path, r#"{"dim": 128, "bit_width": 4}"#).unwrap();
         let result = TurbovecIndex::load(&path);
-        // Should error because inner.dim() == 64 but meta says 128.
         assert!(result.is_err());
         let msg = result.unwrap_err().to_string();
         assert!(
