@@ -20,6 +20,8 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
+      - name: Install system deps (OpenBLAS for turbovec)
+        run: sudo apt-get install -y libopenblas-dev
       - name: Publish to crates.io
         run: cargo publish
         env:
