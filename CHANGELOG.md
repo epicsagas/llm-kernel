@@ -7,13 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.3.4] - 2026-06-10
+## [0.3.5] - 2026-06-10
 
 ### Changed
 
+- **vector-index**: absorb `llm-kernel-vector-index` subcrate into `llm-kernel` as `vector-index` feature gate — no separate crate needed; use `features = ["vector-index"]`
+- **vector-index**: `TurbovecIndex` now re-exported as `llm_kernel::embedding::TurbovecIndex`
 - **vector-index**: remove `load` from `VectorIndex` trait — trait is now fully object-safe (`dyn VectorIndex` usable); `TurbovecIndex::load` becomes an inherent method
 - **vector-index**: atomic save pattern in `TurbovecIndex::save` (temp file → fsync → rename) for crash safety
 - **vector-index**: `SearchHit` derives `Copy + PartialEq`; `PartialOrd` impl sorts descending by score, ascending by id on ties
+- **full**: `vector-index` feature included in the `full` feature set
 
 ### Fixed
 
