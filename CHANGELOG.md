@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.4] - 2026-06-10
+
+### Changed
+
+- **vector-index**: remove `load` from `VectorIndex` trait — trait is now fully object-safe (`dyn VectorIndex` usable); `TurbovecIndex::load` becomes an inherent method
+- **vector-index**: atomic save pattern in `TurbovecIndex::save` (temp file → fsync → rename) for crash safety
+- **vector-index**: `SearchHit` derives `Copy + PartialEq`; `PartialOrd` impl sorts descending by score, ascending by id on ties
+
+### Fixed
+
+- **vector-index**: meta validation on `load` — rejects invalid `bit_width` (must be 2 or 4) and zero `dim`
+- **vector-index**: cross-validate loaded index dim/bit_width against sidecar `.meta.json` on load
+- **vector-index**: eliminate duplicate `validate_dim` calls in `add → add_with_ids` path
+
 ## [0.3.2] - 2026-06-09
 
 ### Fixed
