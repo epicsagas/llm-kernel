@@ -82,21 +82,21 @@ La fonctionnalite `provider` est activee par defaut. Pour le client asynchrone :
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.3.2", features = ["client-async"] }
+llm-kernel = { version = "0.3.4", features = ["client-async"] }
 ```
 
 Pour le graphe de connaissances avec enveloppes asynchrones :
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.3.2", features = ["graph", "graph-async"] }
+llm-kernel = { version = "0.3.4", features = ["graph", "graph-async"] }
 ```
 
 Pour l'embedding local (ONNX, sans cle API) :
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.3.2", features = ["embedding-fastembed"] }
+llm-kernel = { version = "0.3.4", features = ["embedding-fastembed"] }
 ```
 
 ## Utilisation

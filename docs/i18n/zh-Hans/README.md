@@ -82,21 +82,21 @@ llm-kernel = "0.3.4"
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.3.2", features = ["client-async"] }
+llm-kernel = { version = "0.3.4", features = ["client-async"] }
 ```
 
 如需带异步封装的知识图谱：
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.3.2", features = ["graph", "graph-async"] }
+llm-kernel = { version = "0.3.4", features = ["graph", "graph-async"] }
 ```
 
 如需本地嵌入（ONNX，无需 API 密钥）：
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.3.2", features = ["embedding-fastembed"] }
+llm-kernel = { version = "0.3.4", features = ["embedding-fastembed"] }
 ```
 
 ## 使用方法

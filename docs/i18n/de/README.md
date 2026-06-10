@@ -82,21 +82,21 @@ Das `provider`-Feature ist standardmäßig aktiviert. Für den Async-Client:
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.3.2", features = ["client-async"] }
+llm-kernel = { version = "0.3.4", features = ["client-async"] }
 ```
 
 Für den Wissensgraphen mit Async-Wrappern:
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.3.2", features = ["graph", "graph-async"] }
+llm-kernel = { version = "0.3.4", features = ["graph", "graph-async"] }
 ```
 
 Für lokales Embedding (ONNX, kein API-Schlüssel):
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.3.2", features = ["embedding-fastembed"] }
+llm-kernel = { version = "0.3.4", features = ["embedding-fastembed"] }
 ```
 
 ## Verwendung
