@@ -2,6 +2,8 @@
 
 llm-kernel development roadmap from v0.3.2 to v1.0.0.
 
+> **Current phase: v0.3.x complete ✅ — Next: v0.4.0 Core Type Upgrades**
+
 Each phase has a clear theme, concrete deliverables, and exit criteria.
 The library's core philosophy — zero-mandatory-dep composability with feature gates — is preserved throughout.
 
