@@ -26,13 +26,11 @@ async fn main() {
     let stream = client
         .stream_complete(llm_kernel::llm::LLMRequest {
             system: Some("Reply in exactly 3 sentences.".into()),
-            messages: vec![ChatMessage {
-                role: "user".into(),
-                content: "What is Rust?".into(),
-            }],
+            messages: vec![ChatMessage::user("What is Rust?")],
             model: None,
             temperature: 0.7,
             max_tokens: Some(256),
+            response_format: None,
         })
         .await
         .expect("stream failed");
