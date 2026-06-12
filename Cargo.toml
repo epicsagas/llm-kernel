@@ -126,7 +126,7 @@ ort         = { version = "=2.0.0-rc.12", default-features = false, optional = t
 candle-core = { version = "0.10", optional = true }
 indexmap    = { version = "2", optional = true }
 clap        = { version = "4", features = ["derive"], optional = true }
-turbovec    = { version = "0.8", optional = true }
+turbovec    = { version = "0.9", optional = true }
 
 [dev-dependencies]
 tempfile = "3"
