@@ -120,6 +120,15 @@ pub struct LLMResponse {
     pub model: String,
     /// Token usage statistics.
     pub usage: TokenUsage,
+    /// Reason the generation stopped (e.g. `"stop"`, `"length"`, `"tool_calls"`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub finish_reason: Option<String>,
+    /// Provider-assigned response ID (useful for logging and deduplication).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    /// Unix timestamp (seconds) when the response was created.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub created: Option<u64>,
 }
 
 /// Token usage statistics from an LLM response.

@@ -5,33 +5,51 @@ use serde::{Deserialize, Serialize};
 /// Known tool names for telemetry.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum ToolName {
+    /// Keyword or semantic search over stored data.
     Search,
+    /// Graph-aware smart recall.
     Recall,
+    /// Text embedding generation.
     Embed,
+    /// Knowledge graph query.
     GraphQuery,
+    /// Single-turn LLM completion.
     LlmComplete,
+    /// Streaming LLM completion.
     LlmStream,
+    /// Configuration file load.
     ConfigLoad,
+    /// Secret/credential read from vault.
     SecretRead,
 }
 
 /// Known feature names for telemetry.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum FeatureName {
+    /// Smart recall with composite scoring.
     SmartRecall,
+    /// BFS/DFS graph traversal.
     GraphTraversal,
+    /// Hybrid BM25 + vector search with RRF fusion.
     HybridSearch,
+    /// Unicode-aware token count estimation.
     TokenEstimation,
+    /// Regex-based error classification.
     SafetyClassification,
+    /// Output sanitization (Bidi, plane-14, null removal).
     OutputSanitization,
 }
 
 /// Provider categories for telemetry.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum ProviderCategory {
+    /// Direct API access to a first-party cloud provider (OpenAI, Anthropic, etc.).
     CloudFirstParty,
+    /// Third-party cloud provider or aggregator (OpenRouter, etc.).
     CloudThirdParty,
+    /// Locally running model (Ollama, llama.cpp, etc.).
     Local,
+    /// Proxy or routing layer in front of another provider.
     Proxy,
 }
 
@@ -46,6 +64,7 @@ pub enum TelemetryEvent {
 
     /// A tool invocation completed.
     ToolCompleted {
+        /// Tool that completed.
         tool: ToolName,
         /// Milliseconds elapsed.
         duration_ms: u64,
@@ -61,6 +80,7 @@ pub enum TelemetryEvent {
 
     /// A session ended.
     SessionEnded {
+        /// Session identifier (UUID, no PII).
         session_id: String,
         /// Total turns in the session.
         turns: u32,
@@ -75,7 +95,10 @@ pub enum TelemetryEvent {
     },
 
     /// A feature was used.
-    FeatureUsed { feature: FeatureName },
+    FeatureUsed {
+        /// Feature that was used.
+        feature: FeatureName,
+    },
 
     /// Provider routing decision.
     ProviderRouted {

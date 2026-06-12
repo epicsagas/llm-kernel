@@ -8,15 +8,25 @@ use std::sync::LazyLock;
 /// Failure category for error classification.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FailureCategory {
+    /// Type mismatch, missing symbol, or borrow-checker error.
     TypeError,
+    /// Unexpected token, parse error, or unclosed delimiter.
     SyntaxError,
+    /// Test assertion failure or `test result: FAILED`.
     TestFail,
+    /// Clippy warning, unused import, or denied lint.
     LintFail,
+    /// Compilation or linking failure.
     BuildFail,
+    /// OS-level permission or access denial.
     PermissionDenied,
+    /// Request or operation timed out.
     Timeout,
+    /// File, resource, or HTTP 404 not found.
     NotFound,
+    /// Panic, segfault, OOM, or other runtime execution error.
     RuntimeError,
+    /// Error does not match any known category.
     Unknown,
 }
 

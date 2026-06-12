@@ -14,10 +14,15 @@ use super::atomic::write_atomic;
 pub struct SecretVault(HashMap<String, String>);
 
 impl SecretVault {
+    /// Create an empty vault with no credentials loaded.
     pub fn empty() -> Self {
         Self(HashMap::new())
     }
 
+    /// Load a vault from a dotenv-style file at `path`.
+    ///
+    /// Returns an empty vault if the file does not exist.
+    /// Errors if the file is a symlink, has invalid UTF-8, or contains malformed lines.
     pub fn load_from(path: impl AsRef<Path>) -> Result<Self> {
         let path = path.as_ref();
 
@@ -59,6 +64,7 @@ impl SecretVault {
             })
     }
 
+    /// Persist the vault to a dotenv-style file at `path` using an atomic write.
     pub fn persist_to(&self, path: impl AsRef<Path>) -> Result<()> {
         let p = path.as_ref();
         if let Some(parent) = p.parent() {

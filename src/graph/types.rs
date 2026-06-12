@@ -30,22 +30,28 @@ pub fn importance_for_type(node_type: &str) -> f64 {
 /// Stored as a single row in the `nodes` SQLite table.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GraphNode {
+    /// Unique node identifier (UUID).
     pub id: String,
     /// Node type (e.g. "decision", "concept", "pattern", "error", "session").
     #[serde(rename = "type")]
     pub node_type: String,
+    /// Short title summarizing the node's content.
     pub title: String,
+    /// Full text body of the node.
     #[serde(default)]
     pub body: String,
+    /// Classification tags for filtering and search.
     #[serde(default)]
     pub tags: Vec<String>,
+    /// Projects this node belongs to.
     #[serde(default)]
     pub projects: Vec<String>,
+    /// Agents that contributed to or own this node.
     #[serde(default)]
     pub agents: Vec<String>,
-    /// ISO 8601 timestamp.
+    /// ISO 8601 creation timestamp.
     pub created: String,
-    /// ISO 8601 timestamp.
+    /// ISO 8601 last-updated timestamp.
     pub updated: String,
     /// Importance score (0.0–1.0). Higher = more valuable for recall.
     #[serde(default = "default_importance")]
@@ -61,13 +67,17 @@ pub struct GraphNode {
 /// A directed, weighted edge between two nodes.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GraphEdge {
+    /// Unique edge identifier (UUID).
     pub id: String,
+    /// Source node ID.
     pub source: String,
+    /// Target node ID.
     pub target: String,
     /// Relationship type (e.g. "related", "solves", "derived_from").
     pub relation: String,
+    /// Edge weight (0.0–1.0); higher values indicate stronger relationships.
     pub weight: f64,
-    /// ISO 8601 timestamp.
+    /// ISO 8601 creation timestamp.
     pub ts: String,
 }
 
@@ -75,12 +85,17 @@ pub struct GraphEdge {
 /// Omits body and metadata fields for compact payloads.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GraphNodeSummary {
+    /// Unique node identifier.
     pub id: String,
+    /// Short title.
     pub title: String,
+    /// Node type.
     #[serde(rename = "type")]
     pub node_type: String,
+    /// Classification tags.
     #[serde(default)]
     pub tags: Vec<String>,
+    /// Importance score (0.0–1.0).
     #[serde(default = "default_importance")]
     pub importance: f64,
 }
@@ -88,23 +103,31 @@ pub struct GraphNodeSummary {
 /// A graph snapshot containing nodes (summaries) and edges.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Graph {
+    /// All nodes in the snapshot.
     pub nodes: Vec<GraphNodeSummary>,
+    /// All edges in the snapshot.
     pub edges: Vec<GraphEdge>,
 }
 
 /// A node scored by relevance for recall ranking.
 #[derive(Debug, Clone)]
 pub struct ScoredNode {
+    /// The graph node.
     pub node: GraphNode,
+    /// Composite relevance score.
     pub score: f64,
 }
 
 /// Aggregate statistics about the knowledge graph.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GraphStats {
+    /// Total number of nodes.
     pub total_nodes: i64,
+    /// Total number of edges.
     pub total_edges: i64,
+    /// Mean importance score across all nodes.
     pub avg_importance: f64,
+    /// Node count broken down by node type.
     pub by_type: HashMap<String, i64>,
 }
 

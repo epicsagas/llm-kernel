@@ -1,3 +1,5 @@
+//! Error types for llm-kernel.
+
 use thiserror::Error;
 
 /// Errors that can occur when using llm-kernel.
@@ -13,7 +15,12 @@ pub enum KernelError {
 
     /// An HTTP error occurred (non-200 status with code).
     #[error("HTTP {status}: {message}")]
-    Http { status: u16, message: String },
+    Http {
+        /// HTTP status code.
+        status: u16,
+        /// Error message from the response body.
+        message: String,
+    },
 
     /// A request timed out.
     #[error("Request timed out after {0}s")]

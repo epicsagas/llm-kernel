@@ -10,11 +10,15 @@ use super::lifecycle::{parse_iso_to_secs, touch_nodes};
 use super::search::search_nodes;
 use super::types::{NODE_COLUMNS, ScoredNode, escape_like};
 
-/// Composite relevance score weights.
+/// Weight applied to recency in the composite relevance score.
 pub const W_RECENCY: f64 = 0.20;
+/// Weight applied to node importance in the composite relevance score.
 pub const W_IMPORTANCE: f64 = 0.35;
+/// Weight applied to access frequency in the composite relevance score.
 pub const W_ACCESS: f64 = 0.15;
+/// Weight applied to FTS (full-text search) rank in the composite relevance score.
 pub const W_FTS: f64 = 0.20;
+/// Weight applied to graph-neighbor boost in the composite relevance score.
 pub const W_GRAPH: f64 = 0.10;
 
 /// Smart recall: return nodes ranked by composite relevance.
