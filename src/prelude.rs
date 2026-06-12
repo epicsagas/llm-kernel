@@ -18,8 +18,9 @@ pub use crate::provider::{
 
 #[cfg(feature = "client-async")]
 pub use crate::llm::{
-    AnthropicClient, ChatMessage, LLMClient, LLMRequest, LLMResponse, LLMStream, ModelConfig,
-    OpenAIClient, StreamEvent, TokenUsage,
+    AnthropicClient, ChatMessage, ContentPart, LLMClient, LLMRequest, LLMRequestBuilder,
+    LLMResponse, LLMStream, MessageRole, ModelConfig, OpenAIClient, ResponseFormat, StreamEvent,
+    TokenUsage, ToolCall, ToolDefinition, ToolResult,
     json_extract::{JsonExtractor, extract_json, parse_json},
     prompt::render_prompt,
 };

@@ -10,6 +10,9 @@
 //! assert!(count > 0);
 //! ```
 
+/// Thread-safe token budget tracker.
+pub mod budget;
+
 /// Characters-per-token ratio lookup using match on Unicode code point ranges.
 /// Compiles to a jump table — O(1) per character instead of linear scan.
 fn char_cpt(ch: char) -> f32 {
