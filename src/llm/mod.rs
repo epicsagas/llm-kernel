@@ -15,6 +15,8 @@ pub mod client;
 pub mod json_extract;
 /// Prompt template rendering.
 pub mod prompt;
+/// Tool/function calling types.
+pub mod tool;
 /// Core LLM request/response types.
 pub mod types;
 
@@ -22,6 +24,10 @@ pub mod types;
 pub use client::{AnthropicClient, LLMClient, OpenAIClient};
 pub use json_extract::{JsonExtractor, extract_json, parse_json};
 pub use prompt::render_prompt;
+pub use tool::{ToolCall, ToolDefinition, ToolResult};
 #[cfg(feature = "client-async")]
 pub use types::LLMStream;
-pub use types::{ChatMessage, LLMRequest, LLMResponse, ModelConfig, StreamEvent, TokenUsage};
+pub use types::{
+    ChatMessage, ContentPart, LLMRequest, LLMRequestBuilder, LLMResponse, MessageRole, ModelConfig,
+    ResponseFormat, StreamEvent, TokenUsage,
+};
