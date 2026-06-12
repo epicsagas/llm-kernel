@@ -23,13 +23,11 @@ async fn main() {
     let response = client
         .complete(llm_kernel::llm::LLMRequest {
             system: Some("You are a helpful assistant. Reply in one sentence.".into()),
-            messages: vec![ChatMessage {
-                role: "user".into(),
-                content: "What is llm-kernel?".into(),
-            }],
+            messages: vec![ChatMessage::user("What is llm-kernel?")],
             model: None,
             temperature: 0.7,
             max_tokens: Some(256),
+            response_format: None,
         })
         .await
         .expect("completion failed");
