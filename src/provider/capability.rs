@@ -15,9 +15,28 @@ pub enum AuthStrategy {
 
 /// Capability profile for a provider — determines auth strategy and feature support.
 pub trait CapabilityProfile {
+    /// How the provider authenticates API requests.
     fn auth_strategy(&self) -> AuthStrategy;
+    /// Whether the Anthropic API key should be cleared before calling this provider.
     fn clears_anthropic_api_key(&self) -> bool;
+    /// Whether the provider supports model tiers (e.g. fast vs. powerful model aliases).
     fn supports_model_tiers(&self) -> bool;
+    /// Returns `true` if any model offered by this provider supports tool/function calling.
+    fn supports_tool_calling(&self) -> bool {
+        false
+    }
+    /// Returns `true` if any model offered by this provider accepts image input.
+    fn supports_vision(&self) -> bool {
+        false
+    }
+    /// Returns `true` if the provider supports streaming completions.
+    fn supports_streaming(&self) -> bool {
+        true
+    }
+    /// Maximum context window in tokens across all models, or `None` if unknown.
+    fn context_limit(&self) -> Option<u64> {
+        None
+    }
 }
 
 fn auth_mode_to_strategy(value: &str) -> AuthStrategy {
@@ -48,6 +67,33 @@ impl CapabilityProfile for ServiceDescriptor {
 
     fn supports_model_tiers(&self) -> bool {
         supports_tiers_for_family(&self.family)
+    }
+
+    fn supports_tool_calling(&self) -> bool {
+        self.models
+            .iter()
+            .any(|m| m.capabilities.as_ref().is_some_and(|c| c.tool_call))
+    }
+
+    fn supports_vision(&self) -> bool {
+        self.models.iter().any(|m| {
+            m.modalities
+                .as_ref()
+                .is_some_and(|md| md.input.iter().any(|i| i == "image"))
+        })
+    }
+
+    fn supports_streaming(&self) -> bool {
+        self.models
+            .iter()
+            .any(|m| m.capabilities.as_ref().is_none_or(|c| c.streaming))
+    }
+
+    fn context_limit(&self) -> Option<u64> {
+        self.models
+            .iter()
+            .filter_map(|m| m.limit.as_ref().map(|l| l.context))
+            .max()
     }
 }
 

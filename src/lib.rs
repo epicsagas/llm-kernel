@@ -1,3 +1,4 @@
+#![deny(missing_docs)]
 //! # llm-kernel
 //!
 //! Foundation library for Rust AI-native applications.
@@ -30,6 +31,7 @@
 //! use llm_kernel::prelude::*;
 //! ```
 
+/// Error types and result alias for llm-kernel.
 pub mod error;
 
 #[cfg(feature = "provider")]

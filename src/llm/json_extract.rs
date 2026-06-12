@@ -76,6 +76,26 @@ impl<T: DeserializeOwned> JsonExtractor<T> {
     }
 }
 
+/// Extract the content of a named XML tag from raw LLM text.
+///
+/// Returns the text between `<tag>` and `</tag>`, trimmed of leading/trailing whitespace.
+/// Returns `None` if either the opening or closing tag is absent.
+///
+/// Useful for parsing Claude-style structured output that wraps results in XML tags:
+///
+/// ```
+/// # use llm_kernel::llm::json_extract::extract_xml_tag;
+/// let text = "Here is my answer:\n<result>\nhello world\n</result>";
+/// assert_eq!(extract_xml_tag(text, "result"), Some("hello world"));
+/// ```
+pub fn extract_xml_tag<'a>(text: &'a str, tag: &str) -> Option<&'a str> {
+    let open = format!("<{tag}>");
+    let close = format!("</{tag}>");
+    let start = text.find(open.as_str())? + open.len();
+    let end = text[start..].find(close.as_str())?;
+    Some(text[start..start + end].trim())
+}
+
 fn extract_fenced(text: &str, lang: &str) -> Option<String> {
     let opener = if lang.is_empty() {
         "```".to_string()

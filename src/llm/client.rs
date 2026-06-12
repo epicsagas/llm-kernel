@@ -28,15 +28,19 @@ fn check_rate_limit(resp: &reqwest::Response) -> Result<()> {
     Ok(())
 }
 
+/// Unified async interface for LLM chat completion and streaming.
 #[async_trait]
 pub trait LLMClient: Send + Sync {
+    /// Send a chat completion request and return the full response.
     async fn complete(&self, request: LLMRequest) -> Result<LLMResponse>;
+    /// Return the model name this client is configured to use.
     fn model_name(&self) -> &str;
 
     /// Stream a chat completion, yielding events as they arrive.
     async fn stream_complete(&self, request: LLMRequest) -> Result<LLMStream>;
 }
 
+/// Async LLM client for the OpenAI chat completions API.
 pub struct OpenAIClient {
     api_key: String,
     model: String,
@@ -45,6 +49,7 @@ pub struct OpenAIClient {
 }
 
 impl OpenAIClient {
+    /// Create a new client using credentials from the environment variable in `config`.
     pub fn new(config: &ModelConfig) -> Result<Self> {
         let api_key = std::env::var(&config.api_key_env).map_err(|_| {
             KernelError::Config(format!(
@@ -63,6 +68,7 @@ impl OpenAIClient {
         })
     }
 
+    /// Create a new client with an explicit API key, using the default OpenAI base URL.
     pub fn from_key(model: impl Into<String>, api_key: impl Into<String>) -> Self {
         Self {
             api_key: api_key.into(),
@@ -187,6 +193,9 @@ impl LLMClient for OpenAIClient {
             content,
             model: chat_resp.model,
             usage: usage.unwrap_or_default(),
+            finish_reason: None,
+            id: None,
+            created: None,
         })
     }
 
@@ -348,6 +357,7 @@ fn parse_anthropic_sse(event_type: &str, data: &str) -> Option<StreamEvent> {
     }
 }
 
+/// Async LLM client for the Anthropic Messages API.
 pub struct AnthropicClient {
     api_key: String,
     model: String,
@@ -356,6 +366,7 @@ pub struct AnthropicClient {
 }
 
 impl AnthropicClient {
+    /// Create a new client using credentials from the environment variable in `config`.
     pub fn new(config: &ModelConfig) -> Result<Self> {
         let api_key = std::env::var(&config.api_key_env).map_err(|_| {
             KernelError::Config(format!(
@@ -374,6 +385,7 @@ impl AnthropicClient {
         })
     }
 
+    /// Create a new client with an explicit API key, using the default Anthropic base URL.
     pub fn from_key(model: impl Into<String>, api_key: impl Into<String>) -> Self {
         Self {
             api_key: api_key.into(),
@@ -496,6 +508,9 @@ impl LLMClient for AnthropicClient {
                 completion_tokens: chat_resp.usage.output_tokens,
                 total_tokens: chat_resp.usage.input_tokens + chat_resp.usage.output_tokens,
             },
+            finish_reason: None,
+            id: None,
+            created: None,
         })
     }
 

@@ -10,7 +10,9 @@
 //! assert!(vault.is_empty());
 //! ```
 
+/// Atomic file write helper for crash-safe credential saves.
 pub mod atomic;
+/// Secret vault backed by a dotenv-style file.
 pub mod vault;
 
 pub use vault::{SecretVault, redact_credential};

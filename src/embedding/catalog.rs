@@ -9,61 +9,105 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum EmbeddingModel {
     // ── sentence-transformers ───────────────────────
+    /// BGE Small EN v1.5 — fast 384-dim English model (default).
     #[default]
     BGESmallENV15,
+    /// sentence-transformers all-MiniLM-L6-v2 (384-dim).
     AllMiniLML6V2,
+    /// Quantized all-MiniLM-L6-v2 (384-dim).
     AllMiniLML6V2Q,
+    /// sentence-transformers all-MiniLM-L12-v2 (384-dim).
     AllMiniLML12V2,
+    /// Quantized all-MiniLM-L12-v2 (384-dim).
     AllMiniLML12V2Q,
+    /// sentence-transformers all-mpnet-base-v2 (768-dim).
     AllMpnetBaseV2,
     // ── BGE family ──────────────────────────────────
+    /// BGE Base EN v1.5 (768-dim).
     BGEBaseENV15,
+    /// Quantized BGE Base EN v1.5 (768-dim).
     BGEBaseENV15Q,
+    /// BGE Large EN v1.5 (1024-dim).
     BGELargeENV15,
+    /// Quantized BGE Large EN v1.5 (1024-dim).
     BGELargeENV15Q,
+    /// Quantized BGE Small EN v1.5 (384-dim).
     BGESmallENV15Q,
+    /// BGE Small ZH v1.5 — Chinese model (512-dim).
     BGESmallZHV15,
+    /// BGE Large ZH v1.5 — Chinese model (1024-dim).
     BGELargeZHV15,
+    /// BGE M3 — multilingual, 100+ languages, 8192 context (1024-dim).
     BGEM3,
     // ── Nomic ───────────────────────────────────────
+    /// Nomic Embed Text v1 — 8192 context English model (768-dim).
     NomicEmbedTextV1,
+    /// Nomic Embed Text v1.5 — 8192 context English model (768-dim).
     NomicEmbedTextV15,
+    /// Quantized Nomic Embed Text v1.5 (768-dim).
     NomicEmbedTextV15Q,
     // ── Paraphrase ──────────────────────────────────
+    /// Paraphrase multilingual MiniLM-L12-v2 (384-dim).
     ParaphraseMLMiniLML12V2,
+    /// Quantized paraphrase multilingual MiniLM-L12-v2 (384-dim).
     ParaphraseMLMiniLML12V2Q,
+    /// Paraphrase multilingual mpnet-base-v2 (768-dim).
     ParaphraseMLMpnetBaseV2,
     // ── ModernBERT ──────────────────────────────────
+    /// ModernBERT Embed Large (1024-dim).
     ModernBertEmbedLarge,
     // ── E5 multilingual ─────────────────────────────
+    /// Multilingual E5 Small (384-dim).
     MultilingualE5Small,
+    /// Multilingual E5 Base (768-dim).
     MultilingualE5Base,
+    /// Multilingual E5 Large (1024-dim).
     MultilingualE5Large,
     // ── Mixedbread ──────────────────────────────────
+    /// Mixedbread mxbai-embed-large-v1 (1024-dim).
     MxbaiEmbedLargeV1,
+    /// Quantized mxbai-embed-large-v1 (1024-dim).
     MxbaiEmbedLargeV1Q,
     // ── GTE (Alibaba) ──────────────────────────────
+    /// Alibaba GTE Base EN v1.5 (768-dim).
     GTEBaseENV15,
+    /// Quantized Alibaba GTE Base EN v1.5 (768-dim).
     GTEBaseENV15Q,
+    /// Alibaba GTE Large EN v1.5 (1024-dim).
     GTELargeENV15,
+    /// Quantized Alibaba GTE Large EN v1.5 (1024-dim).
     GTELargeENV15Q,
     // ── CLIP ────────────────────────────────────────
+    /// OpenAI CLIP ViT-B/32 text encoder (512-dim).
     ClipVitB32,
     // ── Jina ────────────────────────────────────────
+    /// Jina Embeddings v2 Base for code (768-dim).
     JinaEmbeddingsV2BaseCode,
+    /// Jina Embeddings v2 Base for English (768-dim).
     JinaEmbeddingsV2BaseEN,
     // ── Gemma ───────────────────────────────────────
+    /// Google EmbeddingGemma 300M (768-dim).
     EmbeddingGemma300M,
     // ── Snowflake Arctic ────────────────────────────
+    /// Snowflake Arctic Embed XS (384-dim).
     SnowflakeArcticEmbedXS,
+    /// Quantized Snowflake Arctic Embed XS (384-dim).
     SnowflakeArcticEmbedXSQ,
+    /// Snowflake Arctic Embed S (384-dim).
     SnowflakeArcticEmbedS,
+    /// Quantized Snowflake Arctic Embed S (384-dim).
     SnowflakeArcticEmbedSQ,
+    /// Snowflake Arctic Embed M (768-dim).
     SnowflakeArcticEmbedM,
+    /// Quantized Snowflake Arctic Embed M (768-dim).
     SnowflakeArcticEmbedMQ,
+    /// Snowflake Arctic Embed M Long — 2048 context (768-dim).
     SnowflakeArcticEmbedMLong,
+    /// Quantized Snowflake Arctic Embed M Long (768-dim).
     SnowflakeArcticEmbedMLongQ,
+    /// Snowflake Arctic Embed L (1024-dim).
     SnowflakeArcticEmbedL,
+    /// Quantized Snowflake Arctic Embed L (1024-dim).
     SnowflakeArcticEmbedLQ,
 }
 

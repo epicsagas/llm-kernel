@@ -32,6 +32,16 @@ pub(crate) fn text_preview(text: &str) -> String {
     }
 }
 
+/// Normalize a vector in-place to unit length (L2 norm).
+///
+/// No-op on zero vectors to avoid division by zero.
+pub fn normalize(v: &mut [f32]) {
+    let norm: f32 = v.iter().map(|x| x * x).sum::<f32>().sqrt();
+    if norm > 0.0 {
+        v.iter_mut().for_each(|x| *x /= norm);
+    }
+}
+
 /// Compute cosine similarity between two f32 vectors.
 ///
 /// Accumulates dot product and squared norms in f64 to avoid precision

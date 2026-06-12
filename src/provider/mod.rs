@@ -11,7 +11,9 @@
 //! assert!(!catalog.ids().is_empty());
 //! ```
 
+/// Capability profiles and authentication strategies for providers.
 pub mod capability;
+/// Provider catalog, model descriptors, and pricing data.
 pub mod catalog;
 
 pub use capability::{AuthStrategy, CapabilityProfile};

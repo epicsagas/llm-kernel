@@ -9,10 +9,14 @@ use std::sync::LazyLock;
 /// Per-million-token pricing for a model.
 #[derive(Debug, Clone, Deserialize)]
 pub struct ModelCost {
+    /// Price per million input (prompt) tokens in USD.
     pub input: f64,
+    /// Price per million output (completion) tokens in USD.
     pub output: f64,
+    /// Price per million cache-read tokens, if the provider supports prompt caching.
     #[serde(default)]
     pub cache_read: Option<f64>,
+    /// Price per million cache-write tokens, if the provider supports prompt caching.
     #[serde(default)]
     pub cache_write: Option<f64>,
 }
@@ -20,28 +24,37 @@ pub struct ModelCost {
 /// Token limits for a model.
 #[derive(Debug, Clone, Deserialize)]
 pub struct ModelLimit {
+    /// Maximum context window in tokens (prompt + completion).
     pub context: u64,
+    /// Maximum output (completion) tokens per request.
     pub output: u64,
 }
 
 /// Input/output modalities a model supports.
 #[derive(Debug, Clone, Deserialize)]
 pub struct ModelModalities {
+    /// Accepted input modalities (e.g. `["text", "image"]`).
     pub input: Vec<String>,
+    /// Produced output modalities (e.g. `["text"]`).
     pub output: Vec<String>,
 }
 
 /// Capability flags for a model.
 #[derive(Debug, Clone, Deserialize)]
 pub struct ModelCapabilities {
+    /// Whether the model accepts file/image attachments.
     #[serde(default)]
     pub attachment: bool,
+    /// Whether the model supports extended reasoning / chain-of-thought.
     #[serde(default)]
     pub reasoning: bool,
+    /// Whether the model accepts a `temperature` parameter.
     #[serde(default)]
     pub temperature: bool,
+    /// Whether the model supports tool/function calling.
     #[serde(default)]
     pub tool_call: bool,
+    /// Whether the model supports streaming responses (SSE).
     #[serde(default = "default_true")]
     pub streaming: bool,
 }
@@ -53,20 +66,29 @@ fn default_true() -> bool {
 /// A model offered by a provider (models.dev-compatible).
 #[derive(Debug, Clone, Deserialize)]
 pub struct ModelDescriptor {
+    /// Unique model identifier (e.g. `"gpt-4o"`, `"claude-sonnet-4-6"`).
     pub id: String,
+    /// Human-readable model name.
     pub name: String,
+    /// Model family grouping (e.g. `"gpt-4"`, `"claude-3"`).
     #[serde(default)]
     pub family: Option<String>,
+    /// ISO 8601 date the model was released.
     #[serde(default)]
     pub release_date: Option<String>,
+    /// Pricing information per million tokens.
     #[serde(default)]
     pub cost: Option<ModelCost>,
+    /// Token limits for context and output.
     #[serde(default)]
     pub limit: Option<ModelLimit>,
+    /// Input and output modalities.
     #[serde(default)]
     pub modalities: Option<ModelModalities>,
+    /// Capability flags (tool calling, streaming, etc.).
     #[serde(default)]
     pub capabilities: Option<ModelCapabilities>,
+    /// Knowledge cutoff date (ISO 8601).
     #[serde(default)]
     pub knowledge: Option<String>,
 }
@@ -78,44 +100,63 @@ pub struct ModelDescriptor {
 /// Describes an LLM provider service with all metadata needed to connect and use it.
 #[derive(Debug, Clone, Deserialize)]
 pub struct ServiceDescriptor {
+    /// Unique provider identifier (e.g. `"openai"`, `"anthropic"`).
     pub id: String,
+    /// Human-readable display name.
     #[serde(rename = "display_name")]
     pub display_name: String,
+    /// Short description of the provider.
     pub description: String,
+    /// Provider category (e.g. `"cloud"`, `"local"`).
     pub category: String,
+    /// Provider family used to group related providers.
     pub family: String,
+    /// Authentication mode: `"none"`, `"literal"`, or `"secret"`.
     #[serde(rename = "auth_mode")]
     pub auth_mode: String,
+    /// Environment variable name that holds the API key (empty if not required).
     #[serde(rename = "key_var", skip_serializing_if = "String::is_empty", default)]
     pub key_var: String,
+    /// Literal auth token embedded in the catalog (only set when `auth_mode = "literal"`).
     #[serde(
         rename = "literal_auth_token",
         skip_serializing_if = "String::is_empty",
         default
     )]
     pub literal_auth_token: String,
+    /// Base URL for the provider's web interface.
     #[serde(rename = "base_url")]
     pub base_url: String,
+    /// Default model ID used when no model override is specified.
     #[serde(rename = "default_model")]
     pub default_model: String,
+    /// Named model tiers mapping tier name → model ID (e.g. `"fast"` → `"gpt-4o-mini"`).
     #[serde(rename = "model_tiers", default)]
     pub model_tiers: HashMap<String, String>,
+    /// Legacy list of available model choices (claudy-specific).
     #[serde(rename = "model_choices", default)]
     pub model_choices: Vec<ModelChoice>,
+    /// URL used to test connectivity to the provider.
     #[serde(rename = "test_url")]
     pub test_url: String,
+    /// Setup instructions shown to the user during first-time configuration.
     #[serde(default)]
     pub setup: Vec<String>,
+    /// Usage examples shown to the user in the install wizard.
     #[serde(default)]
     pub usage: Vec<String>,
 
     // models.dev-compatible fields
+    /// API base URL override (models.dev-compatible field).
     #[serde(default)]
     pub api_base_url: Option<String>,
+    /// npm package name (models.dev-compatible field, for AI coding tools).
     #[serde(default)]
     pub npm_package: Option<String>,
+    /// Link to provider documentation.
     #[serde(default)]
     pub doc_url: Option<String>,
+    /// Full list of models offered by this provider.
     #[serde(default)]
     pub models: Vec<ModelDescriptor>,
 }
@@ -124,7 +165,9 @@ pub struct ServiceDescriptor {
 /// Retained for backward compatibility with existing catalog.json entries.
 #[derive(Debug, Clone, Deserialize)]
 pub struct ModelChoice {
+    /// Model identifier.
     pub id: String,
+    /// Short description of the model.
     pub description: String,
 }
 
@@ -226,6 +269,26 @@ impl ProviderIndex {
         self.entries
             .iter()
             .find_map(|p| p.models.iter().find(|m| m.id == model_id).map(|m| (p, m)))
+    }
+
+    /// Estimate the USD cost of an LLM call given token counts.
+    ///
+    /// Looks up `model_id` across all providers and computes:
+    /// `(input_price * prompt_tokens + output_price * completion_tokens) / 1_000_000`
+    ///
+    /// Returns `None` if the model is not found or has no pricing data.
+    pub fn estimate_cost(
+        &self,
+        model_id: &str,
+        prompt_tokens: u32,
+        completion_tokens: u32,
+    ) -> Option<f64> {
+        let (_, model) = self.find_model(model_id)?;
+        let cost = model.cost.as_ref()?;
+        Some(
+            cost.input * prompt_tokens as f64 / 1_000_000.0
+                + cost.output * completion_tokens as f64 / 1_000_000.0,
+        )
     }
 }
 

@@ -45,8 +45,11 @@ pub enum McpNotification {
     ResourcesListChanged,
     /// Progress notification for a long-running operation.
     Progress {
+        /// Opaque token identifying the in-progress operation.
         progress_token: String,
+        /// Current progress value.
         progress: u64,
+        /// Total expected value, if known.
         total: Option<u64>,
     },
 }

@@ -8,10 +8,14 @@
 //!
 //! Requires the `client-async` feature.
 
+/// Async LLM client implementations (OpenAI, Anthropic).
 #[cfg(feature = "client-async")]
 pub mod client;
+/// JSON extraction from raw LLM text output.
 pub mod json_extract;
+/// Prompt template rendering.
 pub mod prompt;
+/// Core LLM request/response types.
 pub mod types;
 
 #[cfg(feature = "client-async")]

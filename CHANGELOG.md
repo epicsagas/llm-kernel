@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.6] - 2026-06-12
+
+### Added
+
+- **embedding**: `normalize(&mut [f32])` — in-place L2 vector normalization utility
+- **provider**: `ProviderIndex::estimate_cost(model_id, prompt_tokens, completion_tokens)` — USD cost estimator using catalog pricing data
+- **llm**: `extract_xml_tag(text, tag)` — extract content from Claude-style `<tag>...</tag>` output
+- **provider**: `CapabilityProfile` trait extended with default methods: `supports_tool_calling`, `supports_vision`, `supports_streaming`, `context_limit`; `ServiceDescriptor` implements all four from catalog data
+- **llm**: `LLMResponse` gains optional fields `finish_reason`, `id`, `created`
+
+### Changed
+
+- **safety**: `mask_secrets` rewritten as single-pass `Regex::replace_all` (eliminates 3 separate loop passes over the input)
+- **docs**: `#![deny(missing_docs)]` enforced crate-wide; all 187 previously undocumented public items now have doc comments
+
+### Fixed
+
+- **llm**: `OpenAIClient` and `AnthropicClient` struct literal initializers updated for new `LLMResponse` optional fields
+
 ## [0.3.5] - 2026-06-10
 
 ### Changed

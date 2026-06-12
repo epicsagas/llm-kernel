@@ -4,7 +4,9 @@
 //! config struct. If the file doesn't exist and a template is provided, it
 //! creates the file first.
 
+/// TOML config loader with auto-create from template.
 pub mod loader;
+/// Default config template generator.
 pub mod template;
 
 pub use loader::load_toml_config;

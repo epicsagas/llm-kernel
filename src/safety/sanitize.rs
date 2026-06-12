@@ -1,104 +1,44 @@
 //! Output sanitization — secret masking and control character removal.
 
-/// Mask known secret patterns in a string.
+use regex::Regex;
+use std::sync::LazyLock;
+
+// Single compiled pattern covering all secret types in one pass:
+//   group 1 — Bearer/Basic prefix (case-insensitive)
+//   group 2 — Bearer/Basic token value
+//   group 3 — key=value prefix (password=, token=, ...)
+//   group 4 — key=value value
+//   groups 5–7 — standalone sk-*, AKIA*, gh[posu]_* tokens
+static SECRET_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"(?i:bearer |basic )(\S+)|((?:password|token|key|secret|api_key|apikey|access_token|private_key)=)(\S+)|(sk-\S+)|(AKIA[A-Za-z0-9]+)|(gh[posu]_[A-Za-z0-9]+)"
+    ).expect("SECRET_RE is valid")
+});
+
+/// Mask known secret patterns in a string in a single pass.
 ///
-/// Handles `Bearer`/`Basic` auth headers, `sk-*` API keys, AWS keys (`AKIA...`),
-/// GitHub tokens (`ghp_`/`gho_`/`ghs_`/`ghu_`), and `password=`, `token=`,
-/// `key=`, `secret=`, `api_key=`, `apikey=`, `access_token=`, `private_key=` values.
-/// All occurrences are masked. Bearer matching is case-insensitive.
+/// Handles `Bearer`/`Basic` auth headers (case-insensitive), `sk-*` API keys,
+/// AWS keys (`AKIA...`), GitHub tokens (`ghp_`/`gho_`/`ghs_`/`ghu_`), and
+/// `password=`, `token=`, `key=`, `secret=`, `api_key=`, `apikey=`,
+/// `access_token=`, `private_key=` values. All occurrences are masked.
 pub fn mask_secrets(input: &str) -> String {
-    let mut result = input.to_string();
-
-    // Mask all Bearer/Basic tokens (case-insensitive)
-    for prefix in &["Bearer ", "bearer ", "Basic "] {
-        let mut search_from = 0;
-        while let Some(rel_pos) = result[search_from..].find(prefix) {
-            let value_start = search_from + rel_pos + prefix.len();
-            if value_start >= result.len() {
-                break;
-            }
-            if let Some(value_end) = result[value_start..].find(|c: char| c.is_whitespace()) {
-                result.replace_range(value_start..value_start + value_end, "****");
-                search_from = value_start + 4;
+    SECRET_RE
+        .replace_all(input, |caps: &regex::Captures| -> String {
+            if caps.get(1).is_some() {
+                // Bearer/Basic: full match = "<prefix> <value>"; group 1 = value only
+                let full = caps.get(0).unwrap().as_str();
+                let val = caps.get(1).unwrap().as_str();
+                let prefix = &full[..full.len() - val.len()];
+                format!("{prefix}****")
+            } else if let Some(key_prefix) = caps.get(2) {
+                // key=value: group 2 = "key=", group 3 = value
+                format!("{}****", key_prefix.as_str())
             } else {
-                result.replace_range(value_start.., "****");
-                break;
+                // standalone: sk-*, AKIA*, gh[posu]_*
+                "****".to_string()
             }
-        }
-    }
-
-    // Mask all key=value patterns
-    for prefix in &[
-        "password=",
-        "token=",
-        "key=",
-        "secret=",
-        "api_key=",
-        "apikey=",
-        "access_token=",
-        "private_key=",
-    ] {
-        let mut search_from = 0;
-        while let Some(rel_pos) = result[search_from..].find(prefix) {
-            let value_start = search_from + rel_pos + prefix.len();
-            if let Some(value_end) = result[value_start..].find(|c: char| c.is_whitespace()) {
-                let end = value_start + value_end;
-                result.replace_range(value_start..end, "****");
-                search_from = value_start + 4;
-            } else if value_start < result.len() {
-                result.replace_range(value_start.., "****");
-                break;
-            } else {
-                break;
-            }
-        }
-    }
-
-    // Mask standalone sk-* API keys
-    let mut search_from = 0;
-    while let Some(rel_pos) = result[search_from..].find("sk-") {
-        let value_start = search_from + rel_pos;
-        if let Some(value_end) = result[value_start..].find(|c: char| c.is_whitespace()) {
-            result.replace_range(value_start..value_start + value_end, "****");
-            search_from = value_start + 4;
-        } else {
-            result.replace_range(value_start.., "****");
-            break;
-        }
-    }
-
-    // Mask AWS access keys (AKIA followed by 16 alphanumeric chars)
-    mask_prefix_pattern(&mut result, "AKIA", |c: char| c.is_ascii_alphanumeric());
-
-    // Mask GitHub tokens (ghp_, gho_, ghs_, ghu_ followed by alphanumeric)
-    for prefix in &["ghp_", "gho_", "ghs_", "ghu_"] {
-        mask_prefix_pattern(&mut result, prefix, |c: char| c.is_ascii_alphanumeric());
-    }
-
-    result
-}
-
-/// Mask a prefix-based token pattern where the value continues while `is_value_char` returns true.
-fn mask_prefix_pattern(result: &mut String, prefix: &str, is_value_char: impl Fn(char) -> bool) {
-    let mut search_from = 0;
-    while let Some(rel_pos) = result[search_from..].find(prefix) {
-        let value_start = search_from + rel_pos;
-        let remainder = &result[value_start..];
-        let value_len = remainder.len().min(
-            prefix.len()
-                + remainder[prefix.len()..]
-                    .chars()
-                    .take_while(|&c| is_value_char(c))
-                    .collect::<String>()
-                    .len(),
-        );
-        if value_len <= prefix.len() {
-            search_from = value_start + prefix.len();
-            continue;
-        }
-        result.replace_range(value_start..value_start + value_len, "****");
-        search_from = value_start + 4;
-    }
+        })
+        .into_owned()
 }
 
 /// Remove ANSI escape sequences from text.
