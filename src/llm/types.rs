@@ -228,8 +228,13 @@ pub struct LLMRequest {
     /// Model override for this request. `None` uses the client default.
     pub model: Option<String>,
     /// Desired response format. `None` uses the provider default.
+    ///
+    /// Note: client-side handling (passing to provider APIs) is planned for v0.5.0.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub response_format: Option<ResponseFormat>,
+    /// Tool definitions available to the model for this request.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tools: Option<Vec<crate::llm::ToolDefinition>>,
 }
 
 impl LLMRequest {
@@ -272,6 +277,7 @@ pub struct LLMRequestBuilder {
     max_tokens: Option<u32>,
     model: Option<String>,
     response_format: Option<ResponseFormat>,
+    tools: Option<Vec<crate::llm::ToolDefinition>>,
 }
 
 impl LLMRequestBuilder {
@@ -323,6 +329,12 @@ impl LLMRequestBuilder {
         self
     }
 
+    /// Set the tool definitions available to the model.
+    pub fn tools(mut self, tools: Vec<crate::llm::ToolDefinition>) -> Self {
+        self.tools = Some(tools);
+        self
+    }
+
     /// Build the `LLMRequest`.
     pub fn build(self) -> LLMRequest {
         LLMRequest {
@@ -332,6 +344,7 @@ impl LLMRequestBuilder {
             max_tokens: self.max_tokens,
             model: self.model,
             response_format: self.response_format,
+            tools: self.tools,
         }
     }
 }
@@ -509,6 +522,21 @@ mod tests {
         assert_eq!(req.model.as_deref(), Some("gpt-4o-mini"));
         assert!(matches!(req.response_format, Some(ResponseFormat::Json)));
         assert_eq!(req.max_tokens, Some(100));
+    }
+
+    #[test]
+    fn builder_with_tools() {
+        use crate::llm::ToolDefinition;
+        let req = LLMRequest::builder()
+            .user_message("what's the weather?")
+            .tools(vec![ToolDefinition {
+                name: "get_weather".into(),
+                description: "Get weather".into(),
+                input_schema: serde_json::json!({"type": "object"}),
+            }])
+            .build();
+        assert!(req.tools.is_some());
+        assert_eq!(req.tools.unwrap().len(), 1);
     }
 
     #[test]
