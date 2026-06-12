@@ -4,14 +4,13 @@ use regex::Regex;
 use std::sync::LazyLock;
 
 // Single compiled pattern covering all secret types in one pass:
-//   group 1 — Bearer/Basic prefix (case-insensitive)
-//   group 2 — Bearer/Basic token value
-//   group 3 — key=value prefix (password=, token=, ...)
-//   group 4 — key=value value
-//   groups 5–7 — standalone sk-*, AKIA*, gh[posu]_* tokens
+//   group 1 — Bearer/Basic token value
+//   group 2 — key=value prefix (password=, token=, ...)
+//   group 3 — key=value value
+//   groups 4–6 — standalone sk-*, AKIA*, gh[posu]_* tokens
 static SECRET_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
-        r"(?i:bearer |basic )(\S+)|((?:password|token|key|secret|api_key|apikey|access_token|private_key)=)(\S+)|(sk-\S+)|(AKIA[A-Za-z0-9]+)|(gh[posu]_[A-Za-z0-9]+)"
+        r"(?i:bearer |basic )(\S+)|((?:password|token|key|secret|api_key|apikey|access_token|private_key)=)(\S+)|(sk-\S*)|(AKIA[A-Za-z0-9]+)|(gh[posu]_[A-Za-z0-9]+)"
     ).expect("SECRET_RE is valid")
 });
 
