@@ -2,7 +2,7 @@
 
 llm-kernel development roadmap from v0.3.2 to v1.0.0.
 
-> **Current phase: v0.3.x complete ✅ — Next: v0.4.0 Core Type Upgrades**
+> **Current phase: v0.4.0 complete ✅ — Next: v0.5.0 Client Resilience & Completion**
 
 Each phase has a clear theme, concrete deliverables, and exit criteria.
 The library's core philosophy — zero-mandatory-dep composability with feature gates — is preserved throughout.
@@ -45,10 +45,12 @@ No public API changes. No new types that break existing signatures.
 
 New types, traits, and features. May include breaking API changes within 0.x semver.
 
-### v0.4.0 — Core Type Upgrades
+### v0.4.0 — Core Type Upgrades ✅
 
 Strengthen the foundational types that every downstream consumer depends on.
 This is the only phase with intentional breaking changes — do it once, lock it down.
+
+**Shipped in PR [#34](https://github.com/epicsagas/llm-kernel/pull/34).**
 
 | # | Deliverable | Scope | Breaking | Key Files |
 |---|-------------|-------|----------|-----------|
@@ -191,7 +193,7 @@ v0.3.2 (current)
   │
   ├── v0.3.4  Patch: Lint & Additive Utilities
   │
-  ├── v0.4.0  Core Type Upgrades         ← only breaking-change release
+  ├── v0.4.0  Core Type Upgrades ✅       ← only breaking-change release
   │            MessageRole, Tool types, ContentPart, TokenBudget
   │
   ├── v0.5.0  Client Resilience
