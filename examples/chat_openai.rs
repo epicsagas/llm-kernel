@@ -28,6 +28,7 @@ async fn main() {
             temperature: 0.7,
             max_tokens: Some(256),
             response_format: None,
+            tools: None,
         })
         .await
         .expect("completion failed");
