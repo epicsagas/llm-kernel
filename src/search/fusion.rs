@@ -109,7 +109,18 @@ pub fn weighted_sum_fuse(result_sets: &[Vec<SearchResult>], weights: &[f32]) -> 
 ///
 /// Inputs should be normalized first (e.g. via [`normalize_minmax`]) so that
 /// score magnitudes are comparable across lists.
+///
+/// # Precondition
+///
+/// `k` must be at least 1. With `k == 0` no document is ever in any top-`k`, so
+/// every `MNZ(d)` is `0` and all fused scores collapse to zero; the call is
+/// therefore treated as programmer error and panics (matching
+/// [`weighted_sum_fuse`]'s precondition handling).
 pub fn combmnz_fuse(result_sets: &[Vec<SearchResult>], k: usize) -> Vec<SearchResult> {
+    assert!(
+        k >= 1,
+        "combmnz_fuse: k must be >= 1 (got {k}); k == 0 zeroes every score"
+    );
     let mut scores: HashMap<String, f32> = HashMap::new();
     let mut texts: HashMap<String, String> = HashMap::new();
     let mut topk_counts: HashMap<String, usize> = HashMap::new();

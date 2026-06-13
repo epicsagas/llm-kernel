@@ -43,9 +43,12 @@ static RULES: LazyLock<Vec<Rule>> = LazyLock::new(|| {
             "instruction_override",
             0.5,
         ),
-        // Reveal/extract the hidden system prompt or initial instructions.
+        // Reveal/extract the hidden *system / initial / hidden* prompt or
+        // instructions. The system/initial/hidden qualifier is REQUIRED (not
+        // optional) so benign "show the rules" / "print instructions" do not
+        // trip the rule — only attempts to surface the privileged prompt do.
         (
-            r"(?i)\b(repeat|reveal|show|print|output|display|leak)\b.{0,40}\b(the |your )?(system |initial |hidden )?(prompt|instructions?|rules?|directives?)",
+            r"(?i)\b(repeat|reveal|show|print|output|display|leak)\b.{0,40}\b(system|initial|hidden)\b.{0,20}\b(prompt|instructions?|rules?|directives?|message)",
             "instruction_override",
             0.5,
         ),
@@ -84,11 +87,13 @@ static RULES: LazyLock<Vec<Rule>> = LazyLock::new(|| {
             "jailbreak",
             0.4,
         ),
-        // Payload drop: SQL/code execution payloads.
+        // Payload drop: destructive SQL and shell payloads — patterns that are
+        // overwhelmingly hostile even in isolation. Bare `system(`/`eval(` were
+        // intentionally removed: they are too common in legitimate coding
+        // questions ("how do I call system() in C?") to serve as standalone
+        // signals; real injection payloads still trip via DROP/rm -rf below.
         (r"(?i)\bDROP\s+(TABLE|DATABASE)\b", "payload_drop", 0.5),
         (r"(?i)\brm\s+-rf\b", "payload_drop", 0.5),
-        (r"(?i)\bsystem\s*\(", "payload_drop", 0.4),
-        (r"(?i)\beval\s*\(", "payload_drop", 0.4),
     ];
 
     raw.iter()
@@ -183,8 +188,43 @@ mod tests {
             s.signals.iter().filter(|l| **l == "payload_drop").count(),
             1
         );
-        // Four payload rules match → sum 1.8 saturates to 1.0.
+        // Three payload rules match → 1.5 saturates to 1.0.
         assert_eq!(s.score, 1.0);
+    }
+
+    #[test]
+    fn benign_show_the_rules_does_not_trigger() {
+        // "show/display ... rules" without a system/initial/hidden qualifier is
+        // benign and must NOT trip the reveal-prompt rule.
+        for text in [
+            "Show me the pricing rules for the enterprise tier.",
+            "Please display the rules for the parking garage.",
+            "How do I print debug output in Python?",
+        ] {
+            let s = detect_injection(text);
+            assert!(s.score < 0.2, "'{text}' scored {} (>=0.2)", s.score);
+            assert!(s.signals.is_empty(), "'{text}' matched {:#?}", s.signals);
+        }
+    }
+
+    #[test]
+    fn benign_code_question_does_not_trigger() {
+        // Bare system()/eval() in a coding question must NOT be flagged now
+        // that those weak payload rules were removed.
+        for text in [
+            "How do I call system() in C?",
+            "Explain how eval() works in JavaScript.",
+        ] {
+            let s = detect_injection(text);
+            assert!(s.score < 0.2, "'{text}' scored {} (>=0.2)", s.score);
+        }
+    }
+
+    #[test]
+    fn system_prompt_without_reveal_verb_is_clean() {
+        // Mentioning "system prompt" without a reveal/leak verb is benign.
+        let s = detect_injection("What does the system prompt field mean in the API docs?");
+        assert!(s.score < 0.2, "scored {}", s.score);
     }
 
     #[test]

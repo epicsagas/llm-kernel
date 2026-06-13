@@ -99,13 +99,23 @@ fn segment(text: &str) -> Vec<String> {
 ///
 /// The algorithm packs sentence units greedily into a chunk until adding the
 /// next unit would exceed [`ChunkOptions::max_tokens`]. When a new chunk
-/// starts, trailing units from the just-pushed chunk are carried over until
-/// their combined estimate reaches [`ChunkOptions::overlap_tokens`], so
-/// consecutive chunks share boundary context.
+/// starts, trailing units from the just-pushed chunk are carried over as
+/// overlap so consecutive chunks share boundary context. Overlap is
+/// best-effort but never stalls: up to [`ChunkOptions::overlap_tokens`] of
+/// trailing units are carried when they fit; if even the budget is exceeded
+/// the last unit is still carried (so context is preserved); overlap is
+/// skipped only when the emitted chunk was a single unit or `overlap_tokens`
+/// is zero.
 ///
 /// A single unit that on its own exceeds the budget is emitted as its own
 /// chunk — content is never dropped. Empty or whitespace-only input yields an
 /// empty vector.
+///
+/// **Performance:** the running window is re-estimated with
+/// [`crate::tokens::estimate_tokens`] on each unit addition, so the cost is
+/// O(k²) in the number of units per chunk. This is fine for typical retrieval
+/// chunk sizes (hundreds of tokens); very large inputs with many tiny units
+/// are not the intended use case.
 pub fn chunk_text(text: &str, opts: &ChunkOptions) -> Vec<String> {
     let units = segment(text);
     if units.is_empty() {
@@ -143,12 +153,31 @@ pub fn chunk_text(text: &str, opts: &ChunkOptions) -> Vec<String> {
         // Seed the next chunk with the overlap window of the just-pushed chunk,
         // then resume testing at the overflowing unit `end`.
         let next_start = overlap_start(&units, start, end, opts.overlap_tokens);
-        // Guard against stalls: if the overlap-seeded window `[next_start..=end]`
-        // is identical to the window we just rejected (`[start..=end]`), the
-        // overlap is not helping — start fresh at `end` instead so `end` always
-        // advances. This happens when a single trailing unit dominates the
-        // overlap budget.
-        start = if next_start <= start { end } else { next_start };
+        // Decide where the next chunk starts. Overlap is best-effort but never
+        // stalls progress:
+        //   - No overlap requested, or the emitted chunk was a single unit:
+        //     carrying it would just re-emit that unit, so advance fresh to `end`.
+        //   - `next_start <= start` means the whole chunk fits the overlap
+        //     budget; keep the final unit as minimal overlap instead of dropping
+        //     it (`end - start >= 2` here, so `end - 1 > start`: progress holds).
+        //   - Otherwise take the trailing units that fit the overlap budget.
+        // A final guard: if only the last unit is carried (`s == end - 1`) and
+        // it cannot combine with the overflowing unit, drop it — otherwise it
+        // would be re-emitted as a redundant lone-unit chunk.
+        start = if opts.overlap_tokens == 0 || end - start <= 1 {
+            end
+        } else {
+            let s = if next_start <= start {
+                end - 1
+            } else {
+                next_start
+            };
+            if s == end - 1 && estimate_tokens(&units[end - 1..=end].join(" ")) > opts.max_tokens {
+                end
+            } else {
+                s
+            }
+        };
     }
 
     // Emit any trailing packed units.
@@ -167,9 +196,9 @@ pub fn chunk_text(text: &str, opts: &ChunkOptions) -> Vec<String> {
 /// the just-pushed chunk `[prev_start..prev_end)` are carried as overlap.
 ///
 /// Walks backward from `prev_end` collecting units until their combined
-/// estimate exceeds `overlap_tokens`. Returns the earliest index whose slice
-/// still fits the budget, guaranteeing at least `prev_end - 1` (one unit of
-/// overlap) when `overlap_tokens > 0`.
+/// estimate exceeds `overlap_tokens`, returning the earliest index whose slice
+/// still fits the budget. This is a *candidate*: [`chunk_text`] applies a final
+/// progress/redundancy guard (see its docs) that may advance past it.
 fn overlap_start(
     units: &[String],
     prev_start: usize,
@@ -355,6 +384,33 @@ mod tests {
         let joined = chunks.join(" ");
         for line in ["first line", "second line", "third line"] {
             assert!(joined.contains(line), "line '{line}' was dropped");
+        }
+    }
+
+    #[test]
+    fn overlap_preserved_for_small_chunks() {
+        // Short sentences with an overlap budget close to the chunk budget:
+        // each packed chunk is smaller than the overlap window, which
+        // previously caused overlap to be silently dropped. The final sentence
+        // of each chunk must now carry into the next.
+        let text = "One. Two. Three. Four. Five. Six. Seven. Eight. Nine. Ten. \
+                    Eleven. Twelve.";
+        let opts = ChunkOptions::new(8, 7);
+        let chunks = chunk_text(text, &opts);
+        assert!(chunks.len() > 1, "expected a split, got {}", chunks.len());
+        for w in chunks.windows(2) {
+            let last = w[0]
+                .split(|c: char| matches!(c, '.' | '!' | '?'))
+                .filter(|s| !s.trim().is_empty())
+                .next_back()
+                .unwrap_or("")
+                .trim();
+            assert!(
+                !last.is_empty() && w[1].contains(last),
+                "overlap missing: '{last}' not carried into next chunk\n  c0: {:?}\n  c1: {:?}",
+                w[0],
+                w[1]
+            );
         }
     }
 }

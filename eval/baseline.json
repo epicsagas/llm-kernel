@@ -58,7 +58,7 @@
     {
       "module": "injection",
       "metrics": {
-        "cases": 13,
+        "cases": 17,
         "injection_recall": 1.0,
         "benign_specificity": 1.0,
         "accuracy": 1.0

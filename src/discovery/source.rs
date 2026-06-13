@@ -35,11 +35,13 @@ mod inner {
         /// Build a source with a custom base URL (handy for tests or a self-hosted
         /// catalog).
         ///
-        /// **Trust boundary:** the base URL is used verbatim — there is no
-        /// scheme or host allowlist, so this constructor must only receive
-        /// admin-configured values, never input derived from untrusted data
-        /// (a caller-controlled URL could be directed at internal services).
-        /// Responses are size-capped, but treat the URL itself as a trust
+        /// **Trust boundary (SSRF):** the base URL is used verbatim. There is
+        /// no scheme or host allowlist and no private-address/loopback
+        /// blocking, so this constructor must only receive admin-configured
+        /// values — never input derived from untrusted data. Redirects are
+        /// disabled and the response body is size-capped, but a caller-chosen
+        /// URL can still be pointed directly at an internal service (e.g. a
+        /// cloud metadata endpoint), so treat the URL itself as the trust
         /// boundary.
         pub fn with_base_url(base_url: impl Into<String>) -> Self {
             Self {
@@ -69,17 +71,45 @@ mod inner {
                 .redirect(reqwest::redirect::Policy::none())
                 .build()?;
             let url = format!("{}/api.json", self.base_url.trim_end_matches('/'));
-            let response = client.get(&url).send().await?;
+            // Surface non-success HTTP as a clear error before any body is
+            // read, so a 4xx/5xx error page is not misread as malformed JSON.
+            let mut response = client.get(&url).send().await?.error_for_status()?;
             // Bound the response so a malformed or hostile endpoint cannot
-            // drive unbounded memory allocation during deserialization.
+            // drive unbounded memory allocation. Two layers:
+            //   1. Fast-reject via Content-Length when the server advertises it.
+            //   2. Stream the body with a hard cap, stopping the instant it is
+            //      crossed — robust against a missing or understated length.
             const MAX_BYTES: usize = 64 * 1024 * 1024; // 64 MiB
-            let bytes = response.bytes().await?;
-            if bytes.len() > MAX_BYTES {
-                anyhow::bail!("discovery response exceeded {MAX_BYTES} bytes");
+            if let Some(len) = response.content_length()
+                && (len as usize) > MAX_BYTES
+            {
+                anyhow::bail!("discovery response advertised {len} bytes (cap {MAX_BYTES})");
             }
-            let payload: crate::discovery::ModelsDevPayload = serde_json::from_slice(&bytes)?;
+            let body = read_capped_body(&mut response, MAX_BYTES).await?;
+            let payload: crate::discovery::ModelsDevPayload = serde_json::from_slice(&body)?;
             Ok(payload.models)
         }
+    }
+
+    /// Reads the response body incrementally, erroring the moment its length
+    /// crosses `max_bytes`.
+    ///
+    /// Reading via [`reqwest::Response::chunk`] (rather than `Response::bytes`)
+    /// keeps peak memory bounded even when `Content-Length` is absent or
+    /// understates the true body: we stop as soon as the cap is exceeded,
+    /// before handing the bytes to the deserializer.
+    async fn read_capped_body(
+        response: &mut reqwest::Response,
+        max_bytes: usize,
+    ) -> anyhow::Result<Vec<u8>> {
+        let mut buf: Vec<u8> = Vec::new();
+        while let Some(chunk) = response.chunk().await? {
+            if buf.len() + chunk.len() > max_bytes {
+                anyhow::bail!("discovery response exceeded {max_bytes} bytes while streaming");
+            }
+            buf.extend_from_slice(&chunk);
+        }
+        Ok(buf)
     }
 }
 

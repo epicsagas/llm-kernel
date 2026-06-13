@@ -9,7 +9,7 @@
 | Version | `0.6.0` |
 | Edition | Rust 2024, MSRV 1.92 |
 | Lines of code | ~15,200 |
-| Total tests | 455 (443 passed, 12 ignored, 0 failed) |
+| Total tests | 459 (447 passed, 12 ignored, 0 failed) |
 | Open PRs | 1 |
 | Open branches | 1 |
 | Last commit | `c9501d7` — feat: v0.6.0 search and intelligence |
@@ -121,7 +121,7 @@ safety       → secret masking, error classification, prompt-injection detectio
 
 | Check | Status |
 |-------|--------|
-| All tests pass | ✅ 455/455 (443 passed, 12 ignored) |
+| All tests pass | ✅ 459/459 (447 passed, 12 ignored) |
 | Clippy clean | ✅ (verified before each release) |
 | CI passing | ✅ Linux + macOS dual runner |
 | Crate structure | ✅ Monolithic (subcrate removed) |
