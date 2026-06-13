@@ -17,11 +17,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **embedding**: `chunk_batch` utility — splits a batch into provider-limit-sized chunks
 - **embedding**: `LazyFastembedProvider::embed_batch` override — LRU cache lookup + batch merge of misses for true batching
 - **config**: `FieldError` struct and `validate_config` — structured field-level TOML validation errors (path/expected/value) instead of raw serde strings
-- **install**: `AgentKind` expanded with `Windsurf`, `Aider`, `RooCode` variants
+- **install**: `AgentKind` expanded with `Windsurf` and `RooCode` variants
 
 ### Changed
 
 - **embedding**: `chunk_batch` and `validate_config` re-exported from their module roots
+- **llm**: non-success HTTP responses now surface as `KernelError::Http { status, message }` instead of an `LlmApi` string; `RetryClient` retries on the structured 5xx status
+
+### Fixed
+
+- **llm**: `ConversationHistory::truncate_to_budget` now actually removes messages in place (was `&self`, left history untouched); signature is `&mut self`
+- **llm**: `ConversationHistory::push` allows consecutive `Tool` messages (parallel tool results)
+- **llm**: `RetryClient` jitter mixes `SystemTime` entropy so concurrent retriers desynchronize (real thundering-herd avoidance, no RNG dependency)
+- **install**: removed the `Aider` variant — its config path wrote `mcpServers` JSON to `.aider.conf.yml`, which Aider does not consume
 
 ## [0.4.0] - 2026-06-12
 

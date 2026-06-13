@@ -17,8 +17,6 @@ pub enum AgentKind {
     Cline,
     /// Windsurf IDE.
     Windsurf,
-    /// Aider AI pair programming.
-    Aider,
     /// Roo Code VS Code extension.
     RooCode,
 }
@@ -33,7 +31,6 @@ impl AgentKind {
             AgentKind::OpenCode,
             AgentKind::Cline,
             AgentKind::Windsurf,
-            AgentKind::Aider,
             AgentKind::RooCode,
         ]
     }
@@ -47,7 +44,6 @@ impl AgentKind {
             Self::OpenCode => "OpenCode",
             Self::Cline => "Cline",
             Self::Windsurf => "Windsurf",
-            Self::Aider => "Aider",
             Self::RooCode => "Roo Code",
         }
     }
@@ -61,7 +57,6 @@ impl AgentKind {
             Self::OpenCode => ".opencode.json",
             Self::Cline => ".cline/mcp.json",
             Self::Windsurf => ".windsurf/mcp.json",
-            Self::Aider => ".aider.conf.yml",
             Self::RooCode => ".roo/mcp.json",
         }
     }
@@ -137,7 +132,7 @@ mod tests {
 
     #[test]
     fn all_agents_covered() {
-        assert_eq!(AgentKind::all().len(), 8);
+        assert_eq!(AgentKind::all().len(), 7);
         for agent in AgentKind::all() {
             let config = test_config();
             let json = generate_mcp_config(agent, &config);

@@ -9,10 +9,10 @@
 //! # Example
 //!
 //! ```ignore
-//! use llm_kernel::llm::{LLMClient, MiddlewareClient, LoggingMiddleware};
+//! use llm_kernel::llm::{LLMClient, MiddlewareClient, NoopMiddleware};
 //!
 //! let client = OpenAIClient::from_key("gpt-4o", "sk-...");
-//! let middleware = LoggingMiddleware;
+//! let middleware = NoopMiddleware;
 //! let wrapped = MiddlewareClient::new(client, middleware);
 //! let response = wrapped.complete(request).await?;
 //! ```

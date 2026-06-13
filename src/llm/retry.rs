@@ -85,31 +85,36 @@ fn retry_delay(err: &KernelError, attempt: u32, base_delay: Duration) -> Option<
                 backoff_with_jitter(attempt, base_delay),
             ))
         }
-        KernelError::LlmApi(msg) if is_server_error(msg) => {
+        KernelError::Http { status, .. } if (*status >= 500 && *status < 600) => {
             Some(backoff_with_jitter(attempt, base_delay))
         }
         _ => None,
     }
 }
 
-/// Check if an `LlmApi` error string indicates a server error (5xx).
-fn is_server_error(msg: &str) -> bool {
-    // Error format from client.rs: "HTTP {status}: {text}"
-    msg.as_bytes().get(5).is_some_and(|&b| b == b'5') && msg.starts_with("HTTP ")
-}
-
 /// Compute exponential backoff with jitter.
 ///
-/// Delay = `base_delay * 2^attempt`, capped at 60 seconds, with a ±50% jitter
-/// using a deterministic hash of the attempt number (no external RNG dependency).
+/// Delay = `base_delay * 2^attempt`, capped at 60 seconds, with a ±50% jitter.
+/// The jitter mixes the attempt with the current monotonic-time nanoseconds so
+/// concurrent retriers desynchronize (true jitter, preventing thundering-herd).
+/// No external RNG dependency — only `std` is used.
 fn backoff_with_jitter(attempt: u32, base_delay: Duration) -> Duration {
     let base_ms = base_delay.as_millis() as u64;
     // Exponential: base * 2^attempt, capped at 60s
     let exp_ms = base_ms.saturating_mul(1u64 << attempt.min(6));
     let capped_ms = exp_ms.min(60_000);
-    // Jitter: ±50% using Knuth's multiplicative hash for pseudo-randomness
-    let jitter_hash = (attempt as u64).wrapping_mul(2654435769) % 1000;
-    let jittered_ms = capped_ms * (500 + jitter_hash) / 1000;
+    // Jitter seed: mix the attempt with a time-derived value so two retriers
+    // on the same attempt still get different delays.
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.subsec_nanos() as u64)
+        .unwrap_or(0);
+    let seed = (attempt as u64)
+        .wrapping_mul(2654435769)
+        .wrapping_add(nanos.wrapping_mul(0x9E3779B97F4A7C15));
+    let jitter_hash = seed % 1000;
+    // ±50%: scale into [0.5, 1.5) of the capped delay, then re-cap at 60s.
+    let jittered_ms = (capped_ms * (500 + jitter_hash) / 1000).min(60_000);
     Duration::from_millis(jittered_ms)
 }
 
@@ -158,26 +163,6 @@ mod tests {
     use std::sync::atomic::AtomicU32;
 
     #[test]
-    fn is_server_error_detects_5xx() {
-        assert!(is_server_error("HTTP 500: internal server error"));
-        assert!(is_server_error("HTTP 502: bad gateway"));
-        assert!(is_server_error("HTTP 503: service unavailable"));
-    }
-
-    #[test]
-    fn is_server_error_rejects_4xx() {
-        assert!(!is_server_error("HTTP 400: bad request"));
-        assert!(!is_server_error("HTTP 401: unauthorized"));
-        assert!(!is_server_error("HTTP 429: too many requests"));
-    }
-
-    #[test]
-    fn is_server_error_rejects_malformed() {
-        assert!(!is_server_error("connection refused"));
-        assert!(!is_server_error(""));
-    }
-
-    #[test]
     fn backoff_increases_with_attempts() {
         let base = Duration::from_secs(1);
         let d0 = backoff_with_jitter(0, base);
@@ -208,14 +193,20 @@ mod tests {
 
     #[test]
     fn retry_delay_server_error_returns_backoff() {
-        let err = KernelError::LlmApi("HTTP 500: error".into());
+        let err = KernelError::Http {
+            status: 500,
+            message: "error".into(),
+        };
         let delay = retry_delay(&err, 0, Duration::from_secs(1));
         assert!(delay.is_some());
     }
 
     #[test]
     fn retry_delay_client_error_returns_none() {
-        let err = KernelError::LlmApi("HTTP 400: bad request".into());
+        let err = KernelError::Http {
+            status: 400,
+            message: "bad request".into(),
+        };
         let delay = retry_delay(&err, 0, Duration::from_secs(1));
         assert!(delay.is_none());
     }
@@ -278,7 +269,10 @@ mod tests {
     }
 
     fn server_error() -> Result<LLMResponse> {
-        Err(KernelError::LlmApi("HTTP 500: error".into()))
+        Err(KernelError::Http {
+            status: 500,
+            message: "error".into(),
+        })
     }
 
     fn rate_limited() -> Result<LLMResponse> {
@@ -286,7 +280,10 @@ mod tests {
     }
 
     fn client_error() -> Result<LLMResponse> {
-        Err(KernelError::LlmApi("HTTP 400: bad request".into()))
+        Err(KernelError::Http {
+            status: 400,
+            message: "bad request".into(),
+        })
     }
 
     #[tokio::test]
@@ -339,7 +336,7 @@ mod tests {
         let result = retry.complete(LLMRequest::builder().build()).await;
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(matches!(err, KernelError::LlmApi(m) if m.contains("400")));
+        assert!(matches!(err, KernelError::Http { status: 400, .. }));
     }
 
     #[tokio::test]

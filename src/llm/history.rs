@@ -85,7 +85,7 @@ impl ConversationHistory {
     /// - `System` is only allowed as the first message.
     /// - `User` must follow `Assistant` or be first.
     /// - `Assistant` must follow `User` or `Tool`.
-    /// - `Tool` must follow `Assistant`.
+    /// - `Tool` must follow `Assistant` or another `Tool` (parallel tool results).
     pub fn push(&mut self, message: ChatMessage) -> Result<(), RoleValidationError> {
         if let Some(last) = self.messages.last() {
             let valid = match message.role {
@@ -97,7 +97,9 @@ impl ConversationHistory {
                 MessageRole::Assistant => {
                     matches!(last.role, MessageRole::User | MessageRole::Tool)
                 }
-                MessageRole::Tool => matches!(last.role, MessageRole::Assistant),
+                MessageRole::Tool => {
+                    matches!(last.role, MessageRole::Assistant | MessageRole::Tool)
+                }
             };
             if !valid {
                 return Err(RoleValidationError {
@@ -137,28 +139,30 @@ impl ConversationHistory {
     /// `budget.try_reserve(needed)` succeeds or only the system message remains.
     ///
     /// Returns the number of messages removed.
-    pub fn truncate_to_budget(&self, budget: &TokenBudget, needed: u32) -> usize {
+    pub fn truncate_to_budget(&mut self, budget: &TokenBudget, needed: u32) -> usize {
         if budget.try_reserve(needed) {
             return 0;
         }
-        // Calculate how many tokens we need to free
-        let mut removed = 0;
+        // Index 0 is preserved when it is a System message; truncation starts
+        // after it (or at 0 otherwise).
         let start = if self
             .messages
             .first()
             .is_some_and(|m| m.role == MessageRole::System)
         {
-            1 // preserve system message
+            1
         } else {
             0
         };
-        // Release tokens from oldest non-system messages
-        for i in start..self.messages.len() {
+        let mut removed = 0;
+        // Remove oldest non-system messages in place until the budget fits.
+        while start < self.messages.len() {
             if budget.try_reserve(needed) {
                 break;
             }
-            let tokens = estimate_tokens(&self.messages[i].text_content()) as u32;
+            let tokens = estimate_tokens(&self.messages[start].text_content()) as u32;
             budget.release(tokens);
+            self.messages.remove(start);
             removed += 1;
         }
         removed
@@ -166,10 +170,10 @@ impl ConversationHistory {
 
     /// Convert the history into an [`LLMRequest`] with the given system prompt.
     ///
-    /// If the first message is a `System` message and `system_prompt` is `Some`,
-    /// the system prompt from the message is replaced. Otherwise, the system
-    /// prompt is set on the request and system messages are filtered from the
-    /// message list.
+    /// Always sets the request's `system` field to `system_prompt`. Any `System`
+    /// messages in the history are filtered out of the message list, since the
+    /// system prompt is conveyed via the request's `system` field. The request
+    /// is created with a default `temperature` of `0.7`.
     pub fn into_request(self, system_prompt: impl Into<String>) -> LLMRequest {
         let system = Some(system_prompt.into());
         let messages = self
@@ -250,6 +254,17 @@ mod tests {
     }
 
     #[test]
+    fn push_consecutive_tools_allowed() {
+        // Parallel tool calls produce multiple Tool results in a row.
+        let mut h = ConversationHistory::new();
+        h.push(ChatMessage::user("run tools")).unwrap();
+        h.push(ChatMessage::assistant("calling")).unwrap();
+        assert!(h.push(ChatMessage::tool("result1")).is_ok());
+        assert!(h.push(ChatMessage::tool("result2")).is_ok());
+        assert_eq!(h.len(), 4);
+    }
+
+    #[test]
     fn into_request_sets_system_prompt() {
         let mut h = ConversationHistory::new();
         h.push(ChatMessage::system("original")).unwrap();
@@ -272,10 +287,15 @@ mod tests {
         h.push(ChatMessage::system("system")).unwrap();
         h.push(ChatMessage::user(&"x".repeat(200))).unwrap();
         h.push(ChatMessage::assistant(&"y".repeat(200))).unwrap();
+        let len_before = h.len();
 
         // Need 50 tokens but only 10 remaining → must truncate
         let removed = h.truncate_to_budget(&budget, 50);
         assert!(removed > 0);
+        // Messages were actually removed from the history
+        assert_eq!(h.len(), len_before - removed);
+        // The leading System message is preserved
+        assert_eq!(h.messages()[0].role, MessageRole::System);
     }
 
     #[test]
