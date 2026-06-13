@@ -13,6 +13,11 @@
 /// Thread-safe token budget tracker.
 pub mod budget;
 
+/// Document chunking by sentence boundary and token budget.
+pub mod chunk;
+
+pub use chunk::{ChunkOptions, chunk_text};
+
 /// Characters-per-token ratio lookup using match on Unicode code point ranges.
 /// Compiles to a jump table — O(1) per character instead of linear scan.
 fn char_cpt(ch: char) -> f32 {

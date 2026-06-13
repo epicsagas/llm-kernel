@@ -2,7 +2,7 @@
 
 llm-kernel development roadmap from v0.3.2 to v1.0.0.
 
-> **Current phase: v0.5.0 complete ✅ — Next: v0.6.0 Search & Intelligence**
+> **Current phase: v0.6.0 complete ✅ — Next: v0.7.0 Transport & Backend**
 
 Each phase has a clear theme, concrete deliverables, and exit criteria.
 The library's core philosophy — zero-mandatory-dep composability with feature gates — is preserved throughout.
@@ -85,14 +85,14 @@ Make the LLM client production-ready. Close gaps in developing modules.
 
 ---
 
-### v0.6.0 — Search & Intelligence
+### v0.6.0 — Search & Intelligence ✅
 
 Unified search abstractions, safety enhancements, and content processing utilities.
 
 | # | Deliverable | Scope | Key Files |
 |---|-------------|-------|-----------|
 | 1 | `SearchProvider` trait — unified interface for BM25, vector, API search | M | `src/search/mod.rs` |
-| 2 | Score normalization (min-max) + alternative fusion (weighted sum, CombMNZ) | M | `src/search/rrf.rs` |
+| 2 | Score normalization (min-max) + alternative fusion (weighted sum, CombMNZ) | M | `src/search/fusion.rs` |
 | 3 | Prompt injection detection (`detect_injection → InjectionScore`) | M | `src/safety/injection.rs` |
 | 4 | `DiscoverySource` trait + async discovery (`discovery-async` feature) | M | `src/discovery/mod.rs` |
 | 5 | Document chunking (sentence-boundary, token-budget, overlap) | M | new `src/tokens/chunk.rs` |
@@ -201,7 +201,7 @@ v0.3.2 (current)
   ├── v0.5.0  Client Resilience ✅
   │            Retry, Middleware, embed_batch, history management
   │
-  ├── v0.6.0  Search & Intelligence
+  ├── v0.6.0  Search & Intelligence ✅
   │            SearchProvider, injection detection, chunking, templates
   │
   ├── v0.7.0  Transport & Backend

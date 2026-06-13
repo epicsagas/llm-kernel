@@ -42,6 +42,10 @@ pub enum KernelError {
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
 
+    /// A search backend error.
+    #[error("Search error: {0}")]
+    Search(String),
+
     /// A serialization/deserialization error.
     #[cfg(feature = "provider")]
     #[error("Serialization error: {0}")]

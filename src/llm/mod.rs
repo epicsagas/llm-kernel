@@ -24,6 +24,8 @@ pub mod prompt;
 /// Exponential backoff retry wrapper for [`LLMClient`].
 #[cfg(feature = "client-async")]
 pub mod retry;
+/// Prompt templates with variable substitution and few-shot examples.
+pub mod template;
 /// Tool/function calling types.
 pub mod tool;
 /// Core LLM request/response types.
@@ -39,6 +41,7 @@ pub use middleware::{LLMClientMiddleware, MiddlewareClient, NoopMiddleware};
 pub use prompt::render_prompt;
 #[cfg(feature = "client-async")]
 pub use retry::{RetryClient, RetryConfig};
+pub use template::PromptTemplate;
 pub use tool::{ToolCall, ToolDefinition, ToolResult};
 #[cfg(feature = "client-async")]
 pub use types::LLMStream;
