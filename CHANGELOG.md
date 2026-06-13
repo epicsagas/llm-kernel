@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-06-12
+
+### Added
+
+- **llm**: `MessageRole` enum replacing stringly-typed role on `ChatMessage`
+- **llm**: `ToolDefinition`, `ToolCall`, `ToolResult` — tool/function calling types (new `src/llm/tool.rs`)
+- **llm**: `ContentPart` enum — multimodal content (Text, ImageUrl, ImageBase64)
+- **llm**: `ResponseFormat` enum (Text, Json, JsonSchema) + JSON mode support
+- **llm**: `LLMRequest` builder pattern (`.system().user_message().temperature().build()`) and `tools` field
+- **tokens**: `TokenBudget` type (total, used, remaining, `try_reserve`, `release`) (new `src/tokens/budget.rs`)
+
+### Changed
+
+- **llm**: `ChatMessage` role now `MessageRole` instead of `String` (**breaking**)
+- **llm**: `LLMRequest` content now `ContentPart`-based for multimodal support (**breaking**)
+
 ## [0.3.6] - 2026-06-12
 
 ### Added
