@@ -89,6 +89,8 @@ Make the LLM client production-ready. Close gaps in developing modules.
 
 Unified search abstractions, safety enhancements, and content processing utilities.
 
+**Shipped in PR [#37](https://github.com/epicsagas/llm-kernel/pull/37).**
+
 | # | Deliverable | Scope | Key Files |
 |---|-------------|-------|-----------|
 | 1 | `SearchProvider` trait — unified interface for BM25, vector, API search | M | `src/search/mod.rs` |
@@ -189,7 +191,7 @@ API stability guarantee. Once shipped, all public types and signatures are locke
 ## Dependency Graph
 
 ```
-v0.3.2 (current)
+v0.3.2
   │
   ├── v0.3.3  Patch: Fixes & Cleanup
   │

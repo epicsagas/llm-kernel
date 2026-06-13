@@ -13,21 +13,21 @@ Add to your `Cargo.toml`. The `provider` feature is enabled by default.
 
 ```toml
 [dependencies]
-llm-kernel = "0.1.0"
+llm-kernel = "0.6.0"
 ```
 
 For the async LLM client:
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.1.0", features = ["client-async"] }
+llm-kernel = { version = "0.6.0", features = ["client-async"] }
 ```
 
 To enable everything:
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.1.0", features = ["full"] }
+llm-kernel = { version = "0.6.0", features = ["full"] }
 ```
 
 ## 2. Browse the provider catalog
@@ -82,7 +82,7 @@ println!("{}", response.content);
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.1.0", features = ["graph"] }
+llm-kernel = { version = "0.6.0", features = ["graph"] }
 ```
 
 ```rust
@@ -117,7 +117,7 @@ for scored in &results {
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.1.0", features = ["embedding-fastembed"] }
+llm-kernel = { version = "0.6.0", features = ["embedding-fastembed"] }
 ```
 
 ```rust
