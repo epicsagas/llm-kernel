@@ -47,6 +47,7 @@ Cada módulo está detrás de un flag de característica para que solo pagues po
 | `provider` | Catálogo de proveedores, descriptores de modelos, precios | ✅ |
 | `client-async` | Cliente LLM asíncrono (reqwest) con streaming | |
 | `discovery` | Descubrimiento dinámico de modelos (models.dev, Ollama, OpenAI-compat) | |
+| `discovery-async` | Descubrimiento asíncrono de modelos — trait `DiscoverySource` sobre reqwest | |
 | `secrets` | Gestión de credenciales SecretVault | |
 | `store` | Helpers de inicialización SQLite (WAL, FTS5, versionado de esquema) | |
 | `config` | Cargador de configuración TOML | |
@@ -54,9 +55,9 @@ Cada módulo está detrás de un flag de característica para que solo pagues po
 | `graph-async` | Wrappers de grafo asíncronos (requiere tokio) | |
 | `graph-pool` | Pool de grafo asíncrono multi-conexión (`AsyncPoolGraph`, concurrencia WAL) | |
 | `mcp` | Servidor MCP — JSON-RPC 2.0, transporte stdio, autenticación Bearer | |
-| `tokens` | Estimación de tokens con heurísticas de script Unicode | |
+| `tokens` | Estimación de tokens, presupuestos y división de documentos por fronteras de oración | |
 | `install` | Asistente de instalación de herramientas de IA | |
-| `search` | Búsqueda híbrida con Reciprocal Rank Fusion | |
+| `search` | Búsqueda híbrida — trait `SearchProvider`, fusión RRF / suma ponderada / CombMNZ | |
 | `embedding` | Trait de proveedor de embedding + similitud coseno | |
 | `embedding-openai` | Cliente de text-embedding de OpenAI (HTTP síncrono) | |
 | `embedding-fastembed` | Embedding ONNX local vía fastembed-rs (44 modelos) | |
@@ -64,7 +65,7 @@ Cada módulo está detrás de un flag de característica para que solo pagues po
 | `embedding-fastembed-nomic-moe` | Embedding Nomic V2 MoE vía backend candle | |
 | `vector-index` | Índice de vectores comprimido TurboQuant — 2 bits/4 bits, búsqueda ANN con SIMD | |
 | `telemetry` | Eventos de telemetría con enum-gating, sin PII | |
-| `safety` | Enmascaramiento de secretos, clasificación de errores, sanitización de salida | |
+| `safety` | Enmascaramiento de secretos, clasificación de errores, sanitización de salida, detección de prompt-injection | |
 | `eval` | CLI de evaluación de calidad — tokens, seguridad, embedding, búsqueda | |
 | `eval-full` | Todos los módulos de evaluación incluido grafo | |
 | `full` | Todas las características | |
@@ -75,28 +76,28 @@ Añade a tu `Cargo.toml`:
 
 ```toml
 [dependencies]
-llm-kernel = "0.3.4"
+llm-kernel = "0.6.0"
 ```
 
 La característica `provider` está habilitada por defecto. Para el cliente asíncrono:
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.3.4", features = ["client-async"] }
+llm-kernel = { version = "0.6.0", features = ["client-async"] }
 ```
 
 Para el grafo de conocimiento con wrappers asíncronos:
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.3.4", features = ["graph", "graph-async"] }
+llm-kernel = { version = "0.6.0", features = ["graph", "graph-async"] }
 ```
 
 Para embedding local (ONNX, sin clave API):
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.3.4", features = ["embedding-fastembed"] }
+llm-kernel = { version = "0.6.0", features = ["embedding-fastembed"] }
 ```
 
 ## Uso
@@ -414,7 +415,7 @@ Cada modelo en el catálogo incluye:
 | | llm-kernel | [rig] | [langchain-rust] |
 |--|-----------|-------|-------------------|
 | Catálogo de proveedores | ✅ 16 proveedores, 114 modelos integrados | Configuración manual | Configuración manual |
-| Flags de características | ✅ 20 módulos independientes | Monolítico | Monolítico |
+| Flags de características | ✅ Módulos independientes | Monolítico | Monolítico |
 | Embedding local | ✅ 44 ONNX + Qwen3 + Nomic MoE | ❌ | ❌ |
 | Evaluación de calidad | ✅ 5 módulos, regresión base, CI | ❌ | ❌ |
 | Servidor MCP | ✅ JSON-RPC 2.0 | ❌ | ❌ |
