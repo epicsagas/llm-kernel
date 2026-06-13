@@ -168,7 +168,10 @@ impl LLMClient for OpenAIClient {
 
         if !status.is_success() {
             let text = resp.text().await.unwrap_or_default();
-            return Err(KernelError::LlmApi(format!("HTTP {}: {}", status, text)));
+            return Err(KernelError::Http {
+                status: status.as_u16(),
+                message: text,
+            });
         }
 
         let chat_resp: OpenAIChatResponse = resp
@@ -235,7 +238,10 @@ impl LLMClient for OpenAIClient {
         let status = resp.status();
         if !status.is_success() {
             let text = resp.text().await.unwrap_or_default();
-            return Err(KernelError::LlmApi(format!("HTTP {}: {}", status, text)));
+            return Err(KernelError::Http {
+                status: status.as_u16(),
+                message: text,
+            });
         }
 
         let (tx, rx) = tokio::sync::mpsc::channel::<Result<StreamEvent>>(16);
@@ -485,7 +491,10 @@ impl LLMClient for AnthropicClient {
 
         if !status.is_success() {
             let text = resp.text().await.unwrap_or_default();
-            return Err(KernelError::LlmApi(format!("HTTP {}: {}", status, text)));
+            return Err(KernelError::Http {
+                status: status.as_u16(),
+                message: text,
+            });
         }
 
         let chat_resp: AnthropicResponse = resp
@@ -554,7 +563,10 @@ impl LLMClient for AnthropicClient {
         let status = resp.status();
         if !status.is_success() {
             let text = resp.text().await.unwrap_or_default();
-            return Err(KernelError::LlmApi(format!("HTTP {}: {}", status, text)));
+            return Err(KernelError::Http {
+                status: status.as_u16(),
+                message: text,
+            });
         }
 
         let (tx, rx) = tokio::sync::mpsc::channel::<Result<StreamEvent>>(16);

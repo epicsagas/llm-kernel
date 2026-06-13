@@ -32,7 +32,7 @@ pub mod vector_index;
 pub mod turbovec;
 
 pub use catalog::EmbeddingModel;
-pub use types::{EmbeddingProvider, EmbeddingResult, cosine_similarity};
+pub use types::{EmbeddingProvider, EmbeddingResult, chunk_batch, cosine_similarity};
 
 #[cfg(feature = "embedding-openai")]
 pub use openai::OpenAIEmbeddingClient;
