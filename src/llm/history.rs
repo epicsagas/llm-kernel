@@ -3,8 +3,8 @@
 //! [`ConversationHistory`] holds an ordered list of [`ChatMessage`] entries
 //! and enforces role alternation rules. When the conversation grows too long,
 //! [`truncate_to_budget`](ConversationHistory::truncate_to_budget) removes
-//! the oldest non-system messages until a [`TokenBudget`] has enough remaining
-//! capacity.
+//! the oldest non-system messages until a [`TokenBudget`](crate::tokens::budget::TokenBudget)
+//! has enough remaining capacity.
 //!
 //! # Example
 //!
