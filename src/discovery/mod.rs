@@ -9,7 +9,12 @@ pub mod models_dev;
 pub mod ollama;
 /// Client for discovering models from any OpenAI-compatible endpoint.
 pub mod openai_compat;
+/// Async trait abstraction over model discovery sources.
+#[cfg(feature = "discovery-async")]
+pub mod source;
 
 pub use models_dev::{ModelEntry, ModelLimits, ModelsDevPayload, fetch_and_cache, load_cache};
 pub use ollama::fetch_ollama_models;
 pub use openai_compat::fetch_openai_compatible_models;
+#[cfg(feature = "discovery-async")]
+pub use source::{DiscoverySource, ModelsDevSource};

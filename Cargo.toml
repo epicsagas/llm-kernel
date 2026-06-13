@@ -1,6 +1,6 @@
 [package]
 name         = "llm-kernel"
-version      = "0.5.0"
+version      = "0.6.0"
 edition      = "2024"
 description  = "Foundation library for Rust AI-native apps — provider catalog, LLM client, MCP server, search, telemetry, and safety"
 license      = "Apache-2.0"
@@ -33,6 +33,9 @@ discovery = ["provider", "dep:ureq"]
 
 # Asynchronous LLM client (reqwest-based) with JSON extraction
 client-async = ["dep:reqwest", "dep:serde_json", "dep:async-trait", "dep:tokio", "dep:tokio-stream", "dep:futures-core"]
+
+# Asynchronous model discovery (async DiscoverySource over reqwest)
+discovery-async = ["discovery", "dep:reqwest", "dep:async-trait", "dep:tokio"]
 
 # Secret vault (dotenv-style credential management)
 secrets = ["dep:tempfile"]
@@ -99,7 +102,7 @@ eval-full = ["eval", "graph"]
 # Everything except Windows-only execution backends.
 # embedding-fastembed-directml is intentionally excluded: it pulls in the ort
 # RC dependency which is not appropriate for cross-platform builds.
-full = ["provider", "discovery", "client-async", "secrets", "store", "config", "graph", "graph-async", "graph-pool", "mcp", "tokens", "install", "search", "embedding", "embedding-openai", "embedding-fastembed", "embedding-fastembed-qwen3", "embedding-fastembed-nomic-moe", "vector-index", "telemetry", "safety"]
+full = ["provider", "discovery", "discovery-async", "client-async", "secrets", "store", "config", "graph", "graph-async", "graph-pool", "mcp", "tokens", "install", "search", "embedding", "embedding-openai", "embedding-fastembed", "embedding-fastembed-qwen3", "embedding-fastembed-nomic-moe", "vector-index", "telemetry", "safety"]
 
 [dependencies]
 # Always required

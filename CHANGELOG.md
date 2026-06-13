@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-06-13
+
+### Added
+
+- **search**: `SearchProvider` trait — unified sync interface for ranking backends; `KeywordIndex` term-frequency reference implementation (new `src/search/provider.rs`)
+- **search**: `normalize_minmax`, `weighted_sum_fuse`, `combmnz_fuse` — min-max score normalization and alternative fusion strategies complementing existing RRF (new `src/search/fusion.rs`)
+- **safety**: `detect_injection(text) → InjectionScore` — weighted regex rules over instruction-override, role-hijack, delimiter-escape, jailbreak, and payload-drop signals; aggregate score saturated to `[0.0, 1.0]` (new `src/safety/injection.rs`)
+- **discovery**: async `DiscoverySource` trait + `ModelsDevSource` reqwest implementation behind the new `discovery-async` feature (new `src/discovery/source.rs`)
+- **tokens**: `chunk_text(text, opts)` — sentence-boundary, token-budgeted chunking with overlap and CJK + Latin terminator awareness; `ChunkOptions` builder (new `src/tokens/chunk.rs`)
+- **llm**: `PromptTemplate` — `{{variable}}` substitution, few-shot example support, and serde round-trip; reuses `render_prompt` (new `src/llm/template.rs`)
+- **eval**: `injection` subcommand — measures detection accuracy, recall, and specificity over benign and injection corpora
+
+### Changed
+
+- **errors**: `KernelError` gains a `Search(String)` variant for search-backend failures
+- **features**: new `discovery-async` feature gate (adds `discovery`, `reqwest`, `async-trait`, `tokio`); included in the `full` feature set
+- **search**, **safety**, **tokens**, **llm**: new public items re-exported from their module roots
+
 ## [0.5.0] - 2026-06-13
 
 ### Added

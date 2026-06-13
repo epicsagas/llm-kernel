@@ -47,6 +47,7 @@ llm-kernelは、RustでLLM搭載ツール、エージェント、サーバーを
 | `provider` | プロバイダーカタログ、モデル記述子、価格情報 | ✅ |
 | `client-async` | 非同期LLMクライアント（reqwest）、ストリーミング対応 | |
 | `discovery` | 動的モデル検出（models.dev、Ollama、OpenAI互換） | |
+| `discovery-async` | 非同期モデル検出 — reqwest 上の `DiscoverySource` トレイト | |
 | `secrets` | SecretVaultクレデンシャル管理 | |
 | `store` | SQLite初期化ヘルパー（WAL、FTS5、スキーマバージョニング） | |
 | `config` | TOML設定ローダー | |
@@ -54,9 +55,9 @@ llm-kernelは、RustでLLM搭載ツール、エージェント、サーバーを
 | `graph-async` | 非同期グラフラッパー（tokioが必要） | |
 | `graph-pool` | マルチ接続非同期グラフプール（`AsyncPoolGraph`、WAL同時実行） | |
 | `mcp` | MCPサーバー — JSON-RPC 2.0、stdioトランスポート、Bearer認証 | |
-| `tokens` | Unicodeスクリプトヒューリスティックによるトークン推定 | |
+| `tokens` | トークン推定、予算管理、文境界によるドキュメント分割 | |
 | `install` | AIツールインストールウィザード | |
-| `search` | Reciprocal Rank Fusionによるハイブリッド検索 | |
+| `search` | ハイブリッド検索 — `SearchProvider` トレイト、RRF / 加重和 / CombMNZ フュージョン | |
 | `embedding` | エンベディングプロバイダートレイト + コサイン類似度 | |
 | `embedding-openai` | OpenAI text-embeddingクライアント（同期HTTP） | |
 | `embedding-fastembed` | fastembed-rsによるローカルONNXエンベディング（44モデル） | |
@@ -64,7 +65,7 @@ llm-kernelは、RustでLLM搭載ツール、エージェント、サーバーを
 | `embedding-fastembed-nomic-moe` | candleバックエンドによるNomic V2 MoEエンベディング | |
 | `vector-index` | TurboQuant圧縮ベクトルインデックス — 2ビット/4ビット、SIMD ANN検索 | |
 | `telemetry` | enumゲート方式のテレメトリイベント、PIIなし | |
-| `safety` | シークレットマスキング、エラー分類、出力サニタイズ | |
+| `safety` | シークレットマスキング、エラー分類、出力サニタイズ、プロンプトインジェクション検出 | |
 | `eval` | 品質評価CLI — トークン、セーフティ、エンベディング、検索 | |
 | `eval-full` | グラフを含む全評価モジュール | |
 | `full` | 全フィーチャー | |
@@ -75,28 +76,28 @@ llm-kernelは、RustでLLM搭載ツール、エージェント、サーバーを
 
 ```toml
 [dependencies]
-llm-kernel = "0.3.4"
+llm-kernel = "0.6.0"
 ```
 
 `provider`フィーチャーはデフォルトで有効です。非同期クライアントを使用する場合：
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.3.4", features = ["client-async"] }
+llm-kernel = { version = "0.6.0", features = ["client-async"] }
 ```
 
 非同期ラッパー付きナレッジグラフを使用する場合：
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.3.4", features = ["graph", "graph-async"] }
+llm-kernel = { version = "0.6.0", features = ["graph", "graph-async"] }
 ```
 
 ローカルエンベディング（ONNX、APIキー不要）を使用する場合：
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.3.4", features = ["embedding-fastembed"] }
+llm-kernel = { version = "0.6.0", features = ["embedding-fastembed"] }
 ```
 
 ## 使用方法
@@ -414,7 +415,7 @@ let clean = sanitize_output(user_input)?;
 | | llm-kernel | [rig] | [langchain-rust] |
 |--|-----------|-------|-------------------|
 | プロバイダーカタログ | ✅ 16プロバイダー、114モデル組み込み | 手動設定 | 手動設定 |
-| フィーチャーゲート | ✅ 20の独立モジュール | モノリシック | モノリシック |
+| フィーチャーゲート | ✅ 独立モジュール | モノリシック | モノリシック |
 | ローカルエンベディング | ✅ 44 ONNX + Qwen3 + Nomic MoE | ❌ | ❌ |
 | 品質評価 | ✅ 5モジュール、ベースライン回帰検出、CI | ❌ | ❌ |
 | MCPサーバー | ✅ JSON-RPC 2.0 | ❌ | ❌ |

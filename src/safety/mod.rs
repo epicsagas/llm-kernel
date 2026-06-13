@@ -14,7 +14,10 @@
 //! ```
 
 pub mod classify;
+/// Prompt-injection detection via weighted regex rules.
+pub mod injection;
 pub mod sanitize;
 
 pub use classify::{FailureCategory, classify_failure};
+pub use injection::{InjectionScore, detect_injection};
 pub use sanitize::{mask_secrets, sanitize_output, strip_ansi};
