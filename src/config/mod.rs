@@ -9,5 +9,5 @@ pub mod loader;
 /// Default config template generator.
 pub mod template;
 
-pub use loader::load_toml_config;
+pub use loader::{FieldError, load_toml_config, validate_config};
 pub use template::default_config_template;

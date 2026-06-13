@@ -2,7 +2,7 @@
 
 llm-kernel development roadmap from v0.3.2 to v1.0.0.
 
-> **Current phase: v0.4.0 complete ✅ — Next: v0.5.0 Client Resilience & Completion**
+> **Current phase: v0.5.0 complete ✅ — Next: v0.6.0 Search & Intelligence**
 
 Each phase has a clear theme, concrete deliverables, and exit criteria.
 The library's core philosophy — zero-mandatory-dep composability with feature gates — is preserved throughout.
@@ -65,9 +65,11 @@ This is the only phase with intentional breaking changes — do it once, lock it
 
 ---
 
-### v0.5.0 — Client Resilience & Completion
+### v0.5.0 — Client Resilience & Completion ✅
 
 Make the LLM client production-ready. Close gaps in developing modules.
+
+**Shipped in PR [#35](https://github.com/epicsagas/llm-kernel/pull/35).**
 
 | # | Deliverable | Scope | Key Files |
 |---|-------------|-------|-----------|
@@ -196,7 +198,7 @@ v0.3.2 (current)
   ├── v0.4.0  Core Type Upgrades ✅       ← only breaking-change release
   │            MessageRole, Tool types, ContentPart, TokenBudget
   │
-  ├── v0.5.0  Client Resilience
+  ├── v0.5.0  Client Resilience ✅
   │            Retry, Middleware, embed_batch, history management
   │
   ├── v0.6.0  Search & Intelligence

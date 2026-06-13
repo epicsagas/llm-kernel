@@ -324,6 +324,74 @@ impl EmbeddingProvider for LazyFastembedProvider {
 
         Ok(result)
     }
+
+    fn embed_batch(&self, texts: &[&str]) -> anyhow::Result<Vec<EmbeddingResult>> {
+        if texts.is_empty() {
+            return Ok(vec![]);
+        }
+
+        // Phase 1: check cache for all texts
+        let mut results: Vec<Option<Vec<f32>>> = vec![None; texts.len()];
+        let mut miss_indices: Vec<usize> = Vec::with_capacity(texts.len());
+        let mut miss_texts: Vec<&str> = Vec::with_capacity(texts.len());
+
+        {
+            let mut cache = self.query_cache.lock().unwrap_or_else(|e| e.into_inner());
+            for (i, text) in texts.iter().enumerate() {
+                if let Some(cached) = cache.get(text) {
+                    results[i] = Some(cached.clone());
+                } else {
+                    miss_indices.push(i);
+                    miss_texts.push(*text);
+                }
+            }
+        }
+
+        // Phase 2: if all cache hits, return immediately
+        if miss_indices.is_empty() {
+            return Ok(results
+                .into_iter()
+                .zip(texts.iter())
+                .map(|(opt, text)| EmbeddingResult {
+                    vector: opt.unwrap(),
+                    text_preview: text_preview(text),
+                })
+                .collect());
+        }
+
+        // Phase 3: ensure model is loaded
+        self.ensure_model().map_err(|e| anyhow::anyhow!("{e}"))?;
+
+        // Phase 4: batch embed the misses through the inner provider
+        let batch_results = {
+            let mut guard = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+            guard.last_used = Some(Instant::now());
+            match &guard.provider {
+                Some(p) => p.embed_batch(&miss_texts),
+                None => Err(anyhow::anyhow!("provider not available")),
+            }
+        }?;
+
+        // Phase 5: merge results and insert new entries into cache
+        {
+            let mut cache = self.query_cache.lock().unwrap_or_else(|e| e.into_inner());
+            for (batch_idx, &result_idx) in miss_indices.iter().enumerate() {
+                let vector = batch_results[batch_idx].vector.clone();
+                cache.insert(texts[result_idx].to_string(), vector.clone());
+                results[result_idx] = Some(vector);
+            }
+        }
+
+        // Phase 6: assemble final results in original order
+        Ok(results
+            .into_iter()
+            .zip(texts.iter())
+            .map(|(opt, text)| EmbeddingResult {
+                vector: opt.unwrap(),
+                text_preview: text_preview(text),
+            })
+            .collect())
+    }
 }
 
 // ---------------------------------------------------------------------------

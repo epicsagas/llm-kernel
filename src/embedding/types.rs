@@ -87,6 +87,33 @@ pub trait EmbeddingProvider: Send + Sync {
     fn name(&self) -> &str;
 }
 
+/// Split a batch of texts into chunks of at most `max_batch_size`.
+///
+/// Returns an empty vec for empty input. Useful for respecting provider-specific
+/// batch limits (e.g., OpenAI allows 2048 texts per request).
+///
+/// # Errors
+///
+/// Returns an error if `max_batch_size` is 0.
+///
+/// # Example
+///
+/// ```
+/// use llm_kernel::embedding::chunk_batch;
+///
+/// let chunks = chunk_batch(&["a", "b", "c", "d", "e"], 2).unwrap();
+/// assert_eq!(chunks, vec![vec!["a", "b"], vec!["c", "d"], vec!["e"]]);
+/// ```
+pub fn chunk_batch<'a>(
+    texts: &[&'a str],
+    max_batch_size: usize,
+) -> anyhow::Result<Vec<Vec<&'a str>>> {
+    if max_batch_size == 0 {
+        anyhow::bail!("max_batch_size must be > 0");
+    }
+    Ok(texts.chunks(max_batch_size).map(|c| c.to_vec()).collect())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -171,5 +198,34 @@ mod tests {
             sim_exact > sim_off,
             "ranking flip: self-sim {sim_exact} <= nudged {sim_off}"
         );
+    }
+
+    #[test]
+    fn chunk_batch_splits_evenly() {
+        let chunks = chunk_batch(&["a", "b", "c", "d"], 2).unwrap();
+        assert_eq!(chunks, vec![vec!["a", "b"], vec!["c", "d"]]);
+    }
+
+    #[test]
+    fn chunk_batch_splits_with_remainder() {
+        let chunks = chunk_batch(&["a", "b", "c", "d", "e"], 2).unwrap();
+        assert_eq!(chunks, vec![vec!["a", "b"], vec!["c", "d"], vec!["e"]]);
+    }
+
+    #[test]
+    fn chunk_batch_empty_input() {
+        let chunks: Vec<Vec<&str>> = chunk_batch(&[], 5).unwrap();
+        assert!(chunks.is_empty());
+    }
+
+    #[test]
+    fn chunk_batch_size_larger_than_input() {
+        let chunks = chunk_batch(&["a", "b"], 10).unwrap();
+        assert_eq!(chunks, vec![vec!["a", "b"]]);
+    }
+
+    #[test]
+    fn chunk_batch_zero_size_errors() {
+        assert!(chunk_batch(&["a"], 0).is_err());
     }
 }
