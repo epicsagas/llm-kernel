@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-06-13
+
+### Added
+
+- **llm**: `RetryClient` and `RetryConfig` — exponential backoff wrapper around any `LLMClient`, auto-retries 429 and 5xx with jitter (new `src/llm/retry.rs`)
+- **llm**: `LLMClientMiddleware` trait with `on_request`/`on_response`/`on_error` async hooks and composable `MiddlewareClient` wrapper (new `src/llm/middleware.rs`)
+- **llm**: `ConversationHistory` — ordered message list with role-alternation validation and token-budget-aware truncation that preserves the system message (new `src/llm/history.rs`, `tokens` feature)
+- **embedding**: `chunk_batch` utility — splits a batch into provider-limit-sized chunks
+- **embedding**: `LazyFastembedProvider::embed_batch` override — LRU cache lookup + batch merge of misses for true batching
+- **config**: `FieldError` struct and `validate_config` — structured field-level TOML validation errors (path/expected/value) instead of raw serde strings
+- **install**: `AgentKind` expanded with `Windsurf`, `Aider`, `RooCode` variants
+
+### Changed
+
+- **embedding**: `chunk_batch` and `validate_config` re-exported from their module roots
+
 ## [0.4.0] - 2026-06-12
 
 ### Added
