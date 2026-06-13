@@ -2,6 +2,11 @@
 
 llm-kernel development roadmap from v0.3.2 to v1.0.0.
 
+### 📑 Research & Feasibility Documents
+* **[Roadmap Evaluation Report](file:///Users/hackme/projects/epiccounty/llm-kernel/docs/research/roadmap_evaluation.md)**
+* **[FTS5 CJK Alternatives Study](file:///Users/hackme/projects/epiccounty/llm-kernel/docs/research/fts5_cjk_alternatives.md)**
+* **[Future Milestones Feasibility Study](file:///Users/hackme/projects/epiccounty/llm-kernel/docs/research/future_roadmap_evaluation.md)**
+
 > **Current phase: v0.6.0 complete ✅ — Next: v0.7.0 Transport & Backend**
 
 Each phase has a clear theme, concrete deliverables, and exit criteria.
