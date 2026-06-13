@@ -110,7 +110,7 @@ Remote MCP, CJK graph search, backend abstraction, and caching.
 
 | # | Deliverable | Scope | Key Files |
 |---|-------------|-------|-----------|
-| 1 | CJK-aware FTS5 tokenizer (`graph-cjk` feature gate) | L | `src/graph/schema.rs`, new `tokenizer.rs` |
+| 1 | Application-side CJK N-gram index (`graph-cjk` feature gate) | L | `src/graph/schema.rs`, `src/tokens/tokenizer.rs` |
 | 2 | MCP HTTP/SSE remote transport (`mcp-http` feature gate) | L | `src/mcp/transport.rs`, new `http.rs` |
 | 3 | Async MCP handlers alongside existing sync handlers | L | `src/mcp/server.rs` |
 | 4 | `GraphBackend` trait (internal refactor, SQLite impl) | L | `src/graph/*.rs` |
@@ -119,11 +119,13 @@ Remote MCP, CJK graph search, backend abstraction, and caching.
 | 7 | LLM response cache on `KvStore` (prompt → response) | M | `src/llm/client.rs`, new `cache.rs` |
 | 8 | Unpin `ort` from `=2.0.0-rc.12` when stable releases | S | `Cargo.toml` |
 
+**Why application-side CJK index instead of SQLite FTS5 extension:** Integrating a custom C-FFI FTS5 tokenizer in Rust introduces major compile-time complexity (linker issues, platform compatibility). By implementing N-gram tokenization in safe Rust and storing the postings index in standard relational tables, we achieve 100% database portability (enabling PostgreSQL migration in v0.8.0) and zero native compile dependencies.
+
 **Why trait before migration:** Migration runs SQL against a backend. Building on `GraphBackend` means the same migration logic works for every backend.
 
 **Why KV trait before LLM cache:** The LLM response cache is a specialized use of a generic `KvStore`. The same trait serves embedding caches, session state, and rate-limit counters.
 
-**Exit criteria:** CJK content searchable, MCP over HTTP, `GraphBackend` trait with SQLite impl, migrations work via trait, `KvStore` powers LLM cache, `ort` unpinned.
+**Exit criteria:** CJK content searchable using application-side index, MCP over HTTP, `GraphBackend` trait with SQLite impl, migrations work via trait, `KvStore` powers LLM cache, `ort` unpinned.
 
 ---
 
