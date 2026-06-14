@@ -1,6 +1,6 @@
 [package]
 name         = "llm-kernel"
-version      = "0.6.0"
+version      = "0.7.0"
 edition      = "2024"
 description  = "Foundation library for Rust AI-native apps — provider catalog, LLM client, MCP server, search, telemetry, and safety"
 license      = "Apache-2.0"
@@ -37,10 +37,13 @@ client-async = ["dep:reqwest", "dep:serde_json", "dep:async-trait", "dep:tokio",
 # Asynchronous model discovery (async DiscoverySource over reqwest)
 discovery-async = ["discovery", "dep:reqwest", "dep:async-trait", "dep:tokio"]
 
+# LLM response cache over a KvStore (wraps any LLMClient)
+cache = ["client-async", "store"]
+
 # Secret vault (dotenv-style credential management)
 secrets = ["dep:tempfile"]
 
-# SQLite store helpers (init_schema, PRAGMA, FTS5)
+# SQLite store helpers (init_schema, PRAGMA, FTS5, KvStore)
 store = ["dep:rusqlite"]
 
 # TOML config loader
@@ -49,8 +52,14 @@ config = ["dep:toml"]
 # Knowledge graph (SQLite + FTS5 + smart recall + BFS traversal)
 graph = ["store", "dep:serde_json"]
 
-# MCP server framework (JSON-RPC 2.0, stdio transport)
-mcp = ["dep:serde_json"]
+# CJK-aware graph search (Rust-side segmentation; no schema change)
+graph-cjk = ["graph"]
+
+# MCP server framework (JSON-RPC 2.0, stdio transport, async handlers)
+mcp = ["dep:serde_json", "dep:async-trait"]
+
+# MCP remote transport over HTTP with optional SSE (axum + tokio)
+mcp-http = ["mcp", "dep:axum", "dep:tokio", "dep:tokio-stream", "tokio/net", "tokio/io-util"]
 
 # Token estimation (zero-dep heuristic)
 tokens = []
@@ -102,7 +111,7 @@ eval-full = ["eval", "graph"]
 # Everything except Windows-only execution backends.
 # embedding-fastembed-directml is intentionally excluded: it pulls in the ort
 # RC dependency which is not appropriate for cross-platform builds.
-full = ["provider", "discovery", "discovery-async", "client-async", "secrets", "store", "config", "graph", "graph-async", "graph-pool", "mcp", "tokens", "install", "search", "embedding", "embedding-openai", "embedding-fastembed", "embedding-fastembed-qwen3", "embedding-fastembed-nomic-moe", "vector-index", "telemetry", "safety"]
+full = ["provider", "discovery", "discovery-async", "client-async", "cache", "secrets", "store", "config", "graph", "graph-async", "graph-pool", "graph-cjk", "mcp", "mcp-http", "tokens", "install", "search", "embedding", "embedding-openai", "embedding-fastembed", "embedding-fastembed-qwen3", "embedding-fastembed-nomic-moe", "vector-index", "telemetry", "safety"]
 
 [dependencies]
 # Always required
@@ -124,16 +133,22 @@ futures-core = { version = "0.3", optional = true }
 async-trait = { version = "0.1", optional = true }
 regex       = { version = "1", optional = true }
 fastembed   = { version = "5", default-features = false, features = ["hf-hub-rustls-tls", "ort-download-binaries-rustls-tls"], optional = true }
-# TODO: unpin when ort 2.0.0 stable releases
+# Pinned to the newest ort release-candidate: ort 2.0.0 stable is not yet
+# published (2.0.0-rc.12 is the latest on crates.io as of 2026-06), and
+# fastembed 5 targets this same RC, so the pin must move in lockstep with a
+# fastembed release built against stable. Switch to a caret range (`2`) once
+# both conditions hold.
 ort         = { version = "=2.0.0-rc.12", default-features = false, optional = true }
 candle-core = { version = "0.10", optional = true }
 indexmap    = { version = "2", optional = true }
 clap        = { version = "4", features = ["derive"], optional = true }
 turbovec    = { version = "0.9", optional = true }
+axum        = { version = "0.8", default-features = false, features = ["http1", "json", "tokio"], optional = true }
 
 [dev-dependencies]
 tempfile = "3"
 criterion = { version = "0.8", features = ["html_reports"] }
+tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread"] }
 
 [[bench]]
 name = "graph_bench"

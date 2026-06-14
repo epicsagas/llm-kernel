@@ -8,6 +8,11 @@
 //!
 //! Requires the `client-async` feature.
 
+/// Response cache wrapper for [`LLMClient`] over a [`KvStore`].
+///
+/// [`KvStore`]: crate::store::KvStore
+#[cfg(feature = "cache")]
+pub mod cache;
 /// Async LLM client implementations (OpenAI, Anthropic).
 #[cfg(feature = "client-async")]
 pub mod client;
@@ -31,6 +36,8 @@ pub mod tool;
 /// Core LLM request/response types.
 pub mod types;
 
+#[cfg(feature = "cache")]
+pub use cache::CacheClient;
 #[cfg(feature = "client-async")]
 pub use client::{AnthropicClient, LLMClient, OpenAIClient};
 #[cfg(feature = "tokens")]

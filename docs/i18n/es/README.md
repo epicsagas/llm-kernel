@@ -54,7 +54,10 @@ Cada módulo está detrás de un flag de característica para que solo pagues po
 | `graph` | Grafo de conocimiento — SQLite, FTS5, recuperación inteligente, recorrido BFS | |
 | `graph-async` | Wrappers de grafo asíncronos (requiere tokio) | |
 | `graph-pool` | Pool de grafo asíncrono multi-conexión (`AsyncPoolGraph`, concurrencia WAL) | |
+| `graph-cjk` | CJK-aware graph search via Rust-side segmentation (no schema change) | |
 | `mcp` | Servidor MCP — JSON-RPC 2.0, transporte stdio, autenticación Bearer | |
+| `mcp-http` | MCP remote transport — HTTP/SSE (axum + tokio) | |
+| `cache` | LLM response cache — `CacheClient` over `KvStore` | |
 | `tokens` | Estimación de tokens, presupuestos y división de documentos por fronteras de oración | |
 | `install` | Asistente de instalación de herramientas de IA | |
 | `search` | Búsqueda híbrida — trait `SearchProvider`, fusión RRF / suma ponderada / CombMNZ | |
@@ -76,28 +79,28 @@ Añade a tu `Cargo.toml`:
 
 ```toml
 [dependencies]
-llm-kernel = "0.6.0"
+llm-kernel = "0.7.0"
 ```
 
 La característica `provider` está habilitada por defecto. Para el cliente asíncrono:
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.6.0", features = ["client-async"] }
+llm-kernel = { version = "0.7.0", features = ["client-async"] }
 ```
 
 Para el grafo de conocimiento con wrappers asíncronos:
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.6.0", features = ["graph", "graph-async"] }
+llm-kernel = { version = "0.7.0", features = ["graph", "graph-async"] }
 ```
 
 Para embedding local (ONNX, sin clave API):
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.6.0", features = ["embedding-fastembed"] }
+llm-kernel = { version = "0.7.0", features = ["embedding-fastembed"] }
 ```
 
 ## Uso
