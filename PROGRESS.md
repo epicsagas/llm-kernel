@@ -1,22 +1,32 @@
 # Progress
 
-> Auto-generated status snapshot. Last updated: 2026-06-13
+> Auto-generated status snapshot. Last updated: 2026-06-14
 
-## Current Version: v0.6.0
+## Current Version: v0.7.0
 
 | Metric | Value |
 |--------|-------|
-| Version | `0.6.0` |
+| Version | `0.7.0` |
 | Edition | Rust 2024, MSRV 1.92 |
-| Lines of code | ~15,200 |
-| Total tests | 459 (447 passed, 12 ignored, 0 failed) |
+| Lines of code | ~16,400 |
+| Total tests | 489 (477 passed, 12 ignored, 0 failed) |
 | Open PRs | 1 |
 | Open branches | 1 |
-| Last commit | `c9501d7` — feat: v0.6.0 search and intelligence |
+| Last commit | `feat: v0.7.0 transport and backend` |
 
 ---
 
 ## Recent Releases
+
+### v0.7.0 (2026-06-14)
+
+- **graph**: `GraphBackend` 동기 trait + `SqliteGraph` 구현 (백엔드 교체 가능, rusqlite 미노출)
+- **graph**: trait 기반 스키마 마이그레이션 프레임워크(트랜잭션 롤백), 스키마 v1→v2
+- **graph**: CJK 분할 기반 검색(`graph-cjk`, 스키마 변경 없음)
+- **store**: `KvStore` trait + `SqliteKvStore`
+- **llm**: `CacheClient` 응답 캐시(`KvStore` 기반, `cache` 피처)
+- **mcp**: async 핸들러 + HTTP/SSE 원격 트랜스포트(`mcp-http` 피처, Bearer 인증)
+- **deps**: ort 핀 유지(주석 보강, stable 미출시)
 
 ### v0.6.0 (2026-06-13)
 
@@ -90,7 +100,8 @@
 | **v0.4.0** — Core Type Upgrades | ✅ Complete | `MessageRole`, `ContentPart`, `ToolDefinition`, `TokenBudget`, `LLMRequest` builder |
 | **v0.5.0** — Client Resilience | ✅ Complete | Retry, middleware, embed_batch, history management |
 | **v0.6.0** — Search & Intelligence | ✅ Complete | `SearchProvider`, injection detection, chunking, templates, async discovery |
-| **v0.7.0** — Transport & Backend | 🔜 Next | CJK FTS5, MCP HTTP, `GraphBackend` trait, `KvStore`, LLM cache |
+| **v0.7.0** — Transport & Backend | ✅ Complete | `GraphBackend` trait, migration framework, CJK search, `KvStore`, LLM cache, MCP HTTP/SSE, async handlers |
+| **v0.8.0** — Backend Expansion | 🔜 Next | PostgreSQL `GraphBackend`, Qdrant `VectorSearch`, DBMS migration CLI |
 
 ---
 
@@ -121,8 +132,8 @@ safety       → secret masking, error classification, prompt-injection detectio
 
 | Check | Status |
 |-------|--------|
-| All tests pass | ✅ 459/459 (447 passed, 12 ignored) |
+| All tests pass | ✅ 489/489 (477 passed, 12 ignored) |
 | Clippy clean | ✅ (verified before each release) |
 | CI passing | ✅ Linux + macOS dual runner |
 | Crate structure | ✅ Monolithic (subcrate removed) |
-| Roadmap on track | ✅ v0.6.0 complete, v0.7.0 ready to start |
+| Roadmap on track | ✅ v0.7.0 complete, v0.8.0 ready to start |

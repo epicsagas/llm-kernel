@@ -8,7 +8,7 @@
 
 | Command | Description |
 |---------|-------------|
-| `cargo test --all-features` | Run all tests (447 passed, 12 ignored) |
+| `cargo test --all-features` | Run all tests (477 passed, 12 ignored) |
 | `cargo clippy --all-features -- -D warnings` | Lint |
 | `cargo fmt --all -- --check` | Format check |
 | `cargo bench` | Run criterion benchmarks |
@@ -18,19 +18,19 @@
 
 ## Architecture
 
-Hexagonal architecture with 16 feature-gated modules under `src/`:
+Hexagonal architecture with feature-gated modules under `src/`:
 
 ```
 src/
   lib.rs, error.rs, prelude.rs     — crate root
   provider/    — catalog.json, capability profiles  (feature: provider)
-  llm/         — async client, SSE streaming, JSON extraction, prompt templates  (feature: client-async)
+  llm/         — async client, SSE streaming, JSON extraction, prompt templates, response cache  (features: client-async, cache)
   discovery/   — models.dev, Ollama, OpenAI-compat; async DiscoverySource  (features: discovery, discovery-async)
   secrets/     — dotenv vault, atomic writes  (feature: secrets)
-  store/       — SQLite init helpers  (feature: store)
+  store/       — SQLite init helpers, KvStore  (feature: store)
   config/      — TOML loader  (feature: config)
-  graph/       — knowledge graph with FTS5, smart recall, BFS  (features: graph, graph-async)
-  mcp/         — JSON-RPC 2.0 server, stdio transport  (feature: mcp)
+  graph/       — GraphBackend trait, FTS5, smart recall, BFS, CJK search, migrations  (features: graph, graph-async, graph-pool, graph-cjk)
+  mcp/         — JSON-RPC 2.0 server, stdio + HTTP/SSE transport, async handlers  (features: mcp, mcp-http)
   tokens/      — Unicode token estimation, budgeting, sentence-aware chunking  (feature: tokens)
   install/     — AI tool config wizard  (feature: install)
   search/      — SearchProvider trait, RRF + weighted-sum + CombMNZ fusion  (feature: search)

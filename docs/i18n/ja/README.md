@@ -54,7 +54,10 @@ llm-kernelは、RustでLLM搭載ツール、エージェント、サーバーを
 | `graph` | ナレッジグラフ — SQLite、FTS5、スマートリコール、BFSトラバーサル | |
 | `graph-async` | 非同期グラフラッパー（tokioが必要） | |
 | `graph-pool` | マルチ接続非同期グラフプール（`AsyncPoolGraph`、WAL同時実行） | |
+| `graph-cjk` | CJK-aware graph search via Rust-side segmentation (no schema change) | |
 | `mcp` | MCPサーバー — JSON-RPC 2.0、stdioトランスポート、Bearer認証 | |
+| `mcp-http` | MCP remote transport — HTTP/SSE (axum + tokio) | |
+| `cache` | LLM response cache — `CacheClient` over `KvStore` | |
 | `tokens` | トークン推定、予算管理、文境界によるドキュメント分割 | |
 | `install` | AIツールインストールウィザード | |
 | `search` | ハイブリッド検索 — `SearchProvider` トレイト、RRF / 加重和 / CombMNZ フュージョン | |
@@ -76,28 +79,28 @@ llm-kernelは、RustでLLM搭載ツール、エージェント、サーバーを
 
 ```toml
 [dependencies]
-llm-kernel = "0.6.0"
+llm-kernel = "0.7.0"
 ```
 
 `provider`フィーチャーはデフォルトで有効です。非同期クライアントを使用する場合：
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.6.0", features = ["client-async"] }
+llm-kernel = { version = "0.7.0", features = ["client-async"] }
 ```
 
 非同期ラッパー付きナレッジグラフを使用する場合：
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.6.0", features = ["graph", "graph-async"] }
+llm-kernel = { version = "0.7.0", features = ["graph", "graph-async"] }
 ```
 
 ローカルエンベディング（ONNX、APIキー不要）を使用する場合：
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.6.0", features = ["embedding-fastembed"] }
+llm-kernel = { version = "0.7.0", features = ["embedding-fastembed"] }
 ```
 
 ## 使用方法

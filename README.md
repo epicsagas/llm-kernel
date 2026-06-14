@@ -23,8 +23,9 @@ llm-kernel provides the foundational layer for building LLM-powered tools, agent
 - **Model discovery** — dynamic model discovery from models.dev, Ollama, OpenAI-compatible endpoints
 - **Credential vault** — dotenv-style API key management with atomic writes
 - **Config loader** — TOML config with auto-create from template
-- **Knowledge graph** — SQLite-backed graph with FTS5 search, smart recall, BFS traversal, async wrappers
-- **MCP server** — JSON-RPC 2.0 server framework with stdio transport and Bearer auth
+- **Knowledge graph** — `GraphBackend` trait (SQLite impl), FTS5 search, smart recall, BFS traversal, CJK search, schema migrations, async wrappers
+- **MCP server** — JSON-RPC 2.0 server framework with stdio and HTTP/SSE transports, async handlers, Bearer auth
+- **Key-value store** — `KvStore` trait powering LLM response caching and other byte-oriented stores
 - **Embedding** — provider trait + cosine similarity, local ONNX (44 models), Qwen3 candle, Nomic V2 MoE candle, OpenAI remote, compressed vector indexing ([full model list →](EMBEDDING_MODELS.md))
 - **Search** — Reciprocal Rank Fusion for hybrid search result merging
 - **Token estimation** — zero-dependency Unicode-script heuristic token counting
@@ -43,12 +44,15 @@ Each module is gated behind a feature flag so you only pay for what you use.
 | `discovery` | Dynamic model discovery (models.dev, Ollama, OpenAI-compat) | |
 | `discovery-async` | Async model discovery — `DiscoverySource` trait over reqwest | |
 | `secrets` | SecretVault credential management | |
-| `store` | SQLite init helpers (WAL, FTS5, schema versioning) | |
+| `store` | SQLite init helpers (WAL, FTS5, schema versioning) + `KvStore` | |
 | `config` | TOML config loader | |
-| `graph` | Knowledge graph — SQLite, FTS5, smart recall, BFS traversal | |
+| `graph` | Knowledge graph — `GraphBackend` trait, SQLite impl, FTS5, smart recall, BFS, migrations | |
 | `graph-async` | Async graph wrappers (requires tokio) | |
 | `graph-pool` | Multi-connection async graph pool (`AsyncPoolGraph`, WAL concurrency) | |
-| `mcp` | MCP server — JSON-RPC 2.0, stdio transport, Bearer auth | |
+| `graph-cjk` | CJK-aware graph search via Rust-side segmentation (no schema change) | |
+| `mcp` | MCP server — JSON-RPC 2.0, stdio transport, async handlers, Bearer auth | |
+| `mcp-http` | MCP remote transport — HTTP/SSE (axum + tokio) | |
+| `cache` | LLM response cache — `CacheClient` over `KvStore` | |
 | `tokens` | Token estimation, budgeting, and sentence-aware document chunking | |
 | `install` | AI tool installation wizard | |
 | `search` | Hybrid search — `SearchProvider` trait, RRF / weighted-sum / CombMNZ fusion | |
@@ -70,28 +74,28 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-llm-kernel = "0.6.0"
+llm-kernel = "0.7.0"
 ```
 
 The `provider` feature is enabled by default. For the async client:
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.6.0", features = ["client-async"] }
+llm-kernel = { version = "0.7.0", features = ["client-async"] }
 ```
 
 For the knowledge graph with async wrappers:
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.6.0", features = ["graph", "graph-async"] }
+llm-kernel = { version = "0.7.0", features = ["graph", "graph-async"] }
 ```
 
 For local embedding (ONNX, no API key):
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.6.0", features = ["embedding-fastembed"] }
+llm-kernel = { version = "0.7.0", features = ["embedding-fastembed"] }
 ```
 
 ## Usage

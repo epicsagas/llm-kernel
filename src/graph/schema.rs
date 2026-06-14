@@ -1,26 +1,53 @@
 //! Schema initialization for the knowledge graph SQLite database.
 
-use rusqlite::Connection;
+use rusqlite::{Connection, params};
 
 use crate::error::{KernelError, Result};
 
 /// Current graph schema version. Increment when adding migrations.
-pub const GRAPH_SCHEMA_VERSION: u32 = 1;
+pub const GRAPH_SCHEMA_VERSION: u32 = 2;
 
-/// Incremental migration callback for the knowledge graph schema.
+/// Read the recorded graph schema version from `_meta`, or `0` if unset.
+pub fn schema_version(conn: &Connection) -> Result<u32> {
+    Ok(conn
+        .query_row(
+            "SELECT value FROM _meta WHERE key = 'graph_schema_version'",
+            [],
+            |row| row.get::<_, String>(0),
+        )
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0))
+}
+
+/// Incremental migration for the knowledge graph schema.
 ///
-/// Apply version-to-version migrations. When no migrations exist yet, simply
-/// returns the current version. Add `if current < N { ... }` blocks as the
-/// schema evolves.
+/// Applies version-to-version migrations from `current` up to
+/// [`GRAPH_SCHEMA_VERSION`] inside a single transaction. On failure the
+/// transaction rolls back and the recorded version is unchanged. Returns the
+/// new version (equal to `current` when already up to date).
 pub fn migrate_graph(conn: &Connection, current: u32) -> Result<u32> {
-    // Future migrations go here:
-    // if current < 2 {
-    //     conn.execute_batch("ALTER TABLE nodes ADD COLUMN ...")
-    //         .map_err(|e| KernelError::Store(e.to_string()))?;
-    // }
-    let _ = conn;
-    let _ = current;
-    Ok(GRAPH_SCHEMA_VERSION)
+    if current >= GRAPH_SCHEMA_VERSION {
+        return Ok(current);
+    }
+    let tx = conn
+        .unchecked_transaction()
+        .map_err(|e| KernelError::Store(format!("migration begin failed: {e}")))?;
+    let mut v = current;
+    // v1 -> v2: index nodes by creation timestamp (used by recency ordering).
+    if v < 2 {
+        tx.execute_batch("CREATE INDEX IF NOT EXISTS idx_nodes_created ON nodes(created);")
+            .map_err(|e| KernelError::Store(format!("migration v1->v2 failed: {e}")))?;
+        v = 2;
+    }
+    tx.execute(
+        "UPDATE _meta SET value = ?1 WHERE key = 'graph_schema_version'",
+        params![v.to_string()],
+    )
+    .map_err(|e| KernelError::Store(e.to_string()))?;
+    tx.commit()
+        .map_err(|e| KernelError::Store(format!("migration commit failed: {e}")))?;
+    Ok(v)
 }
 
 /// Apply the full knowledge graph schema (tables, indexes, FTS5 triggers) to a connection.
@@ -83,10 +110,11 @@ pub fn init_graph_schema(conn: &Connection) -> Result<()> {
         CREATE INDEX IF NOT EXISTS idx_nodes_title_updated ON nodes(title, updated DESC);
         CREATE INDEX IF NOT EXISTS idx_nodes_importance ON nodes(importance DESC);
         CREATE INDEX IF NOT EXISTS idx_nodes_accessed ON nodes(accessed_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_nodes_created ON nodes(created);
 
         -- Schema version tracking
         CREATE TABLE IF NOT EXISTS _meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-        INSERT OR IGNORE INTO _meta (key, value) VALUES ('graph_schema_version', '1');
+        INSERT OR IGNORE INTO _meta (key, value) VALUES ('graph_schema_version', '2');
         ",
     )
     .map_err(|e| KernelError::Store(format!("Graph schema init failed: {}", e)))?;
@@ -145,5 +173,74 @@ mod tests {
             )
             .unwrap();
         assert_eq!(name, "nodes_fts");
+    }
+
+    /// Helper: force the recorded version down to `v` (simulates an older DB).
+    fn set_version(conn: &Connection, v: u32) {
+        conn.execute(
+            "UPDATE _meta SET value = ?1 WHERE key = 'graph_schema_version'",
+            params![v.to_string()],
+        )
+        .unwrap();
+    }
+
+    fn has_index(conn: &Connection, name: &str) -> bool {
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name = ?1",
+                params![name],
+                |r| r.get(0),
+            )
+            .unwrap();
+        count > 0
+    }
+
+    #[test]
+    fn schema_version_reads_meta() {
+        let conn = mem_db();
+        assert_eq!(schema_version(&conn).unwrap(), GRAPH_SCHEMA_VERSION);
+        set_version(&conn, 1);
+        assert_eq!(schema_version(&conn).unwrap(), 1);
+    }
+
+    /// AC5: a v1 database migrates up to the current version, applying the
+    /// v1→v2 step (the `idx_nodes_created` index becomes observable).
+    #[test]
+    fn migrate_advances_v1_to_current() {
+        let conn = mem_db();
+        // Drop the v2 index, then rewind the version to simulate a v1 DB.
+        conn.execute_batch("DROP INDEX IF EXISTS idx_nodes_created;")
+            .unwrap();
+        set_version(&conn, 1);
+        assert!(!has_index(&conn, "idx_nodes_created"));
+
+        let new_version = migrate_graph(&conn, 1).unwrap();
+        assert_eq!(new_version, GRAPH_SCHEMA_VERSION);
+        assert_eq!(schema_version(&conn).unwrap(), GRAPH_SCHEMA_VERSION);
+        assert!(has_index(&conn, "idx_nodes_created"));
+    }
+
+    /// AC5: migrating an already-current DB is a no-op.
+    #[test]
+    fn migrate_is_noop_when_current() {
+        let conn = mem_db();
+        let v = migrate_graph(&conn, GRAPH_SCHEMA_VERSION).unwrap();
+        assert_eq!(v, GRAPH_SCHEMA_VERSION);
+    }
+
+    /// AC5: a migration whose step fails rolls back, leaving the version
+    /// unchanged. We force failure by dropping the `nodes` table so the
+    /// `CREATE INDEX … ON nodes` step cannot succeed.
+    #[test]
+    fn migrate_rolls_back_on_failure() {
+        let conn = mem_db();
+        set_version(&conn, 1);
+        // Sabotage the migration target so the v1→v2 CREATE INDEX fails.
+        conn.execute_batch("DROP TABLE nodes;").unwrap();
+
+        let result = migrate_graph(&conn, 1);
+        assert!(result.is_err(), "expected migration to fail");
+        // Version unchanged because the transaction rolled back.
+        assert_eq!(schema_version(&conn).unwrap(), 1);
     }
 }
