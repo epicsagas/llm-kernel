@@ -48,6 +48,9 @@ pub trait AsyncVectorIndex: Send + Sync {
 
     /// Search restricted to an allowlist of candidate IDs.
     ///
+    /// An **empty** allowlist yields no candidates, so an empty `Vec` is
+    /// returned (it does not fall back to an unfiltered search).
+    ///
     /// Mirrors [`VectorIndex::search_filtered`](crate::embedding::VectorIndex::search_filtered):
     /// narrow candidates (e.g. by metadata or BM25), then dense-rerank.
     async fn search_filtered(

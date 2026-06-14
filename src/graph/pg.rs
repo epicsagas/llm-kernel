@@ -4,8 +4,19 @@
 //! synchronous `postgres::Client`. Every `GraphBackend` method matches the
 //! SQLite semantics — the composite `smart_recall` reuses `super::recall`'s
 //! weights and `compute_recency` for zero drift across backends. Full-text
-//! search uses ILIKE substring matching (no PostgreSQL extension required),
-//! and schema versioning flows through the trait's `current_version` / `migrate`.
+//! search uses ILIKE substring matching (**no PostgreSQL extension required**,
+//! so the backend runs on any vanilla install), and schema versioning flows
+//! through the trait's `current_version` / `migrate`.
+//!
+//! # Performance note
+//!
+//! ILIKE with a leading wildcard (`'%term%'`) is a sequential scan — the BTREE
+//! indexes cannot serve it. This is intentional: keeping the backend
+//! extension-free preserves portability (the same rationale as the CJK feature).
+//! For very large graphs, callers may opt into indexed substring search by
+//! enabling `pg_trgm` out-of-band (`CREATE EXTENSION pg_trgm;
+//! CREATE INDEX nodes_trgm ON nodes USING gin ((title || ' ' || body || ' '
+//! || tags) gin_trgm_ops)`); the ILIKE queries then use it transparently.
 
 use std::collections::HashSet;
 use std::sync::{Mutex, MutexGuard};
@@ -61,6 +72,16 @@ fn row_to_edge(row: &Row) -> GraphEdge {
         weight: row.get(4),
         ts: row.get(5),
     }
+}
+
+/// Build escaped, wrapped ILIKE patterns for each whitespace-separated term in
+/// `query` — e.g. `"rust db"` → `["%rust%", "%db%"]`, `"100%"` → `["%100\\%%"]`.
+/// Pure (no connection) so the SQL-input transform is unit-testable offline.
+fn search_patterns(query: &str) -> Vec<String> {
+    query
+        .split_whitespace()
+        .map(|t| format!("%{}%", escape_like(t)))
+        .collect()
 }
 
 /// Create the graph schema if absent. Idempotent — safe on every connect.
@@ -251,10 +272,7 @@ impl GraphBackend for PgGraph {
     }
 
     fn search_nodes(&self, query: &str, limit: usize) -> Result<Vec<GraphNode>> {
-        let terms: Vec<String> = query
-            .split_whitespace()
-            .map(|t| format!("%{}%", escape_like(t)))
-            .collect();
+        let terms = search_patterns(query);
         if terms.is_empty() {
             return Ok(vec![]);
         }
@@ -435,14 +453,24 @@ impl GraphBackend for PgGraph {
             }
         }
 
-        // Touch retrieved nodes (access_count++, accessed_at = now).
-        let now = now_iso();
-        for sn in &scored {
-            let params: [&(dyn ToSql + Sync); 2] = [&now, &sn.node.id];
-            let _ = c.execute(
-                "UPDATE nodes SET access_count = access_count + 1, accessed_at = $1 WHERE id = $2",
-                &params,
+        // Touch retrieved nodes in a single statement (access_count++,
+        // accessed_at = now) rather than N round-trips.
+        if !scored.is_empty() {
+            let now = now_iso();
+            let ids: Vec<&str> = scored.iter().map(|sn| sn.node.id.as_str()).collect();
+            let placeholders: String = (0..ids.len())
+                .map(|i| format!("${}", i + 2))
+                .collect::<Vec<_>>()
+                .join(",");
+            let mut params: Vec<&(dyn ToSql + Sync)> = Vec::with_capacity(ids.len() + 1);
+            params.push(&now);
+            for id in &ids {
+                params.push(id);
+            }
+            let sql = format!(
+                "UPDATE nodes SET access_count = access_count + 1, accessed_at = $1 WHERE id IN ({placeholders})"
             );
+            let _ = c.execute(&sql, &params);
         }
 
         Ok(scored)
@@ -489,7 +517,7 @@ impl GraphBackend for PgGraph {
         let mut c = self.lock();
         c.execute(
             "INSERT INTO edges (id, source, target, relation, weight, ts)
-             VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (id) DO NOTHING",
+             VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING",
             &params,
         )
         .map_err(pg_err)?;
@@ -587,6 +615,22 @@ mod tests {
         let _ = admin.batch_execute(&format!("DROP DATABASE IF EXISTS {TEST_DB}"));
     }
 
+    /// Offline (no server): the ILIKE pattern transform escapes LIKE wildcards
+    /// and wraps each term — covers `tests-api-1` SQL-input coverage.
+    #[test]
+    fn search_patterns_escapes_and_wraps() {
+        assert!(search_patterns("").is_empty());
+        assert_eq!(search_patterns("rust"), vec!["%rust%".to_string()]);
+        // LIKE wildcards (`%`, `_`, `\`) are escaped inside the term.
+        assert_eq!(search_patterns("100%"), vec!["%100\\%%".to_string()]);
+        assert_eq!(search_patterns("a_b"), vec!["%a\\_b%".to_string()]);
+        // Multiple whitespace-separated terms → multiple patterns.
+        assert_eq!(
+            search_patterns("rust db"),
+            vec!["%rust%".to_string(), "%db%".to_string()]
+        );
+    }
+
     /// Full `GraphBackend` conformance against a live PostgreSQL (skips without
     /// `LLMKERNEL_PG_URL`).
     #[test]
@@ -651,6 +695,43 @@ mod tests {
                 g.related_nodes("rust", 2)
                     .unwrap()
                     .contains(&"py".to_string())
+            );
+
+            // correctness-1: a fresh-id edge with a duplicate (source, target,
+            // relation) triple is IGNORED (ON CONFLICT DO NOTHING catches any
+            // unique violation, matching SQLite's INSERT OR IGNORE) — no hard
+            // unique-violation error on PostgreSQL.
+            g.append_edge(&GraphEdge {
+                id: "e1dup".into(),
+                source: "rust".into(),
+                target: "py".into(),
+                relation: "related".into(),
+                weight: 2.0,
+                ts: "2026-01-02T00:00:00Z".into(),
+            })
+            .unwrap();
+            assert_eq!(
+                g.edges_for_node("rust").unwrap().len(),
+                1,
+                "duplicate (src,tgt,rel) edge ignored"
+            );
+
+            // correctness-2: a self-loop on the start node is excluded from
+            // related_nodes (PostgreSQL correctly prunes the start node; the
+            // SQLite backend has a pre-existing quirk that leaks it).
+            g.append_edge(&GraphEdge {
+                id: "eloop".into(),
+                source: "rust".into(),
+                target: "rust".into(),
+                relation: "self".into(),
+                weight: 1.0,
+                ts: "2026-01-01T00:00:00Z".into(),
+            })
+            .unwrap();
+            let related = g.related_nodes("rust", 2).unwrap();
+            assert!(
+                !related.contains(&"rust".to_string()),
+                "start node excluded even with a self-loop"
             );
 
             let recalled = g.smart_recall(None, Some("ownership"), 5).unwrap();
