@@ -33,8 +33,14 @@ pub mod transport;
 
 pub use auth::BearerAuth;
 pub use schema::{ResourceDescription, ToolDescription};
-pub use server::{Handler, McpServer};
+pub use server::{AsyncToolHandler, Handler, McpServer};
 pub use transport::JsonRpcDispatcher;
+
+/// HTTP/SSE remote transport for MCP (axum + tokio).
+#[cfg(feature = "mcp-http")]
+pub mod http;
+#[cfg(feature = "mcp-http")]
+pub use http::{HttpTransport, serve};
 
 /// MCP notification types for server-initiated messages.
 #[derive(Debug, Clone)]

@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-06-14
+
+### Added
+
+- **graph**: `GraphBackend` trait — sync, object-safe, backend-agnostic interface for graph storage with **no `rusqlite` types in its surface**, ready for non-SQLite backends (new `src/graph/backend.rs`)
+- **graph**: `SqliteGraph` — bundled `GraphBackend` implementation wrapping the existing graph free-function API behind a mutex-guarded connection
+- **graph**: schema migration framework expressed through `GraphBackend` (`current_version`, `migrate`) — version-to-version steps with transactional rollback; graph schema bumped to v2 (new `idx_nodes_created` index)
+- **graph**: CJK-aware search via Rust-side segmentation (`segment_cjk`, `search_nodes_cjk`) behind the new `graph-cjk` feature — **no FTS5 schema change**, so the feature toggles safely on any existing database (new `src/graph/cjk.rs`)
+- **store**: `KvStore` trait (sync, object-safe) + `SqliteKvStore` implementation (new `src/store/kv.rs`)
+- **llm**: `CacheClient` — response-cache wrapper for any `LLMClient`, backed by `KvStore`; deterministic key, `complete` cached, `stream_complete` pass-through (new `src/llm/cache.rs`, new `cache` feature)
+- **mcp**: async tool handlers (`AsyncToolHandler`, `set_async_handler`, `call_tool_async`) alongside the existing synchronous handlers
+- **mcp**: HTTP/SSE remote transport (`HttpTransport`, `serve`) behind the new `mcp-http` feature — JSON-RPC over `POST /mcp` and SSE streaming via `POST /mcp/sse`, reusing the server's Bearer auth (new `src/mcp/http.rs`)
+
+### Changed
+
+- **graph**: schema version bumped 1 → 2; `init_graph_schema` is backward compatible and `SqliteGraph::open` migrates older databases transparently
+- **features**: new `cache`, `graph-cjk`, and `mcp-http` feature gates; `mcp` now pulls `async-trait`; all three are included in the `full` feature set
+- **deps**: `ort` remains pinned to `=2.0.0-rc.12` (no 2.0.0 stable yet); the pin now carries an explicit lockstep-with-fastembed comment
+- **deps**: dev-dependency `tokio` for async tests
+
+### Notes
+
+- The existing sync graph free-function API (`upsert_node(&conn, …)`, `search_nodes(&conn, …)`, …) is unchanged. `GraphBackend` / `SqliteGraph` are additive and may be used alongside it.
+- The LLM cache is a dedicated `LLMClient` wrapper rather than an `LLMClientMiddleware`, because the middleware trait is observe-only by design and cannot short-circuit a request with a cached response.
+
 ## [0.6.0] - 2026-06-13
 
 ### Added

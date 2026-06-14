@@ -1,13 +1,44 @@
 //! MCP server core — tool registration, initialization, and dispatch logic.
 
 use std::collections::HashMap;
+use std::future::Future;
+use std::sync::Arc;
+
+use async_trait::async_trait;
 
 use crate::mcp::auth::BearerAuth;
 use crate::mcp::schema::{ResourceDescription, ToolDescription};
 
-/// Handler function type for MCP tool calls.
+/// Handler function type for MCP tool calls (synchronous).
 pub type Handler =
     Box<dyn Fn(serde_json::Value) -> crate::error::Result<serde_json::Value> + Send + Sync>;
+
+/// Async tool-handler trait — the async counterpart to the synchronous [`Handler`].
+///
+/// Object-safe via `async_trait`, so an [`McpServer`] can store
+/// `Arc<dyn AsyncToolHandler>` and await it from an async transport
+/// (e.g. the HTTP/SSE transport).
+#[async_trait]
+pub trait AsyncToolHandler: Send + Sync {
+    /// Invoke the handler with the tool call parameters.
+    async fn call(&self, params: serde_json::Value) -> crate::error::Result<serde_json::Value>;
+}
+
+/// Adapts an async closure `Fn(Value) -> Future<Output = Result<Value>>` into an
+/// [`AsyncToolHandler`], so [`McpServer::set_async_handler`] accepts a plain
+/// async closure.
+struct AsyncHandlerFn<F>(F);
+
+#[async_trait]
+impl<F, Fut> AsyncToolHandler for AsyncHandlerFn<F>
+where
+    F: Fn(serde_json::Value) -> Fut + Send + Sync + 'static,
+    Fut: Future<Output = crate::error::Result<serde_json::Value>> + Send,
+{
+    async fn call(&self, params: serde_json::Value) -> crate::error::Result<serde_json::Value> {
+        (self.0)(params).await
+    }
+}
 
 /// An MCP server that manages tools, resources, and dispatches calls.
 pub struct McpServer {
@@ -16,6 +47,7 @@ pub struct McpServer {
     tools: Vec<ToolDescription>,
     resources: Vec<ResourceDescription>,
     handlers: HashMap<String, Handler>,
+    async_handlers: HashMap<String, Arc<dyn AsyncToolHandler>>,
     resource_handlers: HashMap<String, Handler>,
     auth: Option<BearerAuth>,
 }
@@ -29,6 +61,7 @@ impl McpServer {
             tools: Vec::new(),
             resources: Vec::new(),
             handlers: HashMap::new(),
+            async_handlers: HashMap::new(),
             resource_handlers: HashMap::new(),
             auth: None,
         }
@@ -84,6 +117,20 @@ impl McpServer {
     ) {
         self.handlers
             .insert(tool_name.to_string(), Box::new(handler));
+    }
+
+    /// Register an async handler for a tool by name.
+    ///
+    /// `handler` is a closure returning a future (typically `async move { … }`).
+    /// Async handlers take precedence over sync handlers registered with
+    /// [`Self::set_handler`] when resolved via [`Self::call_tool_async`].
+    pub fn set_async_handler<F, Fut>(&mut self, tool_name: &str, handler: F)
+    where
+        F: Fn(serde_json::Value) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = crate::error::Result<serde_json::Value>> + Send,
+    {
+        self.async_handlers
+            .insert(tool_name.to_string(), Arc::new(AsyncHandlerFn(handler)));
     }
 
     /// Get the server name.
@@ -143,6 +190,25 @@ impl McpServer {
             .get(name)
             .ok_or_else(|| crate::error::KernelError::Config(format!("unknown tool: {name}")))?;
         handler(params)
+    }
+
+    /// Call a tool by name, awaiting an async handler if one is registered and
+    /// otherwise falling back to the synchronous handler. Errors if the tool is
+    /// unknown. This is the entry point used by async transports (e.g. HTTP/SSE).
+    pub async fn call_tool_async(
+        &self,
+        name: &str,
+        params: serde_json::Value,
+    ) -> crate::error::Result<serde_json::Value> {
+        if let Some(handler) = self.async_handlers.get(name) {
+            return handler.call(params).await;
+        }
+        if let Some(handler) = self.handlers.get(name) {
+            return handler(params);
+        }
+        Err(crate::error::KernelError::Config(format!(
+            "unknown tool: {name}"
+        )))
     }
 
     /// Build the `initialize` response.
@@ -262,5 +328,52 @@ mod tests {
         assert_eq!(token.len(), 32);
         assert!(server.check_auth(&format!("Bearer {token}")));
         assert!(!server.check_auth("Bearer bad"));
+    }
+
+    /// AC3: an async-registered tool resolves via `call_tool_async` and is awaited.
+    #[tokio::test]
+    async fn async_handler_is_awaited() {
+        let mut server = McpServer::new("test", "0.1.0");
+        server.register_tool(ToolDescription {
+            name: "async-echo".into(),
+            description: "Echo input asynchronously".into(),
+            input_schema: serde_json::json!({"type": "object"}),
+        });
+        server.set_async_handler("async-echo", |params| async move { Ok(params) });
+
+        let result = server
+            .call_tool_async("async-echo", serde_json::json!({"msg": "hi"}))
+            .await
+            .unwrap();
+        assert_eq!(result["msg"], "hi");
+    }
+
+    /// AC3: `call_tool_async` falls back to a sync handler when no async one is set.
+    #[tokio::test]
+    async fn async_dispatch_falls_back_to_sync() {
+        let mut server = McpServer::new("test", "0.1.0");
+        server.register_tool(ToolDescription {
+            name: "sync-echo".into(),
+            description: "Echo input synchronously".into(),
+            input_schema: serde_json::json!({"type": "object"}),
+        });
+        server.set_handler("sync-echo", |params| Ok(params));
+
+        let result = server
+            .call_tool_async("sync-echo", serde_json::json!({"x": 1}))
+            .await
+            .unwrap();
+        assert_eq!(result["x"], 1);
+    }
+
+    #[tokio::test]
+    async fn call_tool_async_unknown_tool_errors() {
+        let server = McpServer::new("test", "0.1.0");
+        assert!(
+            server
+                .call_tool_async("missing", serde_json::json!(null))
+                .await
+                .is_err()
+        );
     }
 }
