@@ -70,6 +70,7 @@ Chaque module est derriere un indicateur de fonctionnalite afin que vous ne payi
 | `vector-index` | Index vectoriel compresse TurboQuant -- 2 bits/4 bits, recherche ANN par SIMD | |
 | `qdrant` | AsyncVectorIndex Qdrant (QdrantVectorIndex) pour la recherche vectorielle distante | |
 | `elastic` | AsyncVectorIndex Elasticsearch (ElasticsearchVectorIndex) sur un client reqwest écrit à la main | |
+| `federation` | Fédération multi-moteurs — requête concurrente sur plusieurs backends `AsyncVectorIndex` avec délai par backend (RRF par défaut) | |
 | `telemetry` | Evenements de telemetrie gates par enum, sans PII | |
 | `safety` | Masquage de secrets, classification d'erreurs, nettoyage de sorties, détection d'injection de prompt | |
 | `eval` | CLI d'evaluation de qualite -- tokens, securite, embedding, recherche | |

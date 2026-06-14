@@ -70,6 +70,7 @@ Cada módulo é controlado por uma feature flag para que você só pague pelo qu
 | `vector-index` | Índice de vetores comprimido TurboQuant — 2 bits/4 bits, busca ANN com SIMD | |
 | `qdrant` | AsyncVectorIndex Qdrant (QdrantVectorIndex) para busca vetorial remota | |
 | `elastic` | AsyncVectorIndex Elasticsearch (ElasticsearchVectorIndex) sobre um cliente reqwest feito à mão | |
+| `federation` | Federação entre motores — consulta simultânea em vários backends `AsyncVectorIndex` com tempo limite por backend (RRF padrão) | |
 | `telemetry` | Eventos de telemetria com gate por enum, sem PII | |
 | `safety` | Mascaramento de segredos, classificação de erros, sanitização de saída, detecção de prompt-injection | |
 | `eval` | CLI de avaliação de qualidade — tokens, segurança, embedding, busca | |

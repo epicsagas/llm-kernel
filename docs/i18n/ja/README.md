@@ -70,6 +70,7 @@ llm-kernelは、RustでLLM搭載ツール、エージェント、サーバーを
 | `vector-index` | TurboQuant圧縮ベクトルインデックス — 2ビット/4ビット、SIMD ANN検索 | |
 | `qdrant` | リモートベクトル検索向け Qdrant AsyncVectorIndex（QdrantVectorIndex） | |
 | `elastic` | ハンドロール reqwest クライアント上の Elasticsearch AsyncVectorIndex（ElasticsearchVectorIndex） | |
+| `federation` | クロスエンジン連携 — 複数の `AsyncVectorIndex` バックエンドを同時クエリ、バックエンド別タイムアウト付き（デフォルト RRF） | |
 | `telemetry` | enumゲート方式のテレメトリイベント、PIIなし | |
 | `safety` | シークレットマスキング、エラー分類、出力サニタイズ、プロンプトインジェクション検出 | |
 | `eval` | 品質評価CLI — トークン、セーフティ、エンベディング、検索 | |

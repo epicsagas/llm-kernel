@@ -31,7 +31,7 @@ pub use provider::{KeywordIndex, SearchProvider};
 pub use rrf::rrf_fuse;
 pub use types::SearchResult;
 
-#[cfg(feature = "embedding")]
+#[cfg(feature = "federation")]
 pub use federation::FederatedSearch;
 
 #[cfg(test)]

@@ -24,6 +24,8 @@
 //! milestone. The vector results federate cleanly with Qdrant and TurboVec
 //! because federation defaults to rank-based RRF (scale-invariant).
 
+use std::time::Duration;
+
 use anyhow::{Result, anyhow};
 use reqwest::header::CONTENT_TYPE;
 use serde::Deserialize;
@@ -51,7 +53,14 @@ impl ElasticsearchVectorIndex {
     /// exists with a `dense_vector` field of `dim` dimensions and cosine
     /// similarity.
     pub async fn new(url: &str, index: &str, dim: usize) -> Result<Self> {
+        validate_index_name(index)?;
         let client = reqwest::Client::builder()
+            // Guard direct (non-federated) callers against an unresponsive node.
+            // `FederatedSearch` additionally wraps each call in
+            // `tokio::time::timeout`, but a bare `ElasticsearchVectorIndex` has
+            // no such outer guard.
+            .connect_timeout(Duration::from_secs(5))
+            .timeout(Duration::from_secs(30))
             .build()
             .map_err(|e| anyhow!(redact_credentials(&e.to_string())))?;
         let idx = Self {
@@ -197,7 +206,8 @@ impl AsyncVectorIndex for ElasticsearchVectorIndex {
         let parsed: BulkResponse = decode(resp).await?;
         if parsed.errors {
             return Err(anyhow!(
-                "elasticsearch bulk upsert reported per-item errors [url redacted]"
+                "elasticsearch bulk upsert reported per-item errors [url redacted]: {}",
+                first_failing_bulk_item(&parsed.items)
             ));
         }
         Ok(())
@@ -226,7 +236,8 @@ impl AsyncVectorIndex for ElasticsearchVectorIndex {
         let parsed: BulkResponse = decode(resp).await?;
         if parsed.errors {
             return Err(anyhow!(
-                "elasticsearch bulk delete reported per-item errors [url redacted]"
+                "elasticsearch bulk delete reported per-item errors [url redacted]: {}",
+                first_failing_bulk_item(&parsed.items)
             ));
         }
         Ok(())
@@ -321,7 +332,7 @@ impl AsyncVectorIndex for ElasticsearchVectorIndex {
         let resp = self
             .client
             .post(format!("{}/{}/_count", &self.base_url, &self.index))
-            .json(&serde_json::json!({ "track_total": true }))
+            .json(&serde_json::json!({}))
             .send()
             .await
             .map_err(|e| anyhow!(redact_credentials(&e.to_string())))?;
@@ -344,6 +355,10 @@ impl AsyncVectorIndex for ElasticsearchVectorIndex {
 /// through this function so credentials are never leaked in error messages or
 /// logs. Pure — unit-testable offline. UTF-8 safe (operates on `&str` slices,
 /// which are always char boundaries; the delimiters scanned are all ASCII).
+///
+/// Userinfo is everything before the **last** `@` within the URL authority
+/// (matching the WHATWG URL spec), so a password that itself contains `@`
+/// (`https://u:p@ss@host`) is fully redacted rather than leaking the tail.
 pub fn redact_credentials(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut rest = s;
@@ -357,20 +372,88 @@ pub fn redact_credentials(s: &str) -> String {
                 // Copy the scheme and "://" verbatim.
                 out.push_str(&rest[..idx + 3]);
                 let after = &rest[idx + 3..];
-                // Userinfo ends at the next '@', '/', '?', or '#'.
-                let end = after.find(['@', '/', '?', '#']).unwrap_or(after.len());
-                let segment = &after[..end];
-                if after.as_bytes().get(end) == Some(&b'@') {
+                // The authority runs until the first path/query/fragment
+                // delimiter. Within it, userinfo is everything before the LAST
+                // '@' (so a password containing '@' is redacted whole).
+                let auth_end = after.find(['/', '?', '#']).unwrap_or(after.len());
+                let auth = &after[..auth_end];
+                if let Some(at) = auth.rfind('@') {
                     out.push_str("<redacted>@");
-                    rest = &after[end + 1..];
+                    out.push_str(&auth[at + 1..]);
                 } else {
-                    out.push_str(segment);
-                    rest = &after[end..];
+                    out.push_str(auth);
                 }
+                rest = &after[auth_end..];
             }
         }
     }
     out
+}
+
+/// Validate an Elasticsearch index name against the 8.x naming rules.
+///
+/// ES rejects index names that are empty, exceed 255 UTF-8 bytes, contain
+/// uppercase letters or bytes outside `[a-z0-9_.-]`, or begin with `_`, `-`,
+/// or `+` (`.` is reserved for hidden/system indices, so it is allowed but
+/// discouraged). Validating up front turns ES's opaque
+/// `invalid_index_name_exception` 400 into a clear `Err` before any network
+/// call. Pure — unit-testable offline.
+fn validate_index_name(index: &str) -> Result<()> {
+    if index.is_empty() {
+        return Err(anyhow!("elasticsearch index name must not be empty"));
+    }
+    // ES hard-rejects the literal names "." and ".." (reserved), distinct from
+    // the leading-dot allowance for hidden/system indices like `.myindex`.
+    if index == "." || index == ".." {
+        return Err(anyhow!(
+            "elasticsearch index name must not be `.` or `..` (reserved): `{}`",
+            index
+        ));
+    }
+    if index.len() > 255 {
+        return Err(anyhow!(
+            "elasticsearch index name exceeds 255 bytes ({} bytes)",
+            index.len()
+        ));
+    }
+    match index.as_bytes()[0] {
+        b'_' | b'-' | b'+' => {
+            return Err(anyhow!(
+                "elasticsearch index name must not start with `_`, `-`, or `+`: `{}`",
+                index
+            ));
+        }
+        _ => {}
+    }
+    if let Some(bad) = index.bytes().find(|&c| {
+        !(c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, b'_' | b'-' | b'.'))
+    }) {
+        return Err(anyhow!(
+            "elasticsearch index name contains an illegal byte 0x{bad:02x} (`{}`): \
+             only lowercase a-z, 0-9, `_`, `-`, `.` are allowed",
+            index
+        ));
+    }
+    Ok(())
+}
+
+/// Render the first failing item of an ES `_bulk` response, redacted.
+///
+/// Each bulk item is `{ "<action>": { "_id": …, "status": N, "error": {…} } }`
+/// where `<action>` is `index`/`create`/`update`/`delete`. An item counts as
+/// failing when `status >= 400` or it carries an `error` object. Parsed as
+/// opaque JSON so this is robust to ES version-specific item shape.
+fn first_failing_bulk_item(items: &[serde_json::Value]) -> String {
+    for item in items {
+        if let Some(detail) = item.as_object().and_then(|o| o.values().next()) {
+            let status = detail.get("status").and_then(|v| v.as_i64()).unwrap_or(0);
+            let has_error = detail.get("error").is_some();
+            if status >= 400 || has_error {
+                return redact_credentials(&item.to_string());
+            }
+        }
+    }
+    "(no failing item found)".into()
 }
 
 /// Decode a JSON response body into `T`, redacting any URL in errors.
@@ -404,6 +487,8 @@ struct CountResponse {
 #[derive(Deserialize)]
 struct BulkResponse {
     errors: bool,
+    #[serde(default)]
+    items: Vec<serde_json::Value>,
 }
 
 #[cfg(test)]
@@ -453,6 +538,9 @@ mod tests {
             ),
             ("http://localhost:9200", "http://localhost:9200"),
             ("http://user@host", "http://<redacted>@host"),
+            // Password containing '@' — userinfo spans to the LAST '@', so the
+            // tail after the first '@' does not leak.
+            ("https://u:p@ss@host:9200", "https://<redacted>@host:9200"),
             ("no url here", "no url here"),
             // Multibyte UTF-8 must survive intact (regression for the
             // byte-wise redaction that would corrupt non-ASCII).
@@ -466,6 +554,78 @@ mod tests {
         }
         // The password never survives redaction.
         assert!(!redact_credentials("https://u:secret@host").contains("secret"));
+        // An '@' embedded in the password must not leak the tail.
+        let leaked = redact_credentials("https://u:p@ss@host:9200");
+        assert!(!leaked.contains("p@ss"), "password tail leaked: {leaked}");
+        assert!(!leaked.contains("ss@"), "password tail leaked: {leaked}");
+    }
+
+    #[test]
+    fn validate_index_name_accepts_and_rejects() {
+        // Valid.
+        for ok in ["docs", "docs_v2", "my-index", "idx.2026", "a", "a.b-c_d"] {
+            assert!(
+                validate_index_name(ok).is_ok(),
+                "{ok:?} should be a valid index name"
+            );
+        }
+        // Rejected.
+        for name in [
+            "",            // empty
+            "Docs",        // uppercase
+            "with space",  // space
+            "comma,idx",   // comma
+            "_underscore", // leading _
+            "-dash",       // leading -
+            "+plus",       // leading +
+            "bad/slash",   // slash
+            "한글",        // non-ASCII
+            ".",           // reserved literal
+            "..",          // reserved literal
+        ] {
+            assert!(
+                validate_index_name(name).is_err(),
+                "{name:?} should be rejected"
+            );
+        }
+        // 255-byte cap.
+        assert!(validate_index_name(&"a".repeat(255)).is_ok());
+        assert!(validate_index_name(&"a".repeat(256)).is_err());
+    }
+
+    /// The bulk-error detail helper picks the first failing item (status >= 400
+    /// OR carrying an `error` object), redacts any URL embedded in the item, and
+    /// falls back when no item qualifies. Pure — exercised offline.
+    #[test]
+    fn first_failing_bulk_item_picks_failing_and_redacts() {
+        // First failing item (status 400 + error) is surfaced.
+        let items = vec![
+            serde_json::json!({ "index": { "_id": "1", "status": 200 } }),
+            serde_json::json!({
+                "index": { "_id": "2", "status": 400, "error": { "type": "mapper", "reason": "bad" } }
+            }),
+        ];
+        let s = first_failing_bulk_item(&items);
+        assert!(
+            s.contains("\"_id\":\"2\""),
+            "should name the failing item: {s}"
+        );
+        assert!(s.contains("400"));
+        // error-only failure (no status field) is still detected.
+        let err_only = vec![serde_json::json!({
+            "delete": { "_id": "9", "error": { "type": "x", "reason": "y" } }
+        })];
+        assert!(first_failing_bulk_item(&err_only).contains("\"_id\":\"9\""));
+        // A credentialed URL embedded in the item JSON is redacted.
+        let with_url = vec![serde_json::json!({
+            "index": { "_id": "3", "status": 500, "error": { "reason": "see https://u:secret@host" } }
+        })];
+        let leaked = first_failing_bulk_item(&with_url);
+        assert!(!leaked.contains("secret"), "credential leaked: {leaked}");
+        assert!(leaked.contains("<redacted>"));
+        // No qualifying item → fallback string.
+        let none = vec![serde_json::json!({ "index": { "_id": "1", "status": 200 } })];
+        assert_eq!(first_failing_bulk_item(&none), "(no failing item found)");
     }
 
     /// AC3: an error message derived from a credentialed URL must not contain

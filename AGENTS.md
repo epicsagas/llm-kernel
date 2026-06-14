@@ -33,7 +33,7 @@ src/
   mcp/         — JSON-RPC 2.0 server, stdio + HTTP/SSE transport, async handlers  (features: mcp, mcp-http)
   tokens/      — Unicode token estimation, budgeting, sentence-aware chunking  (feature: tokens)
   install/     — AI tool config wizard  (feature: install)
-  search/      — SearchProvider trait, RRF + weighted-sum + CombMNZ fusion, cross-engine FederatedSearch  (feature: search)
+  search/      — SearchProvider trait, RRF + weighted-sum + CombMNZ fusion; cross-engine FederatedSearch  (features: search, federation)
   embedding/   — provider trait + OpenAI client, ElasticsearchVectorIndex  (features: embedding, embedding-openai, elastic)
   telemetry/   — enum-gated events  (feature: telemetry)
   safety/      — secret masking, error classification, prompt-injection detection  (feature: safety)

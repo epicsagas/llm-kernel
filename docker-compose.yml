@@ -30,7 +30,7 @@ services:
       - "127.0.0.1:6334:6334"
 
   elasticsearch:
-    image: docker.io/library/elasticsearch:8
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.17.0
     environment:
       discovery.type: single-node
       xpack.security.enabled: "false"

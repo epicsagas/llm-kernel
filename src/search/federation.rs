@@ -89,10 +89,10 @@ pub fn federate_results(
 }
 
 // ---------------------------------------------------------------------------
-// Async federation over AsyncVectorIndex backends (needs the `embedding` feature).
+// Async federation over AsyncVectorIndex backends (needs the `federation` feature).
 // ---------------------------------------------------------------------------
 
-#[cfg(feature = "embedding")]
+#[cfg(feature = "federation")]
 mod federated {
     use std::sync::Arc;
     use std::time::Duration;
@@ -111,6 +111,19 @@ mod federated {
     struct Backend {
         index: Arc<dyn AsyncVectorIndex>,
         weight: f32,
+    }
+
+    /// Map u64-keyed [`SearchHit`]s into the String-id [`SearchResult`] shape the
+    /// fusion functions expect, canonicalizing the id so a shared document
+    /// merges across backends rather than appearing multiple times.
+    fn hits_to_results(hits: Vec<SearchHit>) -> Vec<SearchResult> {
+        hits.into_iter()
+            .map(|h| SearchResult {
+                id: h.id.to_string(),
+                score: h.score,
+                text: String::new(),
+            })
+            .collect()
     }
 
     /// Concurrent search over multiple [`AsyncVectorIndex`] backends.
@@ -217,27 +230,25 @@ mod federated {
 
             // Adapt u64-keyed hits into the String-id SearchResult shape fusion
             // expects, canonicalizing the id so a shared document merges across
-            // backends rather than appearing multiple times.
-            let mut lists: Vec<Vec<SearchResult>> = Vec::with_capacity(ok.len());
-            let mut weights: Vec<f32> = Vec::with_capacity(ok.len());
-            for (w, hits) in ok {
-                let list: Vec<SearchResult> = hits
-                    .into_iter()
-                    .map(|h| SearchResult {
-                        id: h.id.to_string(),
-                        score: h.score,
-                        text: String::new(),
-                    })
-                    .collect();
-                weights.push(w);
-                lists.push(list);
-            }
-
+            // backends rather than appearing multiple times. `ok` is consumed
+            // once: RRF needs only the lists, WeightedSum additionally needs the
+            // per-backend weights (collected inside that arm).
             match self.strategy {
-                FusionStrategy::Rrf { k } => Ok(rrf_fuse(&lists, k)),
+                FusionStrategy::Rrf { k } => {
+                    let lists: Vec<Vec<SearchResult>> = ok
+                        .into_iter()
+                        .map(|(_w, hits)| hits_to_results(hits))
+                        .collect();
+                    Ok(rrf_fuse(&lists, k))
+                }
                 FusionStrategy::WeightedSum => {
-                    for list in lists.iter_mut() {
-                        normalize_minmax(list);
+                    let mut lists: Vec<Vec<SearchResult>> = Vec::with_capacity(ok.len());
+                    let mut weights: Vec<f32> = Vec::with_capacity(ok.len());
+                    for (w, hits) in ok {
+                        let mut list = hits_to_results(hits);
+                        normalize_minmax(&mut list);
+                        lists.push(list);
+                        weights.push(w);
                     }
                     Ok(weighted_sum_fuse(&lists, &weights))
                 }
@@ -246,7 +257,7 @@ mod federated {
     }
 }
 
-#[cfg(feature = "embedding")]
+#[cfg(feature = "federation")]
 pub use federated::FederatedSearch;
 
 #[cfg(test)]
@@ -312,7 +323,7 @@ mod tests {
     }
 }
 
-#[cfg(all(test, feature = "embedding"))]
+#[cfg(all(test, feature = "federation"))]
 mod async_tests {
     use std::sync::Arc;
     use std::time::Duration;
@@ -469,6 +480,37 @@ mod async_tests {
             FusionStrategy::default(),
             FusionStrategy::Rrf { k: 60 }
         ));
+    }
+
+    /// Guards the refactored WeightedSum async arm (the weights-collection loop
+    /// moved inside that arm): two backends with distinct weights still merge,
+    /// with results from both backends present.
+    #[tokio::test]
+    async fn two_backends_merge_via_weighted_sum() {
+        let a = Arc::new(StubIndex {
+            hits: vec![hit(1, 1.0), hit(2, 0.2)],
+            delay: None,
+            fail: false,
+            dim: 4,
+        });
+        let b = Arc::new(StubIndex {
+            hits: vec![hit(2, 1.0), hit(3, 0.1)],
+            delay: None,
+            fail: false,
+            dim: 4,
+        });
+        let merged = FederatedSearch::new()
+            .with_backend(a, 0.75)
+            .with_backend(b, 0.25)
+            .strategy(FusionStrategy::WeightedSum)
+            .search(&[1.0, 0.0, 0.0, 0.0], 5)
+            .await
+            .unwrap();
+        // a's top (id 1, normalized weight 0.75) leads; both backends present.
+        assert!(!merged.is_empty());
+        assert_eq!(merged[0].id, "1");
+        assert!(merged.iter().any(|r| r.id == "2")); // shared, deduped
+        assert!(merged.iter().any(|r| r.id == "3")); // from b
     }
 
     /// No backends configured → empty result, no error.

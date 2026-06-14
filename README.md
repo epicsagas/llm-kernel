@@ -56,7 +56,7 @@ Each module is gated behind a feature flag so you only pay for what you use.
 | `cache` | LLM response cache — `CacheClient` over `KvStore` | |
 | `tokens` | Token estimation, budgeting, and sentence-aware document chunking | |
 | `install` | AI tool installation wizard | |
-| `search` | Hybrid search — `SearchProvider` trait, RRF / weighted-sum / CombMNZ fusion, cross-engine `FederatedSearch` | |
+| `search` | Hybrid search — `SearchProvider` trait, RRF / weighted-sum / CombMNZ fusion | |
 | `embedding` | Embedding provider trait + cosine similarity + `AsyncVectorIndex` trait (async counterpart to `VectorIndex`) | |
 | `embedding-openai` | OpenAI text-embedding client (sync HTTP) | |
 | `embedding-fastembed` | Local ONNX embedding via fastembed-rs (44 models) | |
@@ -65,6 +65,7 @@ Each module is gated behind a feature flag so you only pay for what you use.
 | `vector-index` | TurboQuant compressed vector index — 2-bit/4-bit, SIMD ANN search | |
 | `qdrant` | Qdrant `AsyncVectorIndex` (`QdrantVectorIndex`) for remote vector search | |
 | `elastic` | Elasticsearch `AsyncVectorIndex` (`ElasticsearchVectorIndex`) over a hand-rolled reqwest client | |
+| `federation` | Cross-engine federation — concurrent query over multiple `AsyncVectorIndex` backends with a per-backend timeout (RRF default) | |
 | `telemetry` | Enum-gated telemetry events, no PII | |
 | `safety` | Secret masking, error classification, output sanitization, prompt-injection detection | |
 | `eval` | Quality evaluation CLI — tokens, safety, embedding, search | |
@@ -383,7 +384,7 @@ normalize_minmax(&mut hits);
 
 #### Cross-engine federation
 
-`FederatedSearch` queries several `AsyncVectorIndex` backends (Qdrant, Elasticsearch, …) concurrently, applies a per-backend timeout so one slow remote cannot stall the query, and merges survivors. The default strategy is **RRF** because it is rank-based and therefore scale-invariant — heterogeneous raw scores (Qdrant cosine, Elasticsearch `_score`, TurboVec raw cosine) fuse correctly with no normalization.
+`FederatedSearch` queries several `AsyncVectorIndex` backends (Qdrant, Elasticsearch, …) concurrently, applies a per-backend timeout so one slow remote cannot stall the query, and merges survivors. The default strategy is **RRF** because it is rank-based and therefore scale-invariant — heterogeneous raw scores (Qdrant cosine, Elasticsearch `_score`, TurboVec raw cosine) fuse correctly with no normalization. Behind the `federation` feature (add `features = ["federation"]` to your dependency).
 
 ```rust
 use std::sync::Arc;

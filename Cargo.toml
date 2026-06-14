@@ -71,8 +71,11 @@ tokens = []
 # AI tool installation wizard
 install = ["dep:serde_json"]
 
-# Hybrid search with Reciprocal Rank Fusion + cross-engine federation
-search = ["dep:serde_json", "dep:tokio", "dep:futures-util"]
+# Hybrid search — SearchProvider trait + RRF / weighted-sum / CombMNZ fusion
+# over local result lists. Stays light (serde_json only): async cross-engine
+# federation lives behind the dedicated `federation` feature so a `search`-only
+# user compiles no async runtime.
+search = ["dep:serde_json"]
 
 # Embedding provider trait + cosine similarity (+ async vector index trait)
 embedding = ["dep:async-trait"]
@@ -87,6 +90,13 @@ qdrant = ["embedding", "dep:qdrant-client", "dep:serde_json"]
 # reqwest client (the official `elasticsearch` crate is alpha-only). Mirrors the
 # `qdrant` feature, reusing the reqwest already behind `client-async`.
 elastic = ["embedding", "dep:reqwest", "dep:serde_json"]
+
+# Cross-engine search federation — concurrent query over multiple
+# `AsyncVectorIndex` backends with a per-backend timeout and RRF / weighted-sum
+# fusion (`FederatedSearch`). Owns the `tokio` + `futures-util` deps so `search`
+# and `embedding` stay light; a single-backend `qdrant`/`elastic` user compiles
+# no federation runtime.
+federation = ["search", "embedding", "dep:tokio", "dep:futures-util"]
 
 # OpenAI text-embedding provider (requires ureq for sync HTTP)
 embedding-openai = ["embedding", "dep:ureq", "dep:serde_json"]
@@ -123,7 +133,7 @@ eval-full = ["eval", "graph"]
 # Everything except Windows-only execution backends.
 # embedding-fastembed-directml is intentionally excluded: it pulls in the ort
 # RC dependency which is not appropriate for cross-platform builds.
-full = ["provider", "discovery", "discovery-async", "client-async", "cache", "secrets", "store", "config", "graph", "graph-async", "graph-pool", "graph-cjk", "graph-pg", "mcp", "mcp-http", "tokens", "install", "search", "embedding", "embedding-openai", "embedding-fastembed", "embedding-fastembed-qwen3", "embedding-fastembed-nomic-moe", "vector-index", "qdrant", "elastic", "telemetry", "safety"]
+full = ["provider", "discovery", "discovery-async", "client-async", "cache", "secrets", "store", "config", "graph", "graph-async", "graph-pool", "graph-cjk", "graph-pg", "mcp", "mcp-http", "tokens", "install", "search", "embedding", "embedding-openai", "embedding-fastembed", "embedding-fastembed-qwen3", "embedding-fastembed-nomic-moe", "vector-index", "qdrant", "elastic", "federation", "telemetry", "safety"]
 
 [dependencies]
 # Always required
