@@ -55,18 +55,20 @@ llm-kernelは、RustでLLM搭載ツール、エージェント、サーバーを
 | `graph-async` | 非同期グラフラッパー（tokioが必要） | |
 | `graph-pool` | マルチ接続非同期グラフプール（`AsyncPoolGraph`、WAL同時実行） | |
 | `graph-cjk` | CJK-aware graph search via Rust-side segmentation (no schema change) | |
+| `graph-pg` | PostgreSQL GraphBackend（PgGraph）+ SQLite <-> PostgreSQL マイグレーションCLI | |
 | `mcp` | MCPサーバー — JSON-RPC 2.0、stdioトランスポート、Bearer認証 | |
 | `mcp-http` | MCP remote transport — HTTP/SSE (axum + tokio) | |
 | `cache` | LLM response cache — `CacheClient` over `KvStore` | |
 | `tokens` | トークン推定、予算管理、文境界によるドキュメント分割 | |
 | `install` | AIツールインストールウィザード | |
 | `search` | ハイブリッド検索 — `SearchProvider` トレイト、RRF / 加重和 / CombMNZ フュージョン | |
-| `embedding` | エンベディングプロバイダートレイト + コサイン類似度 | |
+| `embedding` | エンベディングプロバイダートレイト + コサイン類似度 + AsyncVectorIndex トレイト（VectorIndex の非同期版） | |
 | `embedding-openai` | OpenAI text-embeddingクライアント（同期HTTP） | |
 | `embedding-fastembed` | fastembed-rsによるローカルONNXエンベディング（44モデル） | |
 | `embedding-fastembed-qwen3` | candleバックエンドによるQwen3エンベディング | |
 | `embedding-fastembed-nomic-moe` | candleバックエンドによるNomic V2 MoEエンベディング | |
 | `vector-index` | TurboQuant圧縮ベクトルインデックス — 2ビット/4ビット、SIMD ANN検索 | |
+| `qdrant` | リモートベクトル検索向け Qdrant AsyncVectorIndex（QdrantVectorIndex） | |
 | `telemetry` | enumゲート方式のテレメトリイベント、PIIなし | |
 | `safety` | シークレットマスキング、エラー分類、出力サニタイズ、プロンプトインジェクション検出 | |
 | `eval` | 品質評価CLI — トークン、セーフティ、エンベディング、検索 | |
@@ -79,28 +81,28 @@ llm-kernelは、RustでLLM搭載ツール、エージェント、サーバーを
 
 ```toml
 [dependencies]
-llm-kernel = "0.7.0"
+llm-kernel = "0.8.0"
 ```
 
 `provider`フィーチャーはデフォルトで有効です。非同期クライアントを使用する場合：
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.7.0", features = ["client-async"] }
+llm-kernel = { version = "0.8.0", features = ["client-async"] }
 ```
 
 非同期ラッパー付きナレッジグラフを使用する場合：
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.7.0", features = ["graph", "graph-async"] }
+llm-kernel = { version = "0.8.0", features = ["graph", "graph-async"] }
 ```
 
 ローカルエンベディング（ONNX、APIキー不要）を使用する場合：
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.7.0", features = ["embedding-fastembed"] }
+llm-kernel = { version = "0.8.0", features = ["embedding-fastembed"] }
 ```
 
 ## 使用方法

@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-06-14
+
+### Added
+
+- **graph** (`graph-pg` feature): `PgGraph` — a PostgreSQL `GraphBackend` over the synchronous `postgres` driver (ILIKE substring search, no extension required; identical `smart_recall` scoring; recursive-CTE BFS traversal; schema versioning via the trait)
+- **graph** (`graph-pg`): `llm-kernel-migrate-graph` binary — a SQLite↔PostgreSQL migration CLI with a `--dry-run` planning mode
+- **embedding** (`qdrant` feature): `QdrantVectorIndex` — `AsyncVectorIndex` over `qdrant-client` (upsert / remove / search / filtered search / count via the universal Query API)
+- **embedding**: `AsyncVectorIndex` trait — the async, object-safe counterpart to `VectorIndex` for remote/shared backends whose clients are async-only (new `src/embedding/async_vector_index.rs`)
+- **infra**: `docker-compose.yml` for opt-in local PostgreSQL + Qdrant to run the live integration tests (works with `docker compose` or `podman compose`)
+
+### Changed
+
+- **features**: new `graph-pg` and `qdrant` feature gates — drivers are optional and not in `default`; both are included in `full`. Single crate, single publish (no separate workspace crates). Main crate version 0.7.0 → 0.8.0.
+- **embedding**: the `embedding` feature now pulls `async-trait` (for the `AsyncVectorIndex` trait); the existing synchronous `VectorIndex` is unchanged
+- **ci**: `graph-pg` and `qdrant` added to the test matrix (live integration tests self-skip without `LLMKERNEL_PG_URL` / `LLMKERNEL_QDRANT_URL`, so CI without services stays green)
+- **graph**: `compute_recency` is now `pub` so the PostgreSQL backend reuses the exact recency math — no scoring drift across backends
+
+### Notes
+
+- Both new backends are live-verified: `PgGraph` passes the full `GraphBackend` conformance and a SQLite→PostgreSQL migration round-trip; `QdrantVectorIndex` passes add / search / filter / remove against a live Qdrant. These live tests are env-gated and skip in CI.
+- Driver dependencies (`postgres`, `qdrant-client`) are optional and only compiled when `graph-pg` / `qdrant` are enabled — the default (and `provider`-only) build is unchanged.
+
 ## [0.7.0] - 2026-06-14
 
 ### Added

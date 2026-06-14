@@ -8,7 +8,7 @@
 
 | Command | Description |
 |---------|-------------|
-| `cargo test --all-features` | Run all tests (477 passed, 12 ignored) |
+| `cargo test --all-features` | Run all tests (483 passed, 12 ignored) |
 | `cargo clippy --all-features -- -D warnings` | Lint |
 | `cargo fmt --all -- --check` | Format check |
 | `cargo bench` | Run criterion benchmarks |
@@ -42,9 +42,16 @@ src/
 Additional binary targets:
 ```
   src/bin/eval.rs                          — quality evaluation CLI  (features: eval, eval-full)
+  src/bin/migrate.rs                       — SQLite↔PostgreSQL graph migration CLI  (feature: graph-pg)
   eval/baseline.json                       — golden baseline snapshot for regression detection
-  crates/llm-kernel-vector-index/src/bin/eval.rs — vector-index eval CLI
 ```
+
+Optional backend features (drivers compiled only when enabled; included in `full`):
+```
+  graph-pg  — PostgreSQL GraphBackend (PgGraph)            src/graph/pg.rs        (driver: postgres)
+  qdrant    — Qdrant AsyncVectorIndex (QdrantVectorIndex)  src/embedding/qdrant.rs (driver: qdrant-client)
+```
+Live integration tests for both gate on `LLMKERNEL_PG_URL` / `LLMKERNEL_QDRANT_URL` and self-skip when unset.
 
 ## Key Conventions
 

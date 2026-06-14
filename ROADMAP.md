@@ -7,7 +7,7 @@ llm-kernel development roadmap from v0.3.2 to v1.0.0.
 * **[FTS5 CJK Alternatives Study](docs/research/fts5_cjk_alternatives.md)**
 * **[Future Milestones Feasibility Study](docs/research/future_roadmap_evaluation.md)**
 
-> **Current phase: v0.7.0 complete ✅ — Next: v0.8.0 Backend Expansion**
+> **Current phase: v0.8.0 complete ✅ — Next: v0.9.0 Search Integrations**
 
 Each phase has a clear theme, concrete deliverables, and exit criteria.
 The library's core philosophy — zero-mandatory-dep composability with feature gates — is preserved throughout.
@@ -134,32 +134,30 @@ Remote MCP, CJK graph search, backend abstraction, and caching.
 
 ---
 
-### v0.8.0 — Backend Expansion
+### v0.8.0 — Backend Expansion ✅
 
-Multi-DBMS and vector search workspace crates.
+Multi-DBMS and vector search backends.
+
+**Shipped as the `graph-pg` and `qdrant` feature gates (single crate, consistent with `embedding-fastembed`/`mcp-http`).** Both backends are live-verified (PostgreSQL conformance + SQLite↔PostgreSQL migration round-trip; Qdrant add/search/filter/remove); the env-gated live tests skip in CI without services.
 
 | # | Deliverable | Scope | Key Files |
 |---|-------------|-------|-----------|
-| 1 | `llm-kernel-graph-pg` — PostgreSQL `GraphBackend` implementation | L | `crates/llm-kernel-graph-pg/` |
-| 2 | `llm-kernel-qdrant` — Qdrant `VectorSearch` implementation | L | `crates/llm-kernel-qdrant/` |
-| 3 | DBMS-to-DBMS migration CLI (SQLite ↔ PostgreSQL) | M | `crates/llm-kernel-graph-pg/src/migrate.rs` |
+| 1 | `graph-pg` — PostgreSQL `GraphBackend` (`PgGraph`) | L | `src/graph/pg.rs` (`graph-pg` feature) |
+| 2 | `qdrant` — Qdrant `AsyncVectorIndex` (`QdrantVectorIndex`) | L | `src/embedding/qdrant.rs` (`qdrant` feature) |
+| 3 | DBMS-to-DBMS migration CLI (SQLite ↔ PostgreSQL) | M | `src/bin/migrate.rs` (`graph-pg` feature) |
 
 **Architecture:**
 
 ```
-llm-kernel (main crate)
-  ├── trait GraphBackend   → SQLite impl (built-in)
-  ├── trait VectorSearch   → TurboVec impl (built-in)
-  ├── trait KvStore        → SQLite impl (built-in)
-  ├── trait SearchProvider → RRF impl (built-in)
-  │
-  └── crates/
-        llm-kernel-vector-index/   # existing (TurboVec)
-        llm-kernel-graph-pg/       # new (PostgreSQL GraphBackend)
-        llm-kernel-qdrant/         # new (Qdrant VectorSearch)
+llm-kernel (single crate, feature-gated)
+  ├── trait GraphBackend   → SQLite (built-in) / PostgreSQL (graph-pg)
+  ├── trait VectorIndex    → TurboVec (vector-index, built-in)
+  ├── trait AsyncVectorIndex → Qdrant (qdrant)
+  ├── trait KvStore        → SQLite (built-in)
+  ├── trait SearchProvider → RRF (built-in)
 ```
 
-Each workspace crate: depends on `llm-kernel` with minimal features (traits only), independent versioning, re-exports shared traits.
+Each backend is an optional feature — drivers (`postgres`, `qdrant-client`) are only compiled when the feature is enabled, so the default build is unchanged.
 
 **Exit criteria:** PostgreSQL passes same graph test suite as SQLite, Qdrant passes VectorSearch conformance tests, migration CLI round-trips without data loss.
 
@@ -171,7 +169,7 @@ Elasticsearch and cross-engine search federation.
 
 | # | Deliverable | Scope | Key Files |
 |---|-------------|-------|-----------|
-| 1 | `llm-kernel-elastic` — Elasticsearch `VectorSearch` implementation | L | `crates/llm-kernel-elastic/` |
+| 1 | `elastic` feature — Elasticsearch `AsyncVectorIndex` implementation | L | `src/embedding/elastic.rs` (`elastic` feature) |
 | 2 | Search federation — query multiple backends, merge results | M | `src/search/` |
 
 **Exit criteria:** Elasticsearch passes VectorSearch conformance tests, federation merges Qdrant + Elasticsearch + TurboVec results.
@@ -216,7 +214,7 @@ v0.3.2
   ├── v0.7.0  Transport & Backend
   │            CJK, MCP HTTP, GraphBackend trait, KvStore, LLM cache
   │
-  ├── v0.8.0  Backend Expansion
+  ├── v0.8.0  Backend Expansion ✅
   │            PostgreSQL, Qdrant, DBMS migration
   │
   ├── v0.9.0  Search Integrations

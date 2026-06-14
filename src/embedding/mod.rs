@@ -28,6 +28,13 @@ pub mod nomic_moe;
 /// Vector index trait and types (zero dependencies).
 pub mod vector_index;
 
+/// Async vector index trait for remote/shared backends (needs `async_trait`).
+pub mod async_vector_index;
+
+/// Qdrant `AsyncVectorIndex` (feature `qdrant`).
+#[cfg(feature = "qdrant")]
+pub mod qdrant;
+
 #[cfg(feature = "vector-index")]
 pub mod turbovec;
 
@@ -58,7 +65,11 @@ pub use nomic_moe::NomicMoeProvider;
 #[cfg(feature = "embedding-fastembed-directml")]
 pub use ort;
 
+pub use async_vector_index::AsyncVectorIndex;
 pub use vector_index::{SearchHit, VectorIndex};
+
+#[cfg(feature = "qdrant")]
+pub use qdrant::QdrantVectorIndex;
 
 #[cfg(feature = "vector-index")]
 pub use turbovec::TurbovecIndex;

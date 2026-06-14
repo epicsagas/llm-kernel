@@ -1,0 +1,28 @@
+# Optional local services for the live integration tests of the `graph-pg`
+# and `qdrant` feature gates of the `llm-kernel` crate.
+#
+# NOT used by CI — the live tests self-skip when their env vars are unset, so CI
+# without these services stays green. Run this locally (docker OR podman) to
+# exercise the full round-trips:
+#
+#   podman compose up -d          # or: docker compose up -d
+#   export LLMKERNEL_PG_URL="postgresql://hackme@localhost:5432/postgres"
+#   export LLMKERNEL_QDRANT_URL="http://localhost:6334"
+#   cargo test --features graph-pg,qdrant
+#
+# NOTE: `POSTGRES_HOST_AUTH_METHOD: trust` is a local-dev convenience only — do
+# not reuse this compose file for any non-ephemeral deployment.
+services:
+  postgres:
+    image: docker.io/library/postgres:18
+    environment:
+      POSTGRES_USER: hackme
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - "5432:5432"
+
+  qdrant:
+    image: docker.io/qdrant/qdrant:latest
+    ports:
+      - "6333:6333"
+      - "6334:6334"
