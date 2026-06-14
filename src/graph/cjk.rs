@@ -52,13 +52,18 @@ pub fn segment_cjk(text: &str) -> String {
     out
 }
 
-/// Search nodes for a CJK (or mixed) query via segmented substring matching.
+/// Search nodes for a CJK (or mixed) query via **contiguous substring** matching.
 ///
-/// The query is segmented with [`segment_cjk`]; every resulting token must
-/// appear (case-insensitive substring) in at least one of `title`, `body`, or
-/// `tags`. Results are ranked by importance DESC and capped at `limit`.
+/// The query is split on whitespace into terms; every term must appear as a
+/// contiguous, case-insensitive substring of `title`, `body`, or `tags`
+/// (AND semantics). A single-token CJK query like `"グラフ"` therefore matches
+/// only nodes containing that exact character run — not any node with the three
+/// characters scattered anywhere — which keeps precision high. Callers that
+/// want character-level recall for an unsegmented multi-word CJK query may
+/// pre-process it with [`segment_cjk`]. Results are ranked by importance DESC
+/// and capped at `limit`.
 pub fn search_nodes_cjk(conn: &Connection, query: &str, limit: usize) -> Result<Vec<GraphNode>> {
-    let terms: Vec<String> = segment_cjk(query)
+    let terms: Vec<String> = query
         .split_whitespace()
         .map(|s| s.to_lowercase())
         .filter(|s| !s.is_empty())

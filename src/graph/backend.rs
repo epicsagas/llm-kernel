@@ -18,12 +18,14 @@ use std::sync::Mutex;
 use rusqlite::Connection;
 
 use crate::error::Result;
+use crate::graph::recall::smart_recall;
 use crate::graph::schema::{init_graph_schema, migrate_graph, schema_version};
 use crate::graph::search::{query_nodes, search_nodes};
 use crate::graph::store::{
     append_edge, delete_edge, delete_node, edges_for_node, remove_edges_for_node, upsert_node,
 };
-use crate::graph::types::{GraphEdge, GraphNode};
+use crate::graph::traversal::related_nodes;
+use crate::graph::types::{GraphEdge, GraphNode, ScoredNode};
 
 /// Sync, object-safe trait for graph backends.
 ///
@@ -48,6 +50,17 @@ pub trait GraphBackend: Send + Sync {
         project: Option<&str>,
         limit: usize,
     ) -> Result<Vec<GraphNode>>;
+    /// Composite recall — rank nodes by recency, importance, access, FTS, and
+    /// graph boost. The canonical high-level read path for "what's relevant".
+    fn smart_recall(
+        &self,
+        project: Option<&str>,
+        hint: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<ScoredNode>>;
+    /// BFS-traverse up to `depth` hops from `start_id`, returning related node
+    /// IDs (excluding the start).
+    fn related_nodes(&self, start_id: &str, depth: usize) -> Result<Vec<String>>;
     /// Append an edge (duplicates by edge ID are ignored).
     fn append_edge(&self, edge: &GraphEdge) -> Result<()>;
     /// Read edges where the given node is source or target.
@@ -143,6 +156,21 @@ impl GraphBackend for SqliteGraph {
         query_nodes(&c, tag, node_type, project, limit)
     }
 
+    fn smart_recall(
+        &self,
+        project: Option<&str>,
+        hint: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<ScoredNode>> {
+        let c = self.lock();
+        smart_recall(&c, project, hint, limit)
+    }
+
+    fn related_nodes(&self, start_id: &str, depth: usize) -> Result<Vec<String>> {
+        let c = self.lock();
+        Ok(related_nodes(&c, start_id, depth))
+    }
+
     fn append_edge(&self, edge: &GraphEdge) -> Result<()> {
         let c = self.lock();
         append_edge(&c, edge)
@@ -178,7 +206,7 @@ impl GraphBackend for SqliteGraph {
 /// CJK-aware convenience methods (available with the `graph-cjk` feature).
 #[cfg(feature = "graph-cjk")]
 impl SqliteGraph {
-    /// CJK (or mixed) substring search via Rust-side segmentation.
+    /// CJK (or mixed) search via contiguous substring matching.
     ///
     /// Delegates to [`crate::graph::cjk::search_nodes_cjk`]; see its docs for
     /// the matching semantics.
@@ -247,5 +275,36 @@ mod tests {
         let hits = backend.search_nodes("graph backend", 10).unwrap();
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].id, "rust");
+    }
+
+    /// The composite recall path is reachable through the trait.
+    #[test]
+    fn backend_smart_recall_finds_relevant() {
+        let backend = SqliteGraph::open_in_memory().unwrap();
+        let mut n = sample_node("rust");
+        n.body = "rust ownership borrow checker".to_string();
+        backend.upsert_node(&n).unwrap();
+        let recalled = backend.smart_recall(None, Some("ownership"), 5).unwrap();
+        assert!(recalled.iter().any(|s| s.node.id == "rust"));
+    }
+
+    /// The composite traversal path is reachable through the trait.
+    #[test]
+    fn backend_related_nodes_traverses_edges() {
+        let backend = SqliteGraph::open_in_memory().unwrap();
+        backend.upsert_node(&sample_node("a")).unwrap();
+        backend.upsert_node(&sample_node("b")).unwrap();
+        backend
+            .append_edge(&GraphEdge {
+                id: "e1".into(),
+                source: "a".into(),
+                target: "b".into(),
+                relation: "related".into(),
+                weight: 1.0,
+                ts: "2026-01-01T00:00:00Z".into(),
+            })
+            .unwrap();
+        let related = backend.related_nodes("a", 2).unwrap();
+        assert!(related.contains(&"b".to_string()));
     }
 }

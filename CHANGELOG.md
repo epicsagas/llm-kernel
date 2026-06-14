@@ -11,14 +11,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **graph**: `GraphBackend` trait — sync, object-safe, backend-agnostic interface for graph storage with **no `rusqlite` types in its surface**, ready for non-SQLite backends (new `src/graph/backend.rs`)
+- **graph**: `GraphBackend` trait — sync, object-safe, backend-agnostic interface for graph storage with **no `rusqlite` types in its surface**, ready for non-SQLite backends; includes the composite `smart_recall` and `related_nodes` operations (new `src/graph/backend.rs`)
 - **graph**: `SqliteGraph` — bundled `GraphBackend` implementation wrapping the existing graph free-function API behind a mutex-guarded connection
 - **graph**: schema migration framework expressed through `GraphBackend` (`current_version`, `migrate`) — version-to-version steps with transactional rollback; graph schema bumped to v2 (new `idx_nodes_created` index)
-- **graph**: CJK-aware search via Rust-side segmentation (`segment_cjk`, `search_nodes_cjk`) behind the new `graph-cjk` feature — **no FTS5 schema change**, so the feature toggles safely on any existing database (new `src/graph/cjk.rs`)
+- **graph**: CJK-aware search via contiguous substring matching (`segment_cjk` utility + `search_nodes_cjk`) behind the new `graph-cjk` feature — **no FTS5 schema change**, so the feature toggles safely on any existing database (new `src/graph/cjk.rs`)
 - **store**: `KvStore` trait (sync, object-safe) + `SqliteKvStore` implementation (new `src/store/kv.rs`)
-- **llm**: `CacheClient` — response-cache wrapper for any `LLMClient`, backed by `KvStore`; deterministic key, `complete` cached, `stream_complete` pass-through (new `src/llm/cache.rs`, new `cache` feature)
+- **llm**: `CacheClient` — response-cache wrapper for any `LLMClient`, backed by `KvStore`; client-namespaced key (no cross-provider collision on a shared store), optional TTL (`with_ttl`), `complete` cached, `stream_complete` pass-through (new `src/llm/cache.rs`, new `cache` feature)
 - **mcp**: async tool handlers (`AsyncToolHandler`, `set_async_handler`, `call_tool_async`) alongside the existing synchronous handlers
-- **mcp**: HTTP/SSE remote transport (`HttpTransport`, `serve`) behind the new `mcp-http` feature — JSON-RPC over `POST /mcp` and SSE streaming via `POST /mcp/sse`, reusing the server's Bearer auth (new `src/mcp/http.rs`)
+- **mcp**: HTTP/SSE remote transport (`HttpTransport`, `serve`) behind the new `mcp-http` feature — JSON-RPC over `POST /mcp` (incl. `resources/read`) and SSE streaming via `POST /mcp/sse`, reusing the server's Bearer auth (new `src/mcp/http.rs`)
 
 ### Changed
 

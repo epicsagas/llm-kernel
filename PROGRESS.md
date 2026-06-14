@@ -9,7 +9,7 @@
 | Version | `0.7.0` |
 | Edition | Rust 2024, MSRV 1.92 |
 | Lines of code | ~16,400 |
-| Total tests | 484 (472 passed, 12 ignored, 0 failed) |
+| Total tests | 489 (477 passed, 12 ignored, 0 failed) |
 | Open PRs | 1 |
 | Open branches | 1 |
 | Last commit | `feat: v0.7.0 transport and backend` |
@@ -132,7 +132,7 @@ safety       → secret masking, error classification, prompt-injection detectio
 
 | Check | Status |
 |-------|--------|
-| All tests pass | ✅ 484/484 (472 passed, 12 ignored) |
+| All tests pass | ✅ 489/489 (477 passed, 12 ignored) |
 | Clippy clean | ✅ (verified before each release) |
 | CI passing | ✅ Linux + macOS dual runner |
 | Crate structure | ✅ Monolithic (subcrate removed) |

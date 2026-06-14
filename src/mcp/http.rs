@@ -76,6 +76,20 @@ async fn dispatch_async(server: &McpServer, req: &Value) -> Option<Value> {
         "initialize" => Ok(server.initialize_response()),
         "tools/list" => Ok(serde_json::json!({ "tools": server.tools() })),
         "resources/list" => Ok(serde_json::json!({ "resources": server.resources() })),
+        "resources/read" => {
+            let uri = req
+                .pointer("/params/uri")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            server
+                .read_resource(uri, serde_json::json!({}))
+                .map(|content| {
+                    serde_json::json!({
+                        "contents": [{ "uri": uri, "text": content.to_string() }]
+                    })
+                })
+                .map_err(|e| (ERR_INTERNAL, e.to_string()))
+        }
         "tools/call" => {
             let name = req
                 .pointer("/params/name")
@@ -172,7 +186,7 @@ async fn sse_handler(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mcp::schema::ToolDescription;
+    use crate::mcp::schema::{ResourceDescription, ToolDescription};
 
     fn server_with_echo() -> McpServer {
         let mut server = McpServer::new("http-test", "1.0.0");
@@ -211,6 +225,26 @@ mod tests {
         let req = serde_json::json!({"jsonrpc":"2.0","id":3,"method":"nope"});
         let resp = dispatch_async(&server, &req).await.unwrap();
         assert_eq!(resp["error"]["code"], ERR_METHOD_NOT_FOUND);
+    }
+
+    /// AC2: HTTP dispatch also serves `resources/read`, not just tools.
+    #[tokio::test]
+    async fn dispatch_resources_read() {
+        let mut server = McpServer::new("http-test", "1.0.0");
+        server.register_resource(ResourceDescription {
+            uri: "docs://x".into(),
+            name: "X".into(),
+            description: None,
+            mime_type: None,
+        });
+        server.set_resource_handler("docs://x", |_| Ok(serde_json::json!("# body")));
+        let req = serde_json::json!({
+            "jsonrpc": "2.0", "id": 4, "method": "resources/read",
+            "params": { "uri": "docs://x" }
+        });
+        let resp = dispatch_async(&server, &req).await.unwrap();
+        let text = resp["result"]["contents"][0]["text"].as_str().unwrap();
+        assert!(text.contains("body"));
     }
 
     /// AC2: a full HTTP round-trip — bind an ephemeral port, POST a tools/call,

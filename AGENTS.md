@@ -8,7 +8,7 @@
 
 | Command | Description |
 |---------|-------------|
-| `cargo test --all-features` | Run all tests (472 passed, 12 ignored) |
+| `cargo test --all-features` | Run all tests (477 passed, 12 ignored) |
 | `cargo clippy --all-features -- -D warnings` | Lint |
 | `cargo fmt --all -- --check` | Format check |
 | `cargo bench` | Run criterion benchmarks |
