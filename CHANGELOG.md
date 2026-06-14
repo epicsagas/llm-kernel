@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-06-15
+
+### Added
+
+- **embedding** (`elastic` feature): `ElasticsearchVectorIndex` — `AsyncVectorIndex` over Elasticsearch 8.x (dense_vector cosine mapping, bulk upsert/delete, knn `_search`, `_count`), implemented with a **hand-rolled reqwest client** rather than the official `elasticsearch` crate (which is alpha-only — no stable release) so the dependency stays safe ahead of the v1.0.0 semver lock (new `src/embedding/elastic.rs`)
+- **search**: `FederatedSearch` — concurrent cross-engine federation over multiple `AsyncVectorIndex` backends with a per-backend timeout, observable failure handling, and rank-based RRF fusion as the default (new `src/search/federation.rs`)
+- **search**: `FusionStrategy` enum + pure `federate_results` merge so a synchronous `TurbovecIndex` can participate in federation alongside the async backends
+
+### Changed
+
+- **search**: the `search` feature now pulls `tokio` (+ `time`) and `futures-util` to power `FederatedSearch`; the pure fusion functions (`rrf_fuse`, `normalize_minmax`, `weighted_sum_fuse`, `combmnz_fuse`) are unchanged
+- **features**: new `elastic` feature gate — the reqwest driver is reused from `client-async` (no new transitive deps); `elastic` is included in `full`. Single crate, single publish. Main crate version 0.8.0 → 0.9.0.
+- **infra**: `docker-compose.yml` gained an Elasticsearch service for the live integration test (local-dev only; CI self-skips)
+
+### Notes
+
+- Federation defaults to **RRF** (rank-based, scale-invariant) so heterogeneous raw scores across backends — Qdrant cosine `[0,1]`, Elasticsearch `_score = (1+cos)/2 ∈ [0,1]`, TurboVec raw cosine `[-1,1]` — fuse correctly with no normalization. `FusionStrategy::WeightedSum` is opt-in and applies per-list min-max normalization first.
+- Elasticsearch connection-string credentials (`https://user:pass@host`) are used for the request but **never** leaked in errors — all error messages route through `redact_credentials`.
+- The live Elasticsearch conformance test mirrors the Qdrant conformance body and self-skips without `LLMKERNEL_ELASTIC_URL`; it deletes its throwaway index on every exit path.
+
 ## [0.8.0] - 2026-06-14
 
 ### Added

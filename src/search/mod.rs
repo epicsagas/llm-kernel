@@ -19,15 +19,20 @@
 //! assert!(!fused.is_empty());
 //! ```
 
+pub mod federation;
 pub mod fusion;
 pub mod provider;
 pub mod rrf;
 pub mod types;
 
+pub use federation::{FusionStrategy, federate_results};
 pub use fusion::{combmnz_fuse, normalize_minmax, weighted_sum_fuse};
 pub use provider::{KeywordIndex, SearchProvider};
 pub use rrf::rrf_fuse;
 pub use types::SearchResult;
+
+#[cfg(feature = "embedding")]
+pub use federation::FederatedSearch;
 
 #[cfg(test)]
 mod tests {

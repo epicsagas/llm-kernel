@@ -1,5 +1,5 @@
-# Optional local services for the live integration tests of the `graph-pg`
-# and `qdrant` feature gates of the `llm-kernel` crate.
+# Optional local services for the live integration tests of the `graph-pg`,
+# `qdrant`, and `elastic` feature gates of the `llm-kernel` crate.
 #
 # NOT used by CI — the live tests self-skip when their env vars are unset, so CI
 # without these services stays green. Run this locally (docker OR podman) to
@@ -8,10 +8,12 @@
 #   podman compose up -d          # or: docker compose up -d
 #   export LLMKERNEL_PG_URL="postgresql://hackme@localhost:5432/postgres"
 #   export LLMKERNEL_QDRANT_URL="http://localhost:6334"
-#   cargo test --features graph-pg,qdrant
+#   export LLMKERNEL_ELASTIC_URL="http://localhost:9200"
+#   cargo test --features graph-pg,qdrant,elastic
 #
-# NOTE: `POSTGRES_HOST_AUTH_METHOD: trust` is a local-dev convenience only — do
-# not reuse this compose file for any non-ephemeral deployment.
+# NOTE: `POSTGRES_HOST_AUTH_METHOD: trust` and the disabled Elasticsearch
+# security below are local-dev conveniences only — do not reuse this compose
+# file for any non-ephemeral deployment.
 services:
   postgres:
     image: docker.io/library/postgres:18
@@ -26,3 +28,12 @@ services:
     ports:
       - "127.0.0.1:6333:6333"
       - "127.0.0.1:6334:6334"
+
+  elasticsearch:
+    image: docker.io/library/elasticsearch:8
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: "-Xms512m -Xmx512m"
+    ports:
+      - "127.0.0.1:9200:9200"

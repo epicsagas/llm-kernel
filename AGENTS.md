@@ -33,8 +33,8 @@ src/
   mcp/         — JSON-RPC 2.0 server, stdio + HTTP/SSE transport, async handlers  (features: mcp, mcp-http)
   tokens/      — Unicode token estimation, budgeting, sentence-aware chunking  (feature: tokens)
   install/     — AI tool config wizard  (feature: install)
-  search/      — SearchProvider trait, RRF + weighted-sum + CombMNZ fusion  (feature: search)
-  embedding/   — provider trait + OpenAI client  (features: embedding, embedding-openai)
+  search/      — SearchProvider trait, RRF + weighted-sum + CombMNZ fusion, cross-engine FederatedSearch  (feature: search)
+  embedding/   — provider trait + OpenAI client, ElasticsearchVectorIndex  (features: embedding, embedding-openai, elastic)
   telemetry/   — enum-gated events  (feature: telemetry)
   safety/      — secret masking, error classification, prompt-injection detection  (feature: safety)
 ```
@@ -50,8 +50,9 @@ Optional backend features (drivers compiled only when enabled; included in `full
 ```
   graph-pg  — PostgreSQL GraphBackend (PgGraph)            src/graph/pg.rs        (driver: postgres)
   qdrant    — Qdrant AsyncVectorIndex (QdrantVectorIndex)  src/embedding/qdrant.rs (driver: qdrant-client)
+  elastic   — Elasticsearch AsyncVectorIndex (ElasticsearchVectorIndex)  src/embedding/elastic.rs (hand-rolled reqwest; official elasticsearch crate is alpha-only)
 ```
-Live integration tests for both gate on `LLMKERNEL_PG_URL` / `LLMKERNEL_QDRANT_URL` and self-skip when unset.
+Live integration tests for all three gate on `LLMKERNEL_PG_URL` / `LLMKERNEL_QDRANT_URL` / `LLMKERNEL_ELASTIC_URL` and self-skip when unset.
 
 ## Key Conventions
 
