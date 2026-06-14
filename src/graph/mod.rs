@@ -54,6 +54,10 @@ pub mod types;
 #[cfg(feature = "graph-cjk")]
 pub mod cjk;
 
+/// PostgreSQL `GraphBackend` (feature `graph-pg`).
+#[cfg(feature = "graph-pg")]
+pub mod pg;
+
 #[cfg(feature = "graph-async")]
 pub mod async_graph;
 
@@ -79,3 +83,6 @@ pub use types::{
 
 #[cfg(feature = "graph-cjk")]
 pub use cjk::{search_nodes_cjk, segment_cjk};
+
+#[cfg(feature = "graph-pg")]
+pub use pg::PgGraph;

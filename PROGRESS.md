@@ -2,14 +2,15 @@
 
 > Auto-generated status snapshot. Last updated: 2026-06-14
 
-## Current Version: v0.7.0
+## Current Version: v0.8.0
 
 | Metric | Value |
 |--------|-------|
-| Version | `0.7.0` |
+| Version | `0.8.0` |
 | Edition | Rust 2024, MSRV 1.92 |
-| Lines of code | ~16,400 |
-| Total tests | 489 (477 passed, 12 ignored, 0 failed) |
+| Lines of code | ~17,400 |
+| Total tests | 495 (483 passed, 12 ignored, 0 failed) |
+| Backend features | `graph-pg` (PostgreSQL), `qdrant` (vector search) |
 | Open PRs | 1 |
 | Open branches | 1 |
 | Last commit | `feat: v0.7.0 transport and backend` |
@@ -17,6 +18,15 @@
 ---
 
 ## Recent Releases
+
+### v0.8.0 (2026-06-14)
+
+- **embedding**: `AsyncVectorIndex` async trait (`VectorIndex`의 async 대응, 원격/공유 백엔드용)
+- **graph-pg**: PostgreSQL `GraphBackend` (`PgGraph`, 동기 `postgres` 드라이버, ILIKE 검색, 동일 smart_recall 스코어링, 재귀 CTE BFS) — 메인 크레이트 `graph-pg` 피처
+- **graph-pg**: SQLite↔PostgreSQL 마이그레이션 CLI (`llm-kernel-migrate-graph`, `--dry-run`)
+- **qdrant**: `QdrantVectorIndex` (`AsyncVectorIndex` 구현, universal Query API) — 메인 크레이트 `qdrant` 피처
+- **infra**: `docker-compose.yml` (docker/podman 호환), 신규 `crates` CI 잡 추가
+- **graph**: `compute_recency` 공개(백엔드 간 스코어링 일치), 양 백엔드 라이브 검증 완료
 
 ### v0.7.0 (2026-06-14)
 

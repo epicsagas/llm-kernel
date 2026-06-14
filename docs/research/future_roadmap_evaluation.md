@@ -43,7 +43,9 @@ Chunking documents needs to respect token budgets while preserving semantic stru
 
 This milestone focuses on adding PostgreSQL graph support, Qdrant vector indexing, and data migration utilities.
 
-### 2.1 PostgreSQL `GraphBackend` (`crates/llm-kernel-graph-pg`)
+### 2.1 PostgreSQL `GraphBackend` (`src/graph/pg.rs`, `graph-pg` feature)
+> **Shipped in v0.8.0** as an in-crate feature gate (`graph-pg`), not a separate crate. The recommendation below evaluated the trade-off; the project chose feature flags for consistency with `embedding-fastembed`/`mcp-http`.
+
 Writing a PostgreSQL implementation of `GraphBackend` requires adapting to connection pooling and different SQL dialects.
 
 * **Feasibility**: High. PostgreSQL natively supports recursive CTEs (Common Table Expressions) which are used for BFS traversal and neighbor lookups.

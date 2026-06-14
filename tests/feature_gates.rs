@@ -61,3 +61,21 @@ async fn test_graph_pool_feature() {
     let stats = graph.stats().await.expect("stats on empty db");
     assert_eq!(stats.total_nodes, 0);
 }
+
+/// Compile-time check that `PgGraph` implements `GraphBackend` (no server).
+#[cfg(feature = "graph-pg")]
+#[test]
+fn test_graph_pg_feature() {
+    use llm_kernel::graph::{GraphBackend, PgGraph};
+    fn _assert_impl<T: GraphBackend>() {}
+    _assert_impl::<PgGraph>();
+}
+
+/// Compile-time check that `QdrantVectorIndex` implements `AsyncVectorIndex`.
+#[cfg(feature = "qdrant")]
+#[test]
+fn test_qdrant_feature() {
+    use llm_kernel::embedding::{AsyncVectorIndex, QdrantVectorIndex};
+    fn _assert_impl<T: AsyncVectorIndex>() {}
+    _assert_impl::<QdrantVectorIndex>();
+}
