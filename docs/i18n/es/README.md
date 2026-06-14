@@ -55,18 +55,20 @@ Cada módulo está detrás de un flag de característica para que solo pagues po
 | `graph-async` | Wrappers de grafo asíncronos (requiere tokio) | |
 | `graph-pool` | Pool de grafo asíncrono multi-conexión (`AsyncPoolGraph`, concurrencia WAL) | |
 | `graph-cjk` | CJK-aware graph search via Rust-side segmentation (no schema change) | |
+| `graph-pg` | GraphBackend de PostgreSQL (PgGraph) + CLI de migración SQLite<->PostgreSQL | |
 | `mcp` | Servidor MCP — JSON-RPC 2.0, transporte stdio, autenticación Bearer | |
 | `mcp-http` | MCP remote transport — HTTP/SSE (axum + tokio) | |
 | `cache` | LLM response cache — `CacheClient` over `KvStore` | |
 | `tokens` | Estimación de tokens, presupuestos y división de documentos por fronteras de oración | |
 | `install` | Asistente de instalación de herramientas de IA | |
 | `search` | Búsqueda híbrida — trait `SearchProvider`, fusión RRF / suma ponderada / CombMNZ | |
-| `embedding` | Trait de proveedor de embedding + similitud coseno | |
+| `embedding` | Trait de proveedor de embedding + similitud coseno + trait AsyncVectorIndex (contraparte asíncrona de VectorIndex) | |
 | `embedding-openai` | Cliente de text-embedding de OpenAI (HTTP síncrono) | |
 | `embedding-fastembed` | Embedding ONNX local vía fastembed-rs (44 modelos) | |
 | `embedding-fastembed-qwen3` | Embedding Qwen3 vía backend candle | |
 | `embedding-fastembed-nomic-moe` | Embedding Nomic V2 MoE vía backend candle | |
 | `vector-index` | Índice de vectores comprimido TurboQuant — 2 bits/4 bits, búsqueda ANN con SIMD | |
+| `qdrant` | AsyncVectorIndex de Qdrant (QdrantVectorIndex) para búsqueda de vectores remota | |
 | `telemetry` | Eventos de telemetría con enum-gating, sin PII | |
 | `safety` | Enmascaramiento de secretos, clasificación de errores, sanitización de salida, detección de prompt-injection | |
 | `eval` | CLI de evaluación de calidad — tokens, seguridad, embedding, búsqueda | |
@@ -79,28 +81,28 @@ Añade a tu `Cargo.toml`:
 
 ```toml
 [dependencies]
-llm-kernel = "0.7.0"
+llm-kernel = "0.8.0"
 ```
 
 La característica `provider` está habilitada por defecto. Para el cliente asíncrono:
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.7.0", features = ["client-async"] }
+llm-kernel = { version = "0.8.0", features = ["client-async"] }
 ```
 
 Para el grafo de conocimiento con wrappers asíncronos:
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.7.0", features = ["graph", "graph-async"] }
+llm-kernel = { version = "0.8.0", features = ["graph", "graph-async"] }
 ```
 
 Para embedding local (ONNX, sin clave API):
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.7.0", features = ["embedding-fastembed"] }
+llm-kernel = { version = "0.8.0", features = ["embedding-fastembed"] }
 ```
 
 ## Uso

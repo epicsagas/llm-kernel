@@ -43,6 +43,8 @@ jobs:
           - "--no-default-features --features config"
           - "--no-default-features --features client-async"
           - "--no-default-features --features graph"
+          - "--no-default-features --features graph-pg"
+          - "--no-default-features --features qdrant"
           - "--no-default-features --features full"
     steps:
       - uses: actions/checkout@v6

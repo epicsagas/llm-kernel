@@ -64,6 +64,7 @@ This upcoming milestone focuses on abstracting search and structuring prompt int
   * Introducing `GraphBackend` and `KvStore` abstractions before developing PostgreSQL and Qdrant backends is highly consistent with clean coding and hexagonal architecture principles.
 * **Workspace Crate Expansion (v0.8.0 ~ v0.9.0)**:
   * Splitting backend extensions into standalone workspace crates (`crates/llm-kernel-graph-pg`, `crates/llm-kernel-qdrant`, etc.) keeps the core `llm-kernel` crate lightweight, which is a great dependency management strategy.
+  * **Update (v0.8.0):** the project instead shipped these as in-crate feature gates (`graph-pg`, `qdrant`) — same dependency-isolation benefit (drivers stay optional), with single-crate consistency matching `embedding-fastembed`/`mcp-http`.
 
 ---
 

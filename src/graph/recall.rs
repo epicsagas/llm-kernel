@@ -165,7 +165,11 @@ pub fn smart_recall(
 }
 
 /// Compute recency score (0.0–1.0) with exponential decay, half-life = 30 days.
-fn compute_recency(updated: &str, now_secs: u64) -> f64 {
+///
+/// Exposed so non-SQLite backends (e.g. the `graph-pg` PostgreSQL backend at
+/// `src/graph/pg.rs`) can score candidates with identical recency math — no
+/// drift across backends.
+pub fn compute_recency(updated: &str, now_secs: u64) -> f64 {
     let node_secs = parse_iso_to_secs(updated);
     if node_secs == 0 || node_secs > now_secs {
         return 0.5;
