@@ -38,6 +38,7 @@ jobs:
           - "--no-default-features"
           - "--no-default-features --features provider"
           - "--no-default-features --features discovery"
+          - "--no-default-features --features catalog-sync"
           - "--no-default-features --features secrets"
           - "--no-default-features --features store"
           - "--no-default-features --features config"

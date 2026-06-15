@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **provider** (`catalog-sync` feature): `llm-kernel-sync-catalog` binary — refreshes `catalog.json` from the live models.dev catalog. `--check` reports drift without writing; the default writes atomically. Drives field-precedence merge: provider service fields (auth, base URL, tiers, setup) are kept from the catalog, model data (cost, limits, modalities, capabilities) comes from models.dev, and empty `api_base_url`/`npm_package`/`doc_url` are filled from upstream. New `src/provider/sync.rs` (`merge_catalog`, `CatalogDiff`, `PriceDelta`) + `src/bin/sync-catalog.rs`.
+- **provider**: `provider::mapping` — `Mapping` enum + `resolve()` mapping each catalog provider id to its models.dev counterpart (8 exact, 7 aliased, 5 manual). New `src/provider/mapping.rs`.
+- **provider**: `ProviderIndex::from_providers(Vec<ServiceDescriptor>)` public constructor and `ProviderIndex::with_discovered(&[ModelEntry])` (gated on `discovery`) — overlays runtime-discovered models onto the embedded catalog so `find_model`/`estimate_cost` see them. Resolves the catalog↔discovery gap.
+- **provider**: catalog value types (`ModelCost`, `ModelLimit`, `ModelModalities`, `ModelCapabilities`, `ModelDescriptor`, `ServiceDescriptor`, `ModelChoice`) now derive `Serialize` and `PartialEq`.
+- **discovery**: `fetch()` / `fetch_from(url)` no-cache fetch helpers; `ModelsDevPayload::entries()`, `provider_models(key)`, `provider_api_base`/`provider_npm`/`provider_doc` accessors.
+- **discovery**: `ModelEntry` enriched with optional `cost`, `modalities`, `capabilities`, `family`, `release_date`, `knowledge` (mirroring `ModelDescriptor`) and `Default`; `From<ModelEntry> for ModelDescriptor`.
+
+### Changed
+
+- **discovery** (*breaking*): `ModelsDevPayload` now mirrors the real models.dev API — a provider-keyed map (`HashMap<provider_id, provider>`) — instead of the previous `{ models: Vec<ModelEntry> }` shape, which never parsed the live `https://models.dev/api.json`. The on-disk cache written by `fetch_and_cache` is now byte-identical to upstream.
+- **catalog**: `catalog.json` refreshed from models.dev — 20 providers, 351 models (was ~57). Pricing/limits/modalities/capabilities now track models.dev (e.g. `glm-5` input 0.5→1.0, output 0.5→3.2). `glm-5` and `ZAI_API_KEY` preserved (catalog-wins for connection fields). Provider-doc comment corrected (16→20).
+- **docs**: README "Model discovery" example updated for the new payload shape; new "Keeping the catalog fresh" section documents the runtime `with_discovered` path (always-current) versus the `sync-catalog` tool (offline baseline at release time).
+
+### Notes
+
+- The embedded catalog is frozen at compile time (`include_str!`), so the `sync-catalog` tool refreshes the **offline baseline** that ships with each crate release. For always-current data at runtime, fetch models.dev via `discovery` and merge with `ProviderIndex::with_discovered` — the library provides the fetch + merge; the application drives timing/caching.
+
 ## [0.9.0] - 2026-06-15
 
 ### Added

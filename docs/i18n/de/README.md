@@ -24,7 +24,7 @@
 
 llm-kernel stellt die Grundschicht für den Aufbau von LLM-basierten Werkzeugen, Agenten und Servern in Rust bereit:
 
-- **Provider-Katalog** — 16 integrierte Provider, 114 Modelle mit Metadaten, Preisen und Fähigkeiten
+- **Provider-Katalog** — 20 integrierte Provider, 351 Modelle mit Metadaten, Preisen und Fähigkeiten
 - **Async-Client** — Trait-basierter Client für OpenAI und Anthropic mit SSE-Streaming
 - **Modellsuche** — dynamische Modellermittlung über models.dev, Ollama, OpenAI-kompatible Endpunkte
 - **Anmeldeinformations-Tresor** — dotenv-artige API-Schlüsselverwaltung mit atomaren Schreibvorgängen
@@ -75,6 +75,7 @@ Jedes Modul wird durch ein Feature-Flag gesteuert, sodass Sie nur bezahlen, was 
 | `safety` | Geheimnismaskierung, Fehlerklassifizierung, Ausgabebereinigung, Prompt-Injection-Erkennung | |
 | `eval` | Qualitätsbewertungs-CLI — Tokens, Sicherheit, Embedding, Suche | |
 | `eval-full` | Alle Evaluationsmodule einschließlich Graph | |
+| `catalog-sync` | Katalog-Sync-CLI — `catalog.json` von models.dev auffrischen | |
 | `full` | Alle Features | |
 
 ## Schnellstart
@@ -111,7 +112,7 @@ llm-kernel = { version = "0.9.0", features = ["embedding-fastembed"] }
 
 ### Provider-Katalog
 
-Der eingebettete Katalog enthält 16 Provider mit 114 Modellen gemäß dem [models.dev](https://github.com/anomalyco/models.dev)-Schema.
+Der eingebettete Katalog enthält 20 Provider mit 351 Modellen gemäß dem [models.dev](https://github.com/anomalyco/models.dev)-Schema.
 
 ```rust
 use llm_kernel::prelude::*;
@@ -192,17 +193,16 @@ let stream = client.stream_complete(LLMRequest {
 ### Modellermittlung
 
 ```rust
-use llm_kernel::discovery::{fetch_and_cache, load_cache, fetch_ollama_models};
+use llm_kernel::discovery::{fetch_and_cache, fetch_ollama_models};
 
-// Von models.dev abrufen (wird auf Festplatte zwischengespeichert)
+// Von models.dev abrufen (zwischengespeichert die Roh-Payload auf Festplatte,
+// byte-identisch mit Upstream). Die Payload ist eine nach Providern
+// verschlüsselte Map; .entries() flacht sie ab.
 let payload = fetch_and_cache("~/.cache/llm-kernel/models-dev.json")?;
-for model in &payload.models {
-    println!("{} — {} (ctx: {:?})", model.id, model.provider_id, model.limits);
-}
-
-// Aus Zwischenspeicher laden (kein Netzwerk)
-if let Some(cached) = load_cache("~/.cache/llm-kernel/models-dev.json")? {
-    println!("{} models cached", cached.models.len());
+for model in payload.entries() {
+    // ModelEntry führt nun vollständige Metadaten: Kosten, Limits, Modalitäten, Fähigkeiten.
+    let ctx = model.limits.as_ref().and_then(|l| l.context);
+    println!("{} (via {}) — ctx: {:?}", model.id, model.provider_id, ctx);
 }
 
 // Lokale Ollama-Modelle ermitteln
@@ -210,6 +210,33 @@ let ollama_models = fetch_ollama_models("http://localhost:11434")?;
 for name in &ollama_models {
     println!("Ollama: {}", name);
 }
+```
+
+### Katalog aktuell halten
+
+Der eingebettete Katalog ist zum Kompilierzeitpunkt eingefroren (über `include_str!`),
+wodurch er nur voranschreitet, wenn die `llm-kernel`-Abhängigkeit aktualisiert wird.
+Für **immer aktuelle** Preise rufen Sie models.dev zur Laufzeit ab und legen Sie
+darüber auf dem eingebetteten Katalog:
+
+```rust
+use llm_kernel::prelude::*; // ProviderIndex
+use llm_kernel::discovery::{DiscoverySource, ModelsDevSource}; // discovery-async
+
+let entries = ModelsDevSource::new().discover().await?; // Live models.dev
+let catalog = ProviderIndex::embedded().with_discovered(&entries);
+
+// Ermittelte Modelle partizipieren nun an Lookups und Kostenschätzung, selbst
+// wenn sie im statisch eingebetteten Katalog fehlen:
+let cost = catalog.estimate_cost("some/new-model", prompt_tokens, completion_tokens);
+```
+
+Um den **eingebetteten** Katalog selbst aufzufrischen (die Offline-Baseline, die in die
+Crate eingebaut wird), führen Maintainer das Sync-Werkzeug vor einem Release aus:
+
+```text
+cargo run --bin llm-kernel-sync-catalog --features catalog-sync -- --check   # Drift anzeigen
+cargo run --bin llm-kernel-sync-catalog --features catalog-sync              # catalog.json schreiben
 ```
 
 ### Anmeldeinformations-Tresor
@@ -421,7 +448,7 @@ Jedes Modell im Katalog enthält:
 
 | | llm-kernel | [rig] | [langchain-rust] |
 |--|-----------|-------|-------------------|
-| Provider-Katalog | ✅ 16 Provider, 114 Modelle integriert | Manuelle Konfiguration | Manuelle Konfiguration |
+| Provider-Katalog | ✅ 20 Provider, 351 Modelle integriert | Manuelle Konfiguration | Manuelle Konfiguration |
 | Feature-Gates | ✅ Unabhängige Module | Monolithisch | Monolithisch |
 | Lokales Embedding | ✅ 44 ONNX + Qwen3 + Nomic MoE | ❌ | ❌ |
 | Qualitätsbewertung | ✅ 5 Module, Baseline-Regression, CI | ❌ | ❌ |

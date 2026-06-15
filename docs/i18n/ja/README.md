@@ -24,7 +24,7 @@
 
 llm-kernelは、RustでLLM搭載ツール、エージェント、サーバーを構築するための基盤レイヤーを提供します：
 
-- **プロバイダーカタログ** — 16の組み込みプロバイダー、114モデルのメタデータ、価格情報、機能プロファイル
+- **プロバイダーカタログ** — 20の組み込みプロバイダー、351モデルのメタデータ、価格情報、機能プロファイル
 - **非同期クライアント** — トレイトベースのOpenAI/Anthropicクライアント、SSEストリーミング対応
 - **モデルディスカバリー** — models.dev、Ollama、OpenAI互換エンドポイントからの動的モデル検出
 - **クレデンシャル保管庫** — dotenv形式のAPIキー管理、アトミック書き込み対応
@@ -75,6 +75,7 @@ llm-kernelは、RustでLLM搭載ツール、エージェント、サーバーを
 | `safety` | シークレットマスキング、エラー分類、出力サニタイズ、プロンプトインジェクション検出 | |
 | `eval` | 品質評価CLI — トークン、セーフティ、エンベディング、検索 | |
 | `eval-full` | グラフを含む全評価モジュール | |
+| `catalog-sync` | カタログ同期CLI — models.dev から `catalog.json` を更新 | |
 | `full` | 全フィーチャー | |
 
 ## クイックスタート
@@ -111,7 +112,7 @@ llm-kernel = { version = "0.9.0", features = ["embedding-fastembed"] }
 
 ### プロバイダーカタログ
 
-組み込みカタログには16のプロバイダーと114のモデルが含まれており、[models.dev](https://github.com/anomalyco/models.dev)スキーマに準拠しています。
+組み込みカタログには20のプロバイダーと351のモデルが含まれており、[models.dev](https://github.com/anomalyco/models.dev)スキーマに準拠しています。
 
 ```rust
 use llm_kernel::prelude::*;
@@ -192,24 +193,45 @@ let stream = client.stream_complete(LLMRequest {
 ### モデルディスカバリー
 
 ```rust
-use llm_kernel::discovery::{fetch_and_cache, load_cache, fetch_ollama_models};
+use llm_kernel::discovery::{fetch_and_cache, fetch_ollama_models};
 
-// Fetch from models.dev (caches to disk)
+// models.devから取得（生ペイロードをディスクへキャッシュ、上流とバイト単位で
+// 同一）。ペイロードはプロバイダーをキーとするマップで、.entries() で平坦化します。
 let payload = fetch_and_cache("~/.cache/llm-kernel/models-dev.json")?;
-for model in &payload.models {
-    println!("{} — {} (ctx: {:?})", model.id, model.provider_id, model.limits);
+for model in payload.entries() {
+    // ModelEntry は完全なメタデータ（コスト、制限、モダリティ、ケイパビリティ）を保持します。
+    let ctx = model.limits.as_ref().and_then(|l| l.context);
+    println!("{} (via {}) — ctx: {:?}", model.id, model.provider_id, ctx);
 }
 
-// Load from cache (no network)
-if let Some(cached) = load_cache("~/.cache/llm-kernel/models-dev.json")? {
-    println!("{} models cached", cached.models.len());
-}
-
-// Discover local Ollama models
+// ローカルの Ollama モデルを検出
 let ollama_models = fetch_ollama_models("http://localhost:11434")?;
 for name in &ollama_models {
     println!("Ollama: {}", name);
 }
+```
+
+### カタログを最新に保つ
+
+組み込みカタログはコンパイル時に（`include_str!` 経由で）固定されるため、`llm-kernel` の依存関係を更新しない限り進みません。**常に最新の**価格情報が必要な場合は、models.dev を実行時に取得し、組み込みカタログの上にオーバーレイします：
+
+```rust
+use llm_kernel::prelude::*; // ProviderIndex
+use llm_kernel::discovery::{DiscoverySource, ModelsDevSource}; // discovery-async
+
+let entries = ModelsDevSource::new().discover().await?; // ライブの models.dev
+let catalog = ProviderIndex::embedded().with_discovered(&entries);
+
+// 検出されたモデルは、静的に組み込まれたカタログに含まれていなくても、
+// ルックアップやコスト推定に参加するようになります：
+let cost = catalog.estimate_cost("some/new-model", prompt_tokens, completion_tokens);
+```
+
+**組み込み**カタログ自体（クレートにベイクされているオフラインベースライン）を更新するには、メンテナがリリース前に同期ツールを実行します：
+
+```text
+cargo run --bin llm-kernel-sync-catalog --features catalog-sync -- --check   # ドリフトを表示
+cargo run --bin llm-kernel-sync-catalog --features catalog-sync              # catalog.json を書き込み
 ```
 
 ### クレデンシャル保管庫
@@ -421,7 +443,7 @@ let clean = sanitize_output(user_input)?;
 
 | | llm-kernel | [rig] | [langchain-rust] |
 |--|-----------|-------|-------------------|
-| プロバイダーカタログ | ✅ 16プロバイダー、114モデル組み込み | 手動設定 | 手動設定 |
+| プロバイダーカタログ | ✅ 20プロバイダー、351モデル組み込み | 手動設定 | 手動設定 |
 | フィーチャーゲート | ✅ 独立モジュール | モノリシック | モノリシック |
 | ローカルエンベディング | ✅ 44 ONNX + Qwen3 + Nomic MoE | ❌ | ❌ |
 | 品質評価 | ✅ 5モジュール、ベースライン回帰検出、CI | ❌ | ❌ |

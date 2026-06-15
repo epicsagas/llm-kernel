@@ -37,6 +37,9 @@ client-async = ["dep:reqwest", "dep:serde_json", "dep:async-trait", "dep:tokio",
 # Asynchronous model discovery (async DiscoverySource over reqwest)
 discovery-async = ["discovery", "dep:reqwest", "dep:async-trait", "dep:tokio"]
 
+# Catalog sync tooling — refresh catalog.json from models.dev (sync-catalog binary)
+catalog-sync = ["provider", "discovery", "dep:clap"]
+
 # LLM response cache over a KvStore (wraps any LLMClient)
 cache = ["client-async", "store"]
 
@@ -133,7 +136,7 @@ eval-full = ["eval", "graph"]
 # Everything except Windows-only execution backends.
 # embedding-fastembed-directml is intentionally excluded: it pulls in the ort
 # RC dependency which is not appropriate for cross-platform builds.
-full = ["provider", "discovery", "discovery-async", "client-async", "cache", "secrets", "store", "config", "graph", "graph-async", "graph-pool", "graph-cjk", "graph-pg", "mcp", "mcp-http", "tokens", "install", "search", "embedding", "embedding-openai", "embedding-fastembed", "embedding-fastembed-qwen3", "embedding-fastembed-nomic-moe", "vector-index", "qdrant", "elastic", "federation", "telemetry", "safety"]
+full = ["provider", "discovery", "discovery-async", "client-async", "cache", "secrets", "store", "config", "graph", "graph-async", "graph-pool", "graph-cjk", "graph-pg", "mcp", "mcp-http", "tokens", "install", "search", "embedding", "embedding-openai", "embedding-fastembed", "embedding-fastembed-qwen3", "embedding-fastembed-nomic-moe", "vector-index", "qdrant", "elastic", "federation", "telemetry", "safety", "catalog-sync"]
 
 [dependencies]
 # Always required
@@ -194,6 +197,11 @@ required-features = ["eval"]
 name = "llm-kernel-migrate-graph"
 path = "src/bin/migrate.rs"
 required-features = ["graph-pg"]
+
+[[bin]]
+name = "llm-kernel-sync-catalog"
+path = "src/bin/sync-catalog.rs"
+required-features = ["catalog-sync"]
 
 [profile.dev]
 opt-level = 0
