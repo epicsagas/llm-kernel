@@ -184,10 +184,17 @@ mod federated {
 
         /// Run `query` against every backend concurrently, merge survivors.
         ///
-        /// Returns the fused result list. [`KernelError::Search`] is returned
-        /// only when *no* backend succeeded; one or more survivors yield a
-        /// partial (but non-empty) merged result.
-        pub async fn search(&self, query: &[f32], k: usize) -> Result<Vec<SearchResult>> {
+        /// Each backend is queried for `2 * k` results (over-fetch) so RRF
+        /// rank-credit is preserved for a document that ranks just below `k` in
+        /// one backend but near the top in another; the fused list is then
+        /// truncated to the requested `k`. A per-backend timeout drops slow or
+        /// failing backends with an observable `tracing::warn!` rather than
+        /// stalling the query.
+        ///
+        /// Returns the fused result list (at most `k` items).
+        /// [`KernelError::Search`] is returned only when *no* backend succeeded;
+        /// one or more survivors yield a partial (but non-empty) merged result.
+        pub async fn search(&self, query: &[f32], k_req: usize) -> Result<Vec<SearchResult>> {
             if self.backends.is_empty() {
                 return Ok(Vec::new());
             }
@@ -200,10 +207,17 @@ mod federated {
                 .collect();
             let timeout = self.timeout;
 
+            // Over-fetch each backend so RRF rank-credit is preserved for
+            // documents that rank just below k in one backend but appear near
+            // the top in another. Standard RRF practice: fetch ~2k, fuse, then
+            // truncate the merged list to the requested k (done after fusion).
+            // `saturating_mul` guards usize overflow and yields 0 for k == 0.
+            let fetch_k = k_req.saturating_mul(2);
+
             let futs = entries.into_iter().map(|(index, weight)| {
                 let q = query.to_vec();
                 async move {
-                    match tokio::time::timeout(timeout, index.search(&q, k)).await {
+                    match tokio::time::timeout(timeout, index.search(&q, fetch_k)).await {
                         Ok(Ok(hits)) => Some((weight, hits)),
                         Ok(Err(e)) => {
                             tracing::warn!("federated backend errored; excluding: {e}");
@@ -232,14 +246,17 @@ mod federated {
             // expects, canonicalizing the id so a shared document merges across
             // backends rather than appearing multiple times. `ok` is consumed
             // once: RRF needs only the lists, WeightedSum additionally needs the
-            // per-backend weights (collected inside that arm).
-            match self.strategy {
+            // per-backend weights (collected inside that arm). Note: the RRF
+            // smoothing constant is named `k` by the `FusionStrategy::Rrf`
+            // variant, which is why the requested count is `k_req` here — the
+            // two must not be confused at the truncation step.
+            let mut fused = match self.strategy {
                 FusionStrategy::Rrf { k } => {
                     let lists: Vec<Vec<SearchResult>> = ok
                         .into_iter()
                         .map(|(_w, hits)| hits_to_results(hits))
                         .collect();
-                    Ok(rrf_fuse(&lists, k))
+                    rrf_fuse(&lists, k)
                 }
                 FusionStrategy::WeightedSum => {
                     let mut lists: Vec<Vec<SearchResult>> = Vec::with_capacity(ok.len());
@@ -250,9 +267,15 @@ mod federated {
                         lists.push(list);
                         weights.push(w);
                     }
-                    Ok(weighted_sum_fuse(&lists, &weights))
+                    weighted_sum_fuse(&lists, &weights)
                 }
-            }
+            };
+            // The over-fetch produced lists longer than requested; trim the
+            // fused output back to exactly `k_req`. `truncate` is a no-op if
+            // the fused list is already shorter (e.g. a backend with fewer than
+            // `fetch_k` documents).
+            fused.truncate(k_req);
+            Ok(fused)
         }
     }
 }
@@ -517,6 +540,125 @@ mod async_tests {
     #[tokio::test]
     async fn no_backends_returns_empty() {
         let merged = FederatedSearch::new().search(&[0.0; 4], 3).await.unwrap();
+        assert!(merged.is_empty());
+    }
+
+    // --- over-fetch / truncate (hardening) ---------------------------------
+    //
+    // `StubIndex` above ignores its `k` argument, so it cannot exercise the
+    // fetch-2k-then-truncate behavior. `RankAwareStub` honors `k` by returning
+    // only the first `k` of its canned list, letting us prove the over-fetch
+    // preserves RRF rank-credit and the output is truncated to the requested k.
+
+    /// Stub backend that honors the requested `k`: returns the first `k` of its
+    /// canned list (clamped to the list length). This mirrors how a real
+    /// `AsyncVectorIndex` returns at most `k` neighbors.
+    struct RankAwareStub {
+        hits: Vec<SearchHit>,
+        dim: usize,
+    }
+
+    #[async_trait]
+    impl AsyncVectorIndex for RankAwareStub {
+        async fn add(&self, _vectors: &[Vec<f32>], _ids: &[u64]) -> Result<()> {
+            Ok(())
+        }
+        async fn remove(&self, _ids: &[u64]) -> Result<()> {
+            Ok(())
+        }
+        async fn search(&self, _query: &[f32], k: usize) -> Result<Vec<SearchHit>> {
+            Ok(self.hits.iter().take(k).cloned().collect())
+        }
+        async fn search_filtered(
+            &self,
+            _query: &[f32],
+            k: usize,
+            _allowlist: &[u64],
+        ) -> Result<Vec<SearchHit>> {
+            Ok(self.hits.iter().take(k).cloned().collect())
+        }
+        async fn len(&self) -> Result<usize> {
+            Ok(self.hits.len())
+        }
+        fn dim(&self) -> usize {
+            self.dim
+        }
+    }
+
+    /// Without over-fetch, a document that ranks just below `k` in one backend
+    /// but at the top in another loses its rank-credit: the first backend never
+    /// returns it (it asked for only `k`). Over-fetching `2 * k` per backend
+    /// lets that document enter both lists, so RRF credits it from both and it
+    /// survives the final truncate to `k`.
+    #[tokio::test]
+    async fn over_fetch_preserves_rank_credit_across_backends() {
+        // Backend A ranks `shared` at position 2 (rank index 2) — below k=2,
+        // so a bare `k` query would never return it. Backend B ranks `shared`
+        // first. With over-fetch (fetch_k = 4), A DOES return `shared`.
+        let a = Arc::new(RankAwareStub {
+            hits: vec![hit(101, 0.99), hit(102, 0.9), hit(7, 0.8), hit(8, 0.7)],
+            dim: 4,
+        });
+        let b = Arc::new(RankAwareStub {
+            hits: vec![hit(7, 1.0), hit(9, 0.6)],
+            dim: 4,
+        });
+
+        let merged = FederatedSearch::new()
+            .with_backend(a, 1.0)
+            .with_backend(b, 1.0)
+            // k = 2 → each backend is queried for 4; id 7 appears in BOTH
+            // lists (rank 2 in A, rank 0 in B) and accumulates rank-credit, so
+            // it outranks the single-backend filler docs and makes the top 2.
+            .search(&[1.0, 0.0, 0.0, 0.0], 2)
+            .await
+            .unwrap();
+
+        // Truncated to exactly k = 2.
+        assert_eq!(merged.len(), 2);
+        // id 7 is present (it appeared in both over-fetched lists). Without
+        // over-fetch it would have been dropped by backend A and could not
+        // accumulate cross-backend credit.
+        assert!(
+            merged.iter().any(|r| r.id == "7"),
+            "id 7 should survive via over-fetch rank-credit: {merged:?}"
+        );
+    }
+
+    /// The fused output is truncated to the requested `k`, never more, even
+    /// when every backend has far more than `k` documents.
+    #[tokio::test]
+    async fn fused_output_is_truncated_to_requested_k() {
+        let a = Arc::new(RankAwareStub {
+            hits: (1..=20).map(|i| hit(i, 1.0 - i as f32 * 0.01)).collect(),
+            dim: 4,
+        });
+        let b = Arc::new(RankAwareStub {
+            hits: (21..=40).map(|i| hit(i, 0.5 - i as f32 * 0.01)).collect(),
+            dim: 4,
+        });
+        let merged = FederatedSearch::new()
+            .with_backend(a, 1.0)
+            .with_backend(b, 1.0)
+            .search(&[1.0, 0.0, 0.0, 0.0], 5)
+            .await
+            .unwrap();
+        assert_eq!(merged.len(), 5, "fused output must be truncated to k");
+    }
+
+    /// `k == 0` with configured backends yields an empty (non-error) result:
+    /// fetch_k == 0 → each backend returns nothing → fused empty → truncate(0).
+    #[tokio::test]
+    async fn k_zero_with_backends_returns_empty_not_err() {
+        let a = Arc::new(RankAwareStub {
+            hits: vec![hit(1, 0.9)],
+            dim: 4,
+        });
+        let merged = FederatedSearch::new()
+            .with_backend(a, 1.0)
+            .search(&[1.0, 0.0, 0.0, 0.0], 0)
+            .await
+            .unwrap();
         assert!(merged.is_empty());
     }
 }

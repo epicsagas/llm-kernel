@@ -23,6 +23,20 @@
 //! [`SearchProvider`](crate::search::SearchProvider) is deferred to a later
 //! milestone. The vector results federate cleanly with Qdrant and TurboVec
 //! because federation defaults to rank-based RRF (scale-invariant).
+//!
+//! # Score semantics
+//!
+//! The `score` field of each [`SearchHit`] carries the Elasticsearch knn
+//! `_score`, which for a `cosine`-similarity `dense_vector` field is
+//! `(1 + cosine) / 2 ∈ [0, 1]` — *not* the raw cosine that Qdrant reports
+//! (`[0, 1]` of a different monotonic map) nor the `[-1, 1]` raw cosine of the
+//! in-memory `TurbovecIndex`. Cross-backend score magnitudes are therefore not
+//! directly comparable. This is harmless under the federation default
+//! (Reciprocal Rank Fusion — rank-based and scale-invariant), but
+//! `WeightedSum` federation (behind the optional `federation` feature, which
+//! min-max normalizes each list in isolation before a weighted sum) should be
+//! used with care across these heterogeneous scales. See the federation
+//! module's "Why RRF is the default" docs for the full rationale.
 
 use std::time::Duration;
 
@@ -157,10 +171,14 @@ impl ElasticsearchVectorIndex {
     async fn status_err(&self, resp: reqwest::Response) -> anyhow::Error {
         let status = resp.status();
         let body = resp.text().await.unwrap_or_default();
+        // Redact FIRST (strip any embedded credentials), then cap the body so a
+        // huge ES error response cannot bloat logs/errors. The order matters:
+        // a credential past the cap is already masked before truncation runs.
+        let body = truncate_error_body(&redact_credentials(&body));
         anyhow!(
             "elasticsearch returned status {status} for index `{}` [url redacted]: {}",
             &self.index,
-            redact_credentials(&body)
+            body
         )
     }
 }
@@ -243,8 +261,11 @@ impl AsyncVectorIndex for ElasticsearchVectorIndex {
         Ok(())
     }
 
+    /// kNN search over the `dense_vector` field. Each `SearchHit.score` is the
+    /// ES knn `_score` (`(1 + cosine) / 2`), which is not comparable across
+    /// backends — see [Score semantics](self#score-semantics).
     async fn search(&self, query: &[f32], k: usize) -> Result<Vec<SearchHit>> {
-        let num_candidates = k.max(1).saturating_mul(10);
+        let num_candidates = knn_num_candidates(k);
         let body = serde_json::json!({
             "knn": {
                 "field": "vector",
@@ -291,7 +312,7 @@ impl AsyncVectorIndex for ElasticsearchVectorIndex {
         if allowlist.is_empty() {
             return Ok(vec![]);
         }
-        let num_candidates = k.max(1).saturating_mul(10);
+        let num_candidates = knn_num_candidates(k);
         let allowlist: Vec<u64> = allowlist.to_vec();
         let body = serde_json::json!({
             "knn": {
@@ -388,6 +409,55 @@ pub fn redact_credentials(s: &str) -> String {
         }
     }
     out
+}
+
+/// Upper bound on the knn `num_candidates` Elasticsearch evaluates per shard.
+///
+/// ES scales `num_candidates` with `k` (a common heuristic is `10 * k`), but a
+/// large `k` (e.g. 100) would otherwise ask ES to score 1 000 candidates —
+/// pathological load for a foundation-library default. Capping at
+/// [`MAX_KNN_CANDIDATES`] keeps the candidate pool bounded while staying well
+/// above any realistic `k`. Pure — unit-testable offline.
+const MAX_KNN_CANDIDATES: usize = 1_000;
+
+/// Compute the knn `num_candidates` for a query returning the top `k` hits.
+///
+/// Returns `max(k, min(10 * k, MAX_KNN_CANDIDATES))`. ES requires
+/// `num_candidates >= k` (it cannot return `k` neighbors from fewer than `k`
+/// candidates), so the floor on `k` guarantees the invariant holds even when
+/// the cap would otherwise clamp below it. `k == 0` does not underflow
+/// (`k.max(1)`). Pure — unit-testable offline.
+fn knn_num_candidates(k: usize) -> usize {
+    let base = k.max(1).saturating_mul(10);
+    base.min(MAX_KNN_CANDIDATES).max(k)
+}
+
+/// Maximum number of characters of an ES error response body to embed in an
+/// [`anyhow::Error`]. A huge ES error body (e.g. a verbose
+/// `mapper_parsing_exception`) could otherwise bloat logs and error chains;
+/// the cap keeps the diagnostic surface bounded while the `... [truncated]`
+/// marker signals that more is available on the ES side.
+const ERROR_BODY_MAX_CHARS: usize = 1024;
+
+/// Cap `s` to [`ERROR_BODY_MAX_CHARS`] characters, appending a `... [truncated]`
+/// marker when it is longer.
+///
+/// Truncation happens at a UTF-8 character boundary (never mid-codepoint), so
+/// the function is safe on multibyte text. Intended to be applied AFTER
+/// [`redact_credentials`], so a credential past the cap is already masked.
+/// Pure — unit-testable offline.
+fn truncate_error_body(s: &str) -> String {
+    if s.chars().count() <= ERROR_BODY_MAX_CHARS {
+        return s.to_string();
+    }
+    // `char_indices().nth(N)` lands on the byte offset of the (N+1)-th char —
+    // a guaranteed char boundary, so slicing is UTF-8 safe.
+    let cut = s
+        .char_indices()
+        .nth(ERROR_BODY_MAX_CHARS)
+        .map(|(i, _)| i)
+        .unwrap_or(s.len());
+    format!("{}... [truncated]", &s[..cut])
 }
 
 /// Validate an Elasticsearch index name against the 8.x naming rules.
@@ -591,6 +661,86 @@ mod tests {
         // 255-byte cap.
         assert!(validate_index_name(&"a".repeat(255)).is_ok());
         assert!(validate_index_name(&"a".repeat(256)).is_err());
+    }
+
+    /// `knn_num_candidates` scales 10x with `k`, clamps at the cap, and never
+    /// drops below `k` (the ES `num_candidates >= k` invariant). Pure.
+    #[test]
+    fn knn_num_candidates_scales_caps_and_floors() {
+        // Small k → 10*k (below the cap).
+        assert_eq!(knn_num_candidates(1), 10);
+        assert_eq!(knn_num_candidates(5), 50);
+        assert_eq!(knn_num_candidates(50), 500);
+        // Exactly at the cap boundary (10 * 100 = 1000 == cap).
+        assert_eq!(knn_num_candidates(100), MAX_KNN_CANDIDATES);
+        // Above the cap: clamped to the cap, but still >= k.
+        assert_eq!(knn_num_candidates(200), MAX_KNN_CANDIDATES);
+        assert!(knn_num_candidates(200) >= 200);
+        // k == 0 must not underflow and still satisfy >= k.
+        assert_eq!(knn_num_candidates(0), 10);
+    }
+
+    /// A short body is returned unchanged (no marker added). Pure.
+    #[test]
+    fn truncate_error_body_leaves_short_body_unchanged() {
+        assert_eq!(truncate_error_body(""), "");
+        assert_eq!(truncate_error_body("short error"), "short error");
+        // Exactly at the cap: no truncation, no marker.
+        let at_cap: String = "a".repeat(ERROR_BODY_MAX_CHARS);
+        let out = truncate_error_body(&at_cap);
+        assert_eq!(out.chars().count(), ERROR_BODY_MAX_CHARS);
+        assert!(!out.contains("[truncated]"));
+    }
+
+    /// A body longer than the cap is cut at a char boundary and gets the
+    /// truncation marker. Multibyte text must not panic or split a codepoint.
+    /// Pure.
+    #[test]
+    fn truncate_error_body_caps_huge_body_with_marker() {
+        // ASCII over-cap: cut to exactly ERROR_BODY_MAX_CHARS chars + marker.
+        let huge: String = "a".repeat(ERROR_BODY_MAX_CHARS + 500);
+        let out = truncate_error_body(&huge);
+        assert!(out.ends_with("... [truncated]"));
+        let kept = out.strip_suffix("... [truncated]").unwrap();
+        assert_eq!(kept.chars().count(), ERROR_BODY_MAX_CHARS);
+
+        // Multibyte (CJK) over-cap: truncation must land on a char boundary.
+        // Build a body whose char count exceeds the cap but whose byte length
+        // makes mid-codepoint slicing dangerous if done byte-wise.
+        let cjk: String = "중".repeat(ERROR_BODY_MAX_CHARS + 10);
+        let out_cjk = truncate_error_body(&cjk);
+        // No panic == the slice was char-boundary safe (else this would have
+        // panicked at runtime on the slice). Marker present.
+        assert!(out_cjk.contains("[truncated]"));
+        // The kept portion (before marker) is valid UTF-8 by construction; the
+        // whole output is a String so it already is. Just assert the marker.
+    }
+
+    /// A credential past the cap is still redacted: `redact_credentials` runs
+    /// BEFORE `truncate_error_body`, so the masked form survives truncation.
+    /// Pure — simulates the `status_err` redact→truncate order.
+    #[test]
+    fn truncate_error_body_keeps_credentials_redacted() {
+        // A body shorter than the cap but with an embedded credential URL:
+        // redaction applies, truncation is a no-op, credential is gone.
+        let with_cred = "error: see https://u:super-secret@host/idx for details";
+        let out = truncate_error_body(&redact_credentials(with_cred));
+        assert!(!out.contains("super-secret"), "credential leaked: {out}");
+        assert!(out.contains("<redacted>"));
+
+        // A body LONGER than the cap with the credential URL near the END
+        // (past the cut point). redact ran first, so even though truncation
+        // drops the tail, the credential was already masked before the cut —
+        // and the masked prefix is what survives. Either way the secret never
+        // appears in the output.
+        let padding: String = "x".repeat(ERROR_BODY_MAX_CHARS + 50);
+        let long_cred = format!("{padding} then https://u:p@ss@host:9200");
+        let redacted = redact_credentials(&long_cred);
+        let out2 = truncate_error_body(&redacted);
+        assert!(
+            !out2.contains("p@ss") && !out2.contains("super-secret"),
+            "credential tail leaked: {out2}"
+        );
     }
 
     /// The bulk-error detail helper picks the first failing item (status >= 400
