@@ -87,7 +87,7 @@ mod inner {
             }
             let body = read_capped_body(&mut response, MAX_BYTES).await?;
             let payload: crate::discovery::ModelsDevPayload = serde_json::from_slice(&body)?;
-            Ok(payload.models)
+            Ok(payload.entries())
         }
     }
 
@@ -142,13 +142,13 @@ mod tests {
                 id: "anthropic/claude-3-5-sonnet".to_string(),
                 name: "Claude 3.5 Sonnet".to_string(),
                 provider_id: "anthropic".to_string(),
-                limits: None,
+                ..Default::default()
             },
             ModelEntry {
                 id: "openai/gpt-4o".to_string(),
                 name: "GPT-4o".to_string(),
                 provider_id: "openai".to_string(),
-                limits: None,
+                ..Default::default()
             },
         ];
         let source = StaticSource(entries.clone());
@@ -160,23 +160,28 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_payload_via_models_dev_type() {
+    fn test_parse_real_payload_via_models_dev_type() {
+        // Real models.dev shape: provider-keyed map with nested model objects.
         let raw = r#"{
-            "models": [
-                {
-                    "id": "anthropic/claude-3-5-sonnet",
-                    "name": "Claude 3.5 Sonnet",
-                    "provider_id": "anthropic",
-                    "limits": {
-                        "context": 200000,
-                        "input": 200000,
-                        "output": 8192
+            "anthropic": {
+                "id": "anthropic",
+                "env": ["ANTHROPIC_API_KEY"],
+                "models": {
+                    "claude-opus-4-5": {
+                        "id": "claude-opus-4-5",
+                        "name": "Claude Opus 4.5",
+                        "tool_call": true,
+                        "temperature": true,
+                        "limit": {"context": 200000, "output": 64000},
+                        "cost": {"input": 5, "output": 25}
                     }
                 }
-            ]
+            }
         }"#;
         let payload: ModelsDevPayload = serde_json::from_str(raw).unwrap();
-        assert_eq!(payload.models.len(), 1);
-        assert_eq!(payload.models[0].id, "anthropic/claude-3-5-sonnet");
+        let entries = payload.entries();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].id, "claude-opus-4-5");
+        assert_eq!(entries[0].provider_id, "anthropic");
     }
 }

@@ -1,4 +1,4 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::sync::LazyLock;
 
@@ -7,7 +7,7 @@ use std::sync::LazyLock;
 // ---------------------------------------------------------------------------
 
 /// Per-million-token pricing for a model.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ModelCost {
     /// Price per million input (prompt) tokens in USD.
     pub input: f64,
@@ -22,7 +22,7 @@ pub struct ModelCost {
 }
 
 /// Token limits for a model.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ModelLimit {
     /// Maximum context window in tokens (prompt + completion).
     pub context: u64,
@@ -31,7 +31,7 @@ pub struct ModelLimit {
 }
 
 /// Input/output modalities a model supports.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ModelModalities {
     /// Accepted input modalities (e.g. `["text", "image"]`).
     pub input: Vec<String>,
@@ -40,7 +40,7 @@ pub struct ModelModalities {
 }
 
 /// Capability flags for a model.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ModelCapabilities {
     /// Whether the model accepts file/image attachments.
     #[serde(default)]
@@ -64,7 +64,7 @@ fn default_true() -> bool {
 }
 
 /// A model offered by a provider (models.dev-compatible).
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ModelDescriptor {
     /// Unique model identifier (e.g. `"gpt-4o"`, `"claude-sonnet-4-6"`).
     pub id: String,
@@ -98,7 +98,7 @@ pub struct ModelDescriptor {
 // ---------------------------------------------------------------------------
 
 /// Describes an LLM provider service with all metadata needed to connect and use it.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ServiceDescriptor {
     /// Unique provider identifier (e.g. `"openai"`, `"anthropic"`).
     pub id: String,
@@ -163,7 +163,7 @@ pub struct ServiceDescriptor {
 
 /// Legacy model choice (claudy-specific: id + description).
 /// Retained for backward compatibility with existing catalog.json entries.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ModelChoice {
     /// Model identifier.
     pub id: String,
@@ -171,7 +171,7 @@ pub struct ModelChoice {
     pub description: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 struct IndexPayload {
     providers: Vec<ServiceDescriptor>,
 }
@@ -192,14 +192,24 @@ pub struct ProviderIndex {
 
 impl ProviderIndex {
     fn from_payload(payload: IndexPayload) -> Self {
-        let index: HashMap<String, usize> = payload
-            .providers
+        Self::from_providers(payload.providers)
+    }
+
+    /// Build a [`ProviderIndex`] from an explicit list of providers.
+    ///
+    /// Useful for tests, overlays, or merging discovered providers into the
+    /// embedded catalog. Provider order is preserved. The embedded catalog has
+    /// no duplicate ids; if duplicates are passed, [`ProviderIndex::get`]
+    /// resolves to the last occurrence while [`ProviderIndex::all`] retains
+    /// every entry.
+    pub fn from_providers(providers: Vec<ServiceDescriptor>) -> Self {
+        let index: HashMap<String, usize> = providers
             .iter()
             .enumerate()
             .map(|(i, p)| (p.id.clone(), i))
             .collect();
         Self {
-            entries: payload.providers,
+            entries: providers,
             index,
         }
     }
@@ -207,6 +217,69 @@ impl ProviderIndex {
     /// Access the static catalog embedded at compile time.
     pub fn embedded() -> &'static ProviderIndex {
         &EMBEDDED
+    }
+
+    /// Return a new catalog where discovered model entries overlay this one.
+    ///
+    /// For a discovered entry whose `provider_id` matches an existing provider,
+    /// its model is merged into that provider (replacing on id collision,
+    /// appending otherwise). Entries whose `provider_id` is not in the catalog
+    /// are gathered under a synthetic `"discovered"` provider.
+    ///
+    /// This resolves the catalog↔discovery gap: once merged, discovered models
+    /// are visible to [`ProviderIndex::find_model`] and
+    /// [`ProviderIndex::estimate_cost`]. The catalog is not mutated; an owned
+    /// [`ProviderIndex`] is returned.
+    #[cfg(feature = "discovery")]
+    pub fn with_discovered(&self, discovered: &[crate::discovery::ModelEntry]) -> ProviderIndex {
+        let mut entries: Vec<ServiceDescriptor> = self.entries.clone();
+        let mut synthetic: Option<ServiceDescriptor> = None;
+
+        for entry in discovered {
+            let model: ModelDescriptor = entry.clone().into();
+            match self.index.get(&entry.provider_id).copied() {
+                Some(idx) => {
+                    let provider = &mut entries[idx];
+                    if let Some(pos) = provider.models.iter().position(|m| m.id == model.id) {
+                        provider.models[pos] = model;
+                    } else {
+                        provider.models.push(model);
+                    }
+                }
+                None => {
+                    let synth = synthetic.get_or_insert_with(|| ServiceDescriptor {
+                        id: "discovered".to_string(),
+                        display_name: "Discovered".to_string(),
+                        description: "Runtime-discovered models not present in the embedded \
+                                      catalog."
+                            .to_string(),
+                        category: "discovered".to_string(),
+                        family: "discovered".to_string(),
+                        auth_mode: "secret".to_string(),
+                        key_var: String::new(),
+                        literal_auth_token: String::new(),
+                        base_url: String::new(),
+                        default_model: String::new(),
+                        model_tiers: HashMap::new(),
+                        model_choices: vec![],
+                        test_url: String::new(),
+                        setup: vec![],
+                        usage: vec![],
+                        api_base_url: None,
+                        npm_package: None,
+                        doc_url: None,
+                        models: vec![],
+                    });
+                    synth.models.push(model);
+                }
+            }
+        }
+
+        if let Some(synth) = synthetic {
+            entries.push(synth);
+        }
+
+        ProviderIndex::from_providers(entries)
     }
 
     /// Return all providers in catalog order.
@@ -401,5 +474,109 @@ mod tests {
         let cost = model.cost.as_ref().expect("glm-5 should have cost");
         assert!(cost.input > 0.0, "input cost should be positive");
         assert!(cost.output > 0.0, "output cost should be positive");
+    }
+
+    #[test]
+    fn test_from_providers_round_trip() {
+        let original = ProviderIndex::embedded();
+        let rebuilt = ProviderIndex::from_providers(original.entries.clone());
+        assert_eq!(rebuilt.ids().len(), original.ids().len());
+        // O(1) lookup survives reconstruction.
+        assert!(rebuilt.get("zai").is_some());
+        assert!(rebuilt.find_model("glm-5").is_some());
+    }
+
+    #[test]
+    fn test_from_providers_preserves_order() {
+        let providers = vec![
+            ServiceDescriptor {
+                id: "p1".to_string(),
+                display_name: "P1".to_string(),
+                description: String::new(),
+                category: "c".to_string(),
+                family: "f".to_string(),
+                auth_mode: "none".to_string(),
+                key_var: String::new(),
+                literal_auth_token: String::new(),
+                base_url: String::new(),
+                default_model: String::new(),
+                model_tiers: HashMap::new(),
+                model_choices: vec![],
+                test_url: String::new(),
+                setup: vec![],
+                usage: vec![],
+                api_base_url: None,
+                npm_package: None,
+                doc_url: None,
+                models: vec![],
+            },
+            ServiceDescriptor {
+                id: "p2".to_string(),
+                display_name: "P2".to_string(),
+                ..ProviderIndex::embedded().get("zai").unwrap().clone()
+            },
+        ];
+        let idx = ProviderIndex::from_providers(providers);
+        assert_eq!(idx.ids(), vec!["p1".to_string(), "p2".to_string()]);
+        assert_eq!(idx.get("p1").unwrap().display_name, "P1");
+        assert_eq!(idx.get("p2").unwrap().display_name, "P2");
+    }
+
+    #[cfg(feature = "discovery")]
+    #[test]
+    fn test_with_discovered_merges_and_enables_cost() {
+        use crate::discovery::{ModelEntry, ModelLimits};
+        use crate::provider::ModelCost;
+
+        let catalog = ProviderIndex::embedded();
+
+        // A model not in the static catalog, attached to an existing provider.
+        let fresh = ModelEntry {
+            id: "future-model-xyz".to_string(),
+            name: "Future Model".to_string(),
+            provider_id: "zai".to_string(),
+            cost: Some(ModelCost {
+                input: 2.0,
+                output: 8.0,
+                cache_read: None,
+                cache_write: None,
+            }),
+            limits: Some(ModelLimits {
+                context: Some(100_000),
+                input: None,
+                output: Some(4_000),
+            }),
+            ..Default::default()
+        };
+        // A model under a provider absent from the catalog → synthetic bucket.
+        let orphan = ModelEntry {
+            id: "mystery/m1".to_string(),
+            name: "Mystery M1".to_string(),
+            provider_id: "mystery".to_string(),
+            cost: Some(ModelCost {
+                input: 1.0,
+                output: 1.0,
+                cache_read: None,
+                cache_write: None,
+            }),
+            ..Default::default()
+        };
+
+        let merged = catalog.with_discovered(&[fresh, orphan]);
+
+        // fresh merged into existing zai → estimate_cost now works.
+        assert!(merged.find_model("future-model-xyz").is_some());
+        assert_eq!(
+            merged.estimate_cost("future-model-xyz", 1_000_000, 1_000_000),
+            Some(10.0)
+        );
+
+        // orphan landed under a synthetic "discovered" provider.
+        assert!(merged.get("discovered").is_some());
+        assert!(merged.find_model("mystery/m1").is_some());
+        assert_eq!(merged.estimate_cost("mystery/m1", 1_000_000, 0), Some(1.0));
+
+        // The embedded static catalog is not mutated.
+        assert!(catalog.find_model("future-model-xyz").is_none());
     }
 }

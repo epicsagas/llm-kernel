@@ -18,7 +18,7 @@
 
 llm-kernel provides the foundational layer for building LLM-powered tools, agents, and servers in Rust:
 
-- **Provider catalog** — 16 built-in providers, 114 models with metadata, pricing, and capabilities
+- **Provider catalog** — 20 built-in providers, 351 models with metadata, pricing, and capabilities
 - **Async client** — trait-based client for OpenAI and Anthropic with SSE streaming
 - **Model discovery** — dynamic model discovery from models.dev, Ollama, OpenAI-compatible endpoints
 - **Credential vault** — dotenv-style API key management with atomic writes
@@ -70,6 +70,7 @@ Each module is gated behind a feature flag so you only pay for what you use.
 | `safety` | Secret masking, error classification, output sanitization, prompt-injection detection | |
 | `eval` | Quality evaluation CLI — tokens, safety, embedding, search | |
 | `eval-full` | All eval modules including graph | |
+| `catalog-sync` | Catalog sync CLI — refresh `catalog.json` from models.dev | |
 | `full` | All features | |
 
 ## Quick start
@@ -106,7 +107,7 @@ llm-kernel = { version = "0.9.0", features = ["embedding-fastembed"] }
 
 ### Provider catalog
 
-The embedded catalog contains 16 providers with 114 models aligned to the [models.dev](https://github.com/anomalyco/models.dev) schema.
+The embedded catalog contains 20 providers with 351 models aligned to the [models.dev](https://github.com/anomalyco/models.dev) schema.
 
 ```rust
 use llm_kernel::prelude::*;
@@ -187,17 +188,15 @@ let stream = client.stream_complete(LLMRequest {
 ### Model discovery
 
 ```rust
-use llm_kernel::discovery::{fetch_and_cache, load_cache, fetch_ollama_models};
+use llm_kernel::discovery::{fetch_and_cache, fetch_ollama_models};
 
-// Fetch from models.dev (caches to disk)
+// Fetch from models.dev (caches the raw payload to disk, byte-identical to
+// upstream). The payload is a provider-keyed map; .entries() flattens it.
 let payload = fetch_and_cache("~/.cache/llm-kernel/models-dev.json")?;
-for model in &payload.models {
-    println!("{} — {} (ctx: {:?})", model.id, model.provider_id, model.limits);
-}
-
-// Load from cache (no network)
-if let Some(cached) = load_cache("~/.cache/llm-kernel/models-dev.json")? {
-    println!("{} models cached", cached.models.len());
+for model in payload.entries() {
+    // ModelEntry now carries full metadata: cost, limits, modalities, capabilities.
+    let ctx = model.limits.as_ref().and_then(|l| l.context);
+    println!("{} (via {}) — ctx: {:?}", model.id, model.provider_id, ctx);
 }
 
 // Discover local Ollama models
@@ -205,6 +204,32 @@ let ollama_models = fetch_ollama_models("http://localhost:11434")?;
 for name in &ollama_models {
     println!("Ollama: {}", name);
 }
+```
+
+### Keeping the catalog fresh
+
+The embedded catalog is frozen at compile time (via `include_str!`), so it only
+advances when you bump the `llm-kernel` dependency. For **always-current**
+pricing, fetch models.dev at runtime and overlay it onto the embedded catalog:
+
+```rust
+use llm_kernel::prelude::*; // ProviderIndex
+use llm_kernel::discovery::{DiscoverySource, ModelsDevSource}; // discovery-async
+
+let entries = ModelsDevSource::new().discover().await?; // live models.dev
+let catalog = ProviderIndex::embedded().with_discovered(&entries);
+
+// Discovered models now participate in lookups and cost estimation, even if
+// they are absent from the statically-embedded catalog:
+let cost = catalog.estimate_cost("some/new-model", prompt_tokens, completion_tokens);
+```
+
+To refresh the **embedded** catalog itself (the offline baseline baked into the
+crate), maintainers run the sync tool before a release:
+
+```text
+cargo run --bin llm-kernel-sync-catalog --features catalog-sync -- --check   # show drift
+cargo run --bin llm-kernel-sync-catalog --features catalog-sync              # write catalog.json
 ```
 
 ### Async discovery
@@ -506,7 +531,7 @@ Each model in the catalog includes:
 
 | | llm-kernel | [rig] | [langchain-rust] |
 |--|-----------|-------|-------------------|
-| Provider catalog | ✅ 16 providers, 114 models built-in | Manual config | Manual config |
+| Provider catalog | ✅ 20 providers, 351 models built-in | Manual config | Manual config |
 | Feature gates | ✅ Independent modules | Monolithic | Monolithic |
 | Local embedding | ✅ 44 ONNX + Qwen3 + Nomic MoE | ❌ | ❌ |
 | Vector indexing | ✅ VectorIndex trait + separate crate | ❌ | ❌ |

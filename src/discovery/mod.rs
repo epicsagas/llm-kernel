@@ -13,7 +13,9 @@ pub mod openai_compat;
 #[cfg(feature = "discovery-async")]
 pub mod source;
 
-pub use models_dev::{ModelEntry, ModelLimits, ModelsDevPayload, fetch_and_cache, load_cache};
+pub use models_dev::{
+    ModelEntry, ModelLimits, ModelsDevPayload, fetch, fetch_and_cache, fetch_from, load_cache,
+};
 pub use ollama::fetch_ollama_models;
 pub use openai_compat::fetch_openai_compatible_models;
 #[cfg(feature = "discovery-async")]
