@@ -24,7 +24,7 @@
 
 llm-kernel fornece a camada fundamental para construir ferramentas, agentes e servidores baseados em LLM em Rust:
 
-- **Catálogo de providers** — 16 providers integrados, 114 modelos com metadados, preços e capacidades
+- **Catálogo de providers** — 20 providers integrados, 351 modelos com metadados, preços e capacidades
 - **Cliente assíncrono** — cliente baseado em traits para OpenAI e Anthropic com streaming SSE
 - **Descoberta de modelos** — descoberta dinâmica de modelos via models.dev, Ollama e endpoints compatíveis com OpenAI
 - **Cofre de credenciais** — gerenciamento de chaves de API estilo dotenv com escritas atômicas
@@ -75,6 +75,7 @@ Cada módulo é controlado por uma feature flag para que você só pague pelo qu
 | `safety` | Mascaramento de segredos, classificação de erros, sanitização de saída, detecção de prompt-injection | |
 | `eval` | CLI de avaliação de qualidade — tokens, segurança, embedding, busca | |
 | `eval-full` | Todos os módulos de avaliação, incluindo grafo | |
+| `catalog-sync` | CLI de sincronização do catálogo — atualiza `catalog.json` a partir do models.dev | |
 | `full` | Todas as features | |
 
 ## Início rápido
@@ -111,7 +112,7 @@ llm-kernel = { version = "0.9.0", features = ["embedding-fastembed"] }
 
 ### Catálogo de providers
 
-O catálogo embarcado contém 16 providers com 114 modelos alinhados ao schema do [models.dev](https://github.com/anomalyco/models.dev).
+O catálogo embarcado contém 20 providers com 351 modelos alinhados ao schema do [models.dev](https://github.com/anomalyco/models.dev).
 
 ```rust
 use llm_kernel::prelude::*;
@@ -192,24 +193,50 @@ let stream = client.stream_complete(LLMRequest {
 ### Descoberta de modelos
 
 ```rust
-use llm_kernel::discovery::{fetch_and_cache, load_cache, fetch_ollama_models};
+use llm_kernel::discovery::{fetch_and_cache, fetch_ollama_models};
 
-// Fetch from models.dev (caches to disk)
+// Busca do models.dev (faz cache do payload bruto em disco, byte a byte
+// idêntico ao upstream). O payload é um mapa indexado por provider; .entries()
+// o achata em uma lista.
 let payload = fetch_and_cache("~/.cache/llm-kernel/models-dev.json")?;
-for model in &payload.models {
-    println!("{} — {} (ctx: {:?})", model.id, model.provider_id, model.limits);
+for model in payload.entries() {
+    // ModelEntry agora traz metadados completos: cost, limits, modalities, capabilities.
+    let ctx = model.limits.as_ref().and_then(|l| l.context);
+    println!("{} (via {}) — ctx: {:?}", model.id, model.provider_id, ctx);
 }
 
-// Load from cache (no network)
-if let Some(cached) = load_cache("~/.cache/llm-kernel/models-dev.json")? {
-    println!("{} models cached", cached.models.len());
-}
-
-// Discover local Ollama models
+// Descobrir modelos locais do Ollama
 let ollama_models = fetch_ollama_models("http://localhost:11434")?;
 for name in &ollama_models {
     println!("Ollama: {}", name);
 }
+```
+
+### Mantendo o catálogo atualizado
+
+O catálogo embarcado é congelado em tempo de compilação (via `include_str!`),
+então só avança quando você bumpa a dependência `llm-kernel`. Para preços
+**sempre atuais**, busque o models.dev em tempo de execução e o sobreponha ao
+catálogo embarcado:
+
+```rust
+use llm_kernel::prelude::*; // ProviderIndex
+use llm_kernel::discovery::{DiscoverySource, ModelsDevSource}; // discovery-async
+
+let entries = ModelsDevSource::new().discover().await?; // models.dev ao vivo
+let catalog = ProviderIndex::embedded().with_discovered(&entries);
+
+// Modelos descobertos agora participam de buscas e estimativa de custo, mesmo
+// se estiverem ausentes do catálogo estaticamente embarcado:
+let cost = catalog.estimate_cost("some/new-model", prompt_tokens, completion_tokens);
+```
+
+Para atualizar o próprio catálogo **embarcado** (o baseline offline compilado no
+crate), mantenedores executam a ferramenta de sincronização antes de um release:
+
+```text
+cargo run --bin llm-kernel-sync-catalog --features catalog-sync -- --check   # mostrar divergências
+cargo run --bin llm-kernel-sync-catalog --features catalog-sync              # escrever catalog.json
 ```
 
 ### Cofre de credenciais
@@ -421,7 +448,7 @@ Cada modelo no catálogo inclui:
 
 | | llm-kernel | [rig] | [langchain-rust] |
 |--|-----------|-------|-------------------|
-| Catálogo de providers | ✅ 16 providers, 114 modelos integrados | Configuração manual | Configuração manual |
+| Catálogo de providers | ✅ 20 providers, 351 modelos integrados | Configuração manual | Configuração manual |
 | Feature gates | ✅ Módulos independentes | Monolítico | Monolítico |
 | Embedding local | ✅ 44 ONNX + Qwen3 + Nomic MoE | ❌ | ❌ |
 | Avaliação de qualidade | ✅ 5 módulos, regressão baseline, CI | ❌ | ❌ |

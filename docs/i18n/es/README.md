@@ -24,7 +24,7 @@
 
 llm-kernel proporciona la capa fundamental para construir herramientas, agentes y servidores basados en LLM en Rust:
 
-- **Catálogo de proveedores** — 16 proveedores integrados, 114 modelos con metadatos, precios y capacidades
+- **Catálogo de proveedores** — 20 proveedores integrados, 351 modelos con metadatos, precios y capacidades
 - **Cliente asíncrono** — cliente basado en traits para OpenAI y Anthropic con streaming SSE
 - **Descubrimiento de modelos** — descubrimiento dinámico desde models.dev, Ollama y endpoints compatibles con OpenAI
 - **Bóveda de credenciales** — gestión de claves API estilo dotenv con escrituras atómicas
@@ -75,6 +75,7 @@ Cada módulo está detrás de un flag de característica para que solo pagues po
 | `safety` | Enmascaramiento de secretos, clasificación de errores, sanitización de salida, detección de prompt-injection | |
 | `eval` | CLI de evaluación de calidad — tokens, seguridad, embedding, búsqueda | |
 | `eval-full` | Todos los módulos de evaluación incluido grafo | |
+| `catalog-sync` | CLI de sincronización de catálogo — refresca `catalog.json` desde models.dev | |
 | `full` | Todas las características | |
 
 ## Inicio rápido
@@ -111,7 +112,7 @@ llm-kernel = { version = "0.9.0", features = ["embedding-fastembed"] }
 
 ### Catálogo de proveedores
 
-El catálogo integrado contiene 16 proveedores con 114 modelos alineados con el esquema de [models.dev](https://github.com/anomalyco/models.dev).
+El catálogo integrado contiene 20 proveedores con 351 modelos alineados con el esquema de [models.dev](https://github.com/anomalyco/models.dev).
 
 ```rust
 use llm_kernel::prelude::*;
@@ -192,24 +193,49 @@ let stream = client.stream_complete(LLMRequest {
 ### Descubrimiento de modelos
 
 ```rust
-use llm_kernel::discovery::{fetch_and_cache, load_cache, fetch_ollama_models};
+use llm_kernel::discovery::{fetch_and_cache, fetch_ollama_models};
 
-// Fetch from models.dev (caches to disk)
+// Obtiene desde models.dev (cachea el payload en crudo a disco, idéntico en bytes
+// al upstream). El payload es un mapa indexado por proveedor; .entries() lo aplana.
 let payload = fetch_and_cache("~/.cache/llm-kernel/models-dev.json")?;
-for model in &payload.models {
-    println!("{} — {} (ctx: {:?})", model.id, model.provider_id, model.limits);
+for model in payload.entries() {
+    // ModelEntry ahora incluye metadatos completos: cost, limits, modalities, capabilities.
+    let ctx = model.limits.as_ref().and_then(|l| l.context);
+    println!("{} (vía {}) — ctx: {:?}", model.id, model.provider_id, ctx);
 }
 
-// Load from cache (no network)
-if let Some(cached) = load_cache("~/.cache/llm-kernel/models-dev.json")? {
-    println!("{} models cached", cached.models.len());
-}
-
-// Discover local Ollama models
+// Descubre modelos locales de Ollama
 let ollama_models = fetch_ollama_models("http://localhost:11434")?;
 for name in &ollama_models {
     println!("Ollama: {}", name);
 }
+```
+
+### Mantener el catálogo actualizado
+
+El catálogo embebido está congelado en tiempo de compilación (vía `include_str!`), por
+lo que solo avanza al incrementar la dependencia de `llm-kernel`. Para **precios
+siempre actuales**, obtén models.dev en tiempo de ejecución y superpónlo sobre el
+catálogo embebido:
+
+```rust
+use llm_kernel::prelude::*; // ProviderIndex
+use llm_kernel::discovery::{DiscoverySource, ModelsDevSource}; // discovery-async
+
+let entries = ModelsDevSource::new().discover().await?; // models.dev en vivo
+let catalog = ProviderIndex::embedded().with_discovered(&entries);
+
+// Los modelos descubiertos ahora participan en búsquedas y estimación de costos,
+// incluso si están ausentes del catálogo embebido estáticamente:
+let cost = catalog.estimate_cost("some/new-model", prompt_tokens, completion_tokens);
+```
+
+Para refrescar el **catálogo embebido** en sí (la referencia offline integrada en el
+crate), los mantenedores ejecutan la herramienta de sincronización antes de un release:
+
+```text
+cargo run --bin llm-kernel-sync-catalog --features catalog-sync -- --check   # mostrar drift
+cargo run --bin llm-kernel-sync-catalog --features catalog-sync              # escribir catalog.json
 ```
 
 ### Bóveda de credenciales
@@ -421,7 +447,7 @@ Cada modelo en el catálogo incluye:
 
 | | llm-kernel | [rig] | [langchain-rust] |
 |--|-----------|-------|-------------------|
-| Catálogo de proveedores | ✅ 16 proveedores, 114 modelos integrados | Configuración manual | Configuración manual |
+| Catálogo de proveedores | ✅ 20 proveedores, 351 modelos integrados | Configuración manual | Configuración manual |
 | Flags de características | ✅ Módulos independientes | Monolítico | Monolítico |
 | Embedding local | ✅ 44 ONNX + Qwen3 + Nomic MoE | ❌ | ❌ |
 | Evaluación de calidad | ✅ 5 módulos, regresión base, CI | ❌ | ❌ |

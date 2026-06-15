@@ -24,7 +24,7 @@
 
 llm-kernel fournit la couche fondatrice pour construire des outils, agents et serveurs propulses par des LLM en Rust :
 
-- **Catalogue de fournisseurs** -- 16 fournisseurs integres, 114 modeles avec metadonnees, tarification et capacites
+- **Catalogue de fournisseurs** -- 20 fournisseurs integres, 351 modeles avec metadonnees, tarification et capacites
 - **Client asynchrone** -- client base sur des traits pour OpenAI et Anthropic avec streaming SSE
 - **Decouverte de modeles** -- decouverte dynamique depuis models.dev, Ollama et points de terminaison compatibles OpenAI
 - **Coffre de credentials** -- gestion des cles API style dotenv avec ecritures atomiques
@@ -75,6 +75,7 @@ Chaque module est derriere un indicateur de fonctionnalite afin que vous ne payi
 | `safety` | Masquage de secrets, classification d'erreurs, nettoyage de sorties, détection d'injection de prompt | |
 | `eval` | CLI d'evaluation de qualite -- tokens, securite, embedding, recherche | |
 | `eval-full` | Tous les modules d'evaluation, y compris le graphe | |
+| `catalog-sync` | CLI de synchronisation du catalogue — rafraichit `catalog.json` depuis models.dev | |
 | `full` | Toutes les fonctionnalites | |
 
 ## Demarrage rapide
@@ -111,7 +112,7 @@ llm-kernel = { version = "0.9.0", features = ["embedding-fastembed"] }
 
 ### Catalogue de fournisseurs
 
-Le catalogue embarque contient 16 fournisseurs avec 114 modeles alignes sur le schema [models.dev](https://github.com/anomalyco/models.dev).
+Le catalogue embarque contient 20 fournisseurs avec 351 modeles alignes sur le schema [models.dev](https://github.com/anomalyco/models.dev).
 
 ```rust
 use llm_kernel::prelude::*;
@@ -192,24 +193,51 @@ let stream = client.stream_complete(LLMRequest {
 ### Decouverte de modeles
 
 ```rust
-use llm_kernel::discovery::{fetch_and_cache, load_cache, fetch_ollama_models};
+use llm_kernel::discovery::{fetch_and_cache, fetch_ollama_models};
 
-// Fetch from models.dev (caches to disk)
+// Recupere depuis models.dev (met en cache la charge utile brute sur disque,
+// identique en octets a la source). La charge utile est une map clee par
+// fournisseur ; .entries() l'aplanit.
 let payload = fetch_and_cache("~/.cache/llm-kernel/models-dev.json")?;
-for model in &payload.models {
-    println!("{} — {} (ctx: {:?})", model.id, model.provider_id, model.limits);
+for model in payload.entries() {
+    // ModelEntry porte desormais toutes les metadonnees : cout, limites, modalites, capacites.
+    let ctx = model.limits.as_ref().and_then(|l| l.context);
+    println!("{} (via {}) — ctx: {:?}", model.id, model.provider_id, ctx);
 }
 
-// Load from cache (no network)
-if let Some(cached) = load_cache("~/.cache/llm-kernel/models-dev.json")? {
-    println!("{} models cached", cached.models.len());
-}
-
-// Discover local Ollama models
+// Decouvre les modeles Ollama locaux
 let ollama_models = fetch_ollama_models("http://localhost:11434")?;
 for name in &ollama_models {
     println!("Ollama: {}", name);
 }
+```
+
+### Garder le catalogue a jour
+
+Le catalogue embarque est gele a la compilation (via `include_str!`), il n'avance
+donc que lorsque vous montez la dependance `llm-kernel`. Pour une tarification
+**toujours a jour**, recuperez models.dev a l'execution et superposez-le au
+catalogue embarque :
+
+```rust
+use llm_kernel::prelude::*; // ProviderIndex
+use llm_kernel::discovery::{DiscoverySource, ModelsDevSource}; // discovery-async
+
+let entries = ModelsDevSource::new().discover().await?; // models.dev en direct
+let catalog = ProviderIndex::embedded().with_discovered(&entries);
+
+// Les modeles decouverts participent desormais aux recherches et a l'estimation
+// des couts, meme s'ils sont absents du catalogue statique embarque :
+let cost = catalog.estimate_cost("some/new-model", prompt_tokens, completion_tokens);
+```
+
+Pour rafraichir le **catalogue embarque** lui-meme (la reference hors ligne
+integree au crate), les mainteneurs lancent l'outil de synchronisation avant une
+release :
+
+```text
+cargo run --bin llm-kernel-sync-catalog --features catalog-sync -- --check   # afficher la derive
+cargo run --bin llm-kernel-sync-catalog --features catalog-sync              # ecrire catalog.json
 ```
 
 ### Coffre de credentials
@@ -421,7 +449,7 @@ Chaque modele du catalogue inclut :
 
 | | llm-kernel | [rig] | [langchain-rust] |
 |--|-----------|-------|-------------------|
-| Catalogue de fournisseurs | Oui 16 fournisseurs, 114 modeles integres | Config manuelle | Config manuelle |
+| Catalogue de fournisseurs | Oui 20 fournisseurs, 351 modeles integres | Config manuelle | Config manuelle |
 | Indicateurs de fonctionnalite | Oui, modules independants | Monolithique | Monolithique |
 | Embedding local | Oui 44 ONNX + Qwen3 + Nomic MoE | Non | Non |
 | Evaluation qualite | Oui 5 modules, regression de base, CI | Non | Non |
