@@ -35,6 +35,10 @@ pub mod async_vector_index;
 #[cfg(feature = "qdrant")]
 pub mod qdrant;
 
+/// Elasticsearch `AsyncVectorIndex` (feature `elastic`).
+#[cfg(feature = "elastic")]
+pub mod elastic;
+
 #[cfg(feature = "vector-index")]
 pub mod turbovec;
 
@@ -70,6 +74,9 @@ pub use vector_index::{SearchHit, VectorIndex};
 
 #[cfg(feature = "qdrant")]
 pub use qdrant::QdrantVectorIndex;
+
+#[cfg(feature = "elastic")]
+pub use elastic::ElasticsearchVectorIndex;
 
 #[cfg(feature = "vector-index")]
 pub use turbovec::TurbovecIndex;

@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-06-15
+
+### Added
+
+- **embedding** (`elastic` feature): `ElasticsearchVectorIndex` — `AsyncVectorIndex` over Elasticsearch 8.x (dense_vector cosine mapping, bulk upsert/delete, knn `_search`, `_count`), implemented with a **hand-rolled reqwest client** rather than the official `elasticsearch` crate (which is alpha-only — no stable release) so the dependency stays safe ahead of the v1.0.0 semver lock (new `src/embedding/elastic.rs`)
+- **federation** (`federation` feature): `FederatedSearch` — concurrent cross-engine federation over multiple `AsyncVectorIndex` backends with a per-backend timeout, observable failure handling, and rank-based RRF fusion as the default (new `src/search/federation.rs`). The feature composes `search` + `embedding` and owns the `tokio` + `futures-util` deps so search-only and single-backend users compile no federation runtime.
+- **search**: `FusionStrategy` enum + pure `federate_results` merge so a synchronous `TurbovecIndex` can participate in federation alongside the async backends
+
+### Changed
+
+- **search**: the pure fusion functions (`rrf_fuse`, `normalize_minmax`, `weighted_sum_fuse`, `combmnz_fuse`) are unchanged; the `search` feature remains light (serde_json only). Async cross-engine federation moved to a dedicated `federation` feature gate that owns `tokio` (+ `time`) and `futures-util`.
+- **features**: new `elastic` feature gate — the reqwest driver is reused from `client-async` (no new transitive deps); `elastic` is included in `full`. Single crate, single publish. Main crate version 0.8.0 → 0.9.0.
+- **infra**: `docker-compose.yml` gained an Elasticsearch service for the live integration test (local-dev only; CI self-skips)
+- **elastic** (hardening, pre-v1.0.0 stabilization): the reqwest client now sets a 5 s connect timeout + 30 s request timeout so direct (non-federated) callers cannot hang on an unresponsive node; `redact_credentials` now redacts userinfo up to the **last** `@` in the authority (a password containing `@` no longer leaks its tail); bulk upsert/delete errors surface the first failing item's redacted JSON; index names are validated against the ES 8.x rules (lowercase, `[a-z0-9_.-]`, no leading `_`/`-`/`+`, ≤255 bytes) before any network call; `_count` no longer sends a no-op `track_total`; `FederatedSearch` collects per-backend weights only under `WeightedSum`.
+- **elastic** (review hardening): the knn `num_candidates` is now computed by a shared `knn_num_candidates(k)` helper that caps candidates at `MAX_KNN_CANDIDATES = 1_000` (so a large `k` cannot ask ES to score thousands of candidates) while preserving the ES invariant `num_candidates >= k`; error response bodies embedded in `anyhow` errors are capped to `ERROR_BODY_MAX_CHARS = 1024` characters at a UTF-8 boundary (with a `... [truncated]` marker) so a verbose ES error cannot bloat logs, applied after `redact_credentials` so a credential past the cap stays masked; the `SearchHit.score` semantics (`(1 + cosine) / 2`, not comparable across backends) and the WeightedSum caveat are now documented in the module and `search` method docs.
+- **federation** (review hardening): `FederatedSearch::search` now over-fetches each backend (`fetch_k = 2 * k`) before RRF/WeightedSum fusion and truncates the merged list to the requested `k`, so a document ranking just below `k` in one backend but near the top in another keeps its cross-backend rank-credit instead of being silently dropped.
+
+### Notes
+
+- Federation defaults to **RRF** (rank-based, scale-invariant) so heterogeneous raw scores across backends — Qdrant cosine `[0,1]`, Elasticsearch `_score = (1+cos)/2 ∈ [0,1]`, TurboVec raw cosine `[-1,1]` — fuse correctly with no normalization. `FusionStrategy::WeightedSum` is opt-in and applies per-list min-max normalization first.
+- Elasticsearch connection-string credentials (`https://user:pass@host`) are used for the request but **never** leaked in errors — all error messages route through `redact_credentials`, which strips userinfo up to the last `@` in the authority (handles passwords that themselves contain `@`).
+- The live Elasticsearch conformance test mirrors the Qdrant conformance body and self-skips without `LLMKERNEL_ELASTIC_URL`; it deletes its throwaway index on every exit path.
+
 ## [0.8.0] - 2026-06-14
 
 ### Added

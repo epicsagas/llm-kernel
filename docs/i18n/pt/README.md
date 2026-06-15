@@ -69,6 +69,8 @@ Cada módulo é controlado por uma feature flag para que você só pague pelo qu
 | `embedding-fastembed-nomic-moe` | Embedding Nomic V2 MoE via backend candle | |
 | `vector-index` | Índice de vetores comprimido TurboQuant — 2 bits/4 bits, busca ANN com SIMD | |
 | `qdrant` | AsyncVectorIndex Qdrant (QdrantVectorIndex) para busca vetorial remota | |
+| `elastic` | AsyncVectorIndex Elasticsearch (ElasticsearchVectorIndex) sobre um cliente reqwest feito à mão | |
+| `federation` | Federação entre motores — consulta simultânea em vários backends `AsyncVectorIndex` com tempo limite por backend (RRF padrão) | |
 | `telemetry` | Eventos de telemetria com gate por enum, sem PII | |
 | `safety` | Mascaramento de segredos, classificação de erros, sanitização de saída, detecção de prompt-injection | |
 | `eval` | CLI de avaliação de qualidade — tokens, segurança, embedding, busca | |
@@ -81,28 +83,28 @@ Adicione ao seu `Cargo.toml`:
 
 ```toml
 [dependencies]
-llm-kernel = "0.8.0"
+llm-kernel = "0.9.0"
 ```
 
 A feature `provider` é habilitada por padrão. Para o cliente assíncrono:
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.8.0", features = ["client-async"] }
+llm-kernel = { version = "0.9.0", features = ["client-async"] }
 ```
 
 Para o grafo de conhecimento com wrappers assíncronos:
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.8.0", features = ["graph", "graph-async"] }
+llm-kernel = { version = "0.9.0", features = ["graph", "graph-async"] }
 ```
 
 Para embedding local (ONNX, sem chave de API):
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.8.0", features = ["embedding-fastembed"] }
+llm-kernel = { version = "0.9.0", features = ["embedding-fastembed"] }
 ```
 
 ## Uso

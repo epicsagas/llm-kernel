@@ -1,23 +1,31 @@
 # Progress
 
-> Auto-generated status snapshot. Last updated: 2026-06-14
+> Auto-generated status snapshot. Last updated: 2026-06-15
 
-## Current Version: v0.8.0
+## Current Version: v0.9.0
 
 | Metric | Value |
 |--------|-------|
-| Version | `0.8.0` |
+| Version | `0.9.0` |
 | Edition | Rust 2024, MSRV 1.92 |
-| Lines of code | ~17,400 |
-| Total tests | 495 (483 passed, 12 ignored, 0 failed) |
-| Backend features | `graph-pg` (PostgreSQL), `qdrant` (vector search) |
+| Lines of code | ~18,100 |
+| Total tests | 511 (499 passed, 12 ignored, 0 failed) |
+| Backend features | `graph-pg` (PostgreSQL), `qdrant` (vector search), `elastic` (Elasticsearch vector search) |
 | Open PRs | 1 |
 | Open branches | 1 |
-| Last commit | `feat: v0.7.0 transport and backend` |
+| Last commit | `feat: v0.9.0 search integrations` |
 
 ---
 
 ## Recent Releases
+
+### v0.9.0 (2026-06-15)
+
+- **embedding** (`elastic`): `ElasticsearchVectorIndex` — `AsyncVectorIndex` over Elasticsearch 8.x (dense_vector cosine, bulk upsert/delete, knn `_search`, `_count`). 공식 `elasticsearch` 크레이트가 alpha-only라 **직접 구현한 reqwest 클라이언트** 사용 (v1.0.0 semver lock 안전)
+- **search**: `FederatedSearch` — 여러 `AsyncVectorIndex` 백엔드 동시 쿼리, 백엔드별 타임아웃, 실패한 백엔드는 `tracing::warn!`으로 관찰 가능하게 drop, 기본 RRF 퓨전 (`src/search/federation.rs`)
+- **search**: `FusionStrategy` enum + 순수 `federate_results` (동기 `TurbovecIndex`도 federation 참여 가능)
+- **features**: 신규 `elastic` 피처 (reqwest는 `client-async` 재사용, 신규 전이 의존성 없음), `full`에 포함. 메인 크레이트 0.8.0 → 0.9.0
+- **infra**: `docker-compose.yml`에 Elasticsearch 서비스 추가 (local-dev 전용, CI는 self-skip)
 
 ### v0.8.0 (2026-06-14)
 
@@ -111,7 +119,8 @@
 | **v0.5.0** — Client Resilience | ✅ Complete | Retry, middleware, embed_batch, history management |
 | **v0.6.0** — Search & Intelligence | ✅ Complete | `SearchProvider`, injection detection, chunking, templates, async discovery |
 | **v0.7.0** — Transport & Backend | ✅ Complete | `GraphBackend` trait, migration framework, CJK search, `KvStore`, LLM cache, MCP HTTP/SSE, async handlers |
-| **v0.8.0** — Backend Expansion | 🔜 Next | PostgreSQL `GraphBackend`, Qdrant `VectorSearch`, DBMS migration CLI |
+| **v0.8.0** — Backend Expansion | ✅ Complete | PostgreSQL `GraphBackend`, Qdrant `AsyncVectorIndex`, DBMS migration CLI |
+| **v0.9.0** — Search Integrations | ✅ Complete | Elasticsearch `AsyncVectorIndex`, `FederatedSearch` (RRF default, per-backend timeout) |
 
 ---
 
