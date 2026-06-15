@@ -7,7 +7,7 @@ llm-kernel development roadmap from v0.3.2 to v1.0.0.
 * **[FTS5 CJK Alternatives Study](docs/research/fts5_cjk_alternatives.md)**
 * **[Future Milestones Feasibility Study](docs/research/future_roadmap_evaluation.md)**
 
-> **Current phase: v0.8.0 complete ✅ — Next: v0.9.0 Search Integrations**
+> **Current phase: v0.9.0 complete ✅ — Next: v1.0.0 Production Readiness**
 
 Each phase has a clear theme, concrete deliverables, and exit criteria.
 The library's core philosophy — zero-mandatory-dep composability with feature gates — is preserved throughout.
@@ -163,14 +163,16 @@ Each backend is an optional feature — drivers (`postgres`, `qdrant-client`) ar
 
 ---
 
-### v0.9.0 — Search Integrations
+### v0.9.0 — Search Integrations ✅
 
 Elasticsearch and cross-engine search federation.
+
+**Shipped as the `elastic` feature gate (`ElasticsearchVectorIndex`, a hand-rolled reqwest client — the official `elasticsearch` crate is alpha-only) plus `FederatedSearch` in `src/search/federation.rs`.** Federation defaults to rank-based RRF so heterogeneous raw scores across Qdrant / Elasticsearch / TurboVec merge correctly with no normalization; a per-backend timeout drops slow or failing backends observably rather than blocking the query.
 
 | # | Deliverable | Scope | Key Files |
 |---|-------------|-------|-----------|
 | 1 | `elastic` feature — Elasticsearch `AsyncVectorIndex` implementation | L | `src/embedding/elastic.rs` (`elastic` feature) |
-| 2 | Search federation — query multiple backends, merge results | M | `src/search/` |
+| 2 | Search federation — query multiple backends, merge results | M | `src/search/federation.rs` (`search` feature) |
 
 **Exit criteria:** Elasticsearch passes VectorSearch conformance tests, federation merges Qdrant + Elasticsearch + TurboVec results.
 
@@ -217,7 +219,7 @@ v0.3.2
   ├── v0.8.0  Backend Expansion ✅
   │            PostgreSQL, Qdrant, DBMS migration
   │
-  ├── v0.9.0  Search Integrations
+  ├── v0.9.0  Search Integrations ✅
   │            Elasticsearch, federation
   │
   └── v1.0.0  Production Readiness
@@ -230,7 +232,7 @@ Key dependency chains:
 - `ToolDefinition` (v0.4.0) → `CapabilityProfile.supports_tool_calling()` (v0.3.4)
 - `GraphBackend` trait (v0.7.0) → PostgreSQL impl (v0.8.0)
 - `KvStore` trait (v0.7.0) → LLM cache (v0.7.0)
-- `VectorSearch` trait → Qdrant (v0.8.0) → Elasticsearch (v0.9.0)
+- `AsyncVectorIndex` trait → Qdrant (v0.8.0) → Elasticsearch (v0.9.0)
 
 Within a phase, deliverables are independent and can be parallelized.
 

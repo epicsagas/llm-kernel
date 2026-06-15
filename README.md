@@ -64,6 +64,8 @@ Each module is gated behind a feature flag so you only pay for what you use.
 | `embedding-fastembed-nomic-moe` | Nomic V2 MoE embedding via candle backend | |
 | `vector-index` | TurboQuant compressed vector index — 2-bit/4-bit, SIMD ANN search | |
 | `qdrant` | Qdrant `AsyncVectorIndex` (`QdrantVectorIndex`) for remote vector search | |
+| `elastic` | Elasticsearch `AsyncVectorIndex` (`ElasticsearchVectorIndex`) over a hand-rolled reqwest client | |
+| `federation` | Cross-engine federation — concurrent query over multiple `AsyncVectorIndex` backends with a per-backend timeout (RRF default) | |
 | `telemetry` | Enum-gated telemetry events, no PII | |
 | `safety` | Secret masking, error classification, output sanitization, prompt-injection detection | |
 | `eval` | Quality evaluation CLI — tokens, safety, embedding, search | |
@@ -76,28 +78,28 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-llm-kernel = "0.8.0"
+llm-kernel = "0.9.0"
 ```
 
 The `provider` feature is enabled by default. For the async client:
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.8.0", features = ["client-async"] }
+llm-kernel = { version = "0.9.0", features = ["client-async"] }
 ```
 
 For the knowledge graph with async wrappers:
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.8.0", features = ["graph", "graph-async"] }
+llm-kernel = { version = "0.9.0", features = ["graph", "graph-async"] }
 ```
 
 For local embedding (ONNX, no API key):
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.8.0", features = ["embedding-fastembed"] }
+llm-kernel = { version = "0.9.0", features = ["embedding-fastembed"] }
 ```
 
 ## Usage
@@ -379,6 +381,35 @@ let mut hits = index.search("rust programming", 10)?;
 // Normalize each backend to [0,1] before score-based fusion
 normalize_minmax(&mut hits);
 ```
+
+#### Cross-engine federation
+
+`FederatedSearch` queries several `AsyncVectorIndex` backends (Qdrant, Elasticsearch, …) concurrently, applies a per-backend timeout so one slow remote cannot stall the query, and merges survivors. The default strategy is **RRF** because it is rank-based and therefore scale-invariant — heterogeneous raw scores (Qdrant cosine, Elasticsearch `_score`, TurboVec raw cosine) fuse correctly with no normalization. Behind the `federation` feature (add `features = ["federation"]` to your dependency).
+
+```rust
+use std::sync::Arc;
+use std::time::Duration;
+use llm_kernel::embedding::{AsyncVectorIndex, QdrantVectorIndex, ElasticsearchVectorIndex};
+use llm_kernel::search::{FederatedSearch, FusionStrategy};
+
+let qdrant: Arc<dyn AsyncVectorIndex> = Arc::new(
+    QdrantVectorIndex::new("http://localhost:6334", "docs", 768).await?,
+);
+let es: Arc<dyn AsyncVectorIndex> = Arc::new(
+    ElasticsearchVectorIndex::new("http://localhost:9200", "docs", 768).await?,
+);
+
+// Query both at once; a backend that times out or errors is dropped, not fatal.
+let merged = FederatedSearch::new()
+    .with_backend(qdrant, 1.0)
+    .with_backend(es, 1.0)
+    .strategy(FusionStrategy::Rrf { k: 60 })
+    .timeout(Duration::from_secs(2))
+    .search(&query_vector, 10)
+    .await?;
+```
+
+A synchronous `TurbovecIndex` participates via the pure `federate_results` merge — search it directly and fold its list in alongside the async backends.
 
 #### Local ONNX embedding (fastembed-rs)
 

@@ -69,6 +69,8 @@ llm-kernelは、RustでLLM搭載ツール、エージェント、サーバーを
 | `embedding-fastembed-nomic-moe` | candleバックエンドによるNomic V2 MoEエンベディング | |
 | `vector-index` | TurboQuant圧縮ベクトルインデックス — 2ビット/4ビット、SIMD ANN検索 | |
 | `qdrant` | リモートベクトル検索向け Qdrant AsyncVectorIndex（QdrantVectorIndex） | |
+| `elastic` | ハンドロール reqwest クライアント上の Elasticsearch AsyncVectorIndex（ElasticsearchVectorIndex） | |
+| `federation` | クロスエンジン連携 — 複数の `AsyncVectorIndex` バックエンドを同時クエリ、バックエンド別タイムアウト付き（デフォルト RRF） | |
 | `telemetry` | enumゲート方式のテレメトリイベント、PIIなし | |
 | `safety` | シークレットマスキング、エラー分類、出力サニタイズ、プロンプトインジェクション検出 | |
 | `eval` | 品質評価CLI — トークン、セーフティ、エンベディング、検索 | |
@@ -81,28 +83,28 @@ llm-kernelは、RustでLLM搭載ツール、エージェント、サーバーを
 
 ```toml
 [dependencies]
-llm-kernel = "0.8.0"
+llm-kernel = "0.9.0"
 ```
 
 `provider`フィーチャーはデフォルトで有効です。非同期クライアントを使用する場合：
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.8.0", features = ["client-async"] }
+llm-kernel = { version = "0.9.0", features = ["client-async"] }
 ```
 
 非同期ラッパー付きナレッジグラフを使用する場合：
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.8.0", features = ["graph", "graph-async"] }
+llm-kernel = { version = "0.9.0", features = ["graph", "graph-async"] }
 ```
 
 ローカルエンベディング（ONNX、APIキー不要）を使用する場合：
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.8.0", features = ["embedding-fastembed"] }
+llm-kernel = { version = "0.9.0", features = ["embedding-fastembed"] }
 ```
 
 ## 使用方法
