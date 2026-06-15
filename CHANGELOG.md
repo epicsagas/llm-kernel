@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-06-16
+
 ### Added
 
 - **provider** (`catalog-sync` feature): `llm-kernel-sync-catalog` binary — refreshes `catalog.json` from the live models.dev catalog. `--check` reports drift without writing; the default writes atomically. Drives field-precedence merge: provider service fields (auth, base URL, tiers, setup) are kept from the catalog, model data (cost, limits, modalities, capabilities) comes from models.dev, and empty `api_base_url`/`npm_package`/`doc_url` are filled from upstream. New `src/provider/sync.rs` (`merge_catalog`, `CatalogDiff`, `PriceDelta`) + `src/bin/sync-catalog.rs`.

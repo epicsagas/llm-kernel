@@ -84,28 +84,28 @@ Ajoutez a votre `Cargo.toml` :
 
 ```toml
 [dependencies]
-llm-kernel = "0.9.0"
+llm-kernel = "0.9.1"
 ```
 
 La fonctionnalite `provider` est activee par defaut. Pour le client asynchrone :
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.9.0", features = ["client-async"] }
+llm-kernel = { version = "0.9.1", features = ["client-async"] }
 ```
 
 Pour le graphe de connaissances avec enveloppes asynchrones :
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.9.0", features = ["graph", "graph-async"] }
+llm-kernel = { version = "0.9.1", features = ["graph", "graph-async"] }
 ```
 
 Pour l'embedding local (ONNX, sans cle API) :
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.9.0", features = ["embedding-fastembed"] }
+llm-kernel = { version = "0.9.1", features = ["embedding-fastembed"] }
 ```
 
 ## Utilisation
