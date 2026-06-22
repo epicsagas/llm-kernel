@@ -73,7 +73,7 @@ let response = client.complete(LLMRequest {
     messages: vec![ChatMessage::user("Hello!")],
     temperature: 0.7,
     max_tokens: Some(256),
-    model: None,
+    ..LLMRequest::default(),
 }).await?;
 println!("{}", response.content);
 ```
