@@ -24,11 +24,9 @@ async fn main() {
         .complete(llm_kernel::llm::LLMRequest {
             system: Some("You are a helpful assistant. Reply in one sentence.".into()),
             messages: vec![ChatMessage::user("What is llm-kernel?")],
-            model: None,
             temperature: 0.7,
             max_tokens: Some(256),
-            response_format: None,
-            tools: None,
+            ..llm_kernel::llm::LLMRequest::default()
         })
         .await
         .expect("completion failed");

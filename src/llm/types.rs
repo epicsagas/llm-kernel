@@ -108,6 +108,10 @@ mod content_vec_serde {
 }
 
 /// A single message in a chat conversation.
+///
+/// Implements [`Default`] for forward-compatible struct-update syntax.
+/// Prefer the `ChatMessage::system` / `::user` / `::assistant` / `::tool`
+/// constructors for clarity.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatMessage {
     /// Role of the message sender.
@@ -116,6 +120,15 @@ pub struct ChatMessage {
     /// containing a single text part for backward compatibility.
     #[serde(with = "content_vec_serde")]
     pub content: Vec<ContentPart>,
+}
+
+impl Default for ChatMessage {
+    fn default() -> Self {
+        Self {
+            role: MessageRole::User,
+            content: Vec::new(),
+        }
+    }
 }
 
 impl ChatMessage {
@@ -215,6 +228,22 @@ pub enum ResponseFormat {
 }
 
 /// A chat completion request to an LLM provider.
+///
+/// This struct implements [`Default`] so callers can use struct-update syntax
+/// to stay forward-compatible with future field additions:
+///
+/// ```rust,ignore
+/// let req = LLMRequest {
+///     system: Some("...".into()),
+///     messages: vec![ChatMessage::user("hi")],
+///     ..LLMRequest::default()
+/// };
+/// ```
+///
+/// New fields added to `LLMRequest` in future non-breaking releases are
+/// absorbed by `..LLMRequest::default()` and will not break such call sites
+/// (unlike full struct literals, which must enumerate every field). For the
+/// fluent equivalent, see [`LLMRequest::builder`].
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LLMRequest {
     /// Optional system prompt prepended to the conversation.
@@ -235,6 +264,22 @@ pub struct LLMRequest {
     /// Tool definitions available to the model for this request.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tools: Option<Vec<crate::llm::ToolDefinition>>,
+}
+
+impl Default for LLMRequest {
+    fn default() -> Self {
+        Self {
+            system: None,
+            messages: Vec::new(),
+            // Matches `LLMRequestBuilder::build()`'s `unwrap_or(0.7)` so the two
+            // construction paths agree. Keep these coupled.
+            temperature: 0.7,
+            max_tokens: None,
+            model: None,
+            response_format: None,
+            tools: None,
+        }
+    }
 }
 
 impl LLMRequest {
@@ -305,6 +350,15 @@ impl LLMRequestBuilder {
         self
     }
 
+    /// Replace the message list with the provided messages.
+    ///
+    /// Convenience for callers that already hold a `Vec<ChatMessage>` (e.g. a
+    /// pre-built conversation), avoiding repeated `.message()` calls.
+    pub fn messages(mut self, messages: Vec<ChatMessage>) -> Self {
+        self.messages = messages;
+        self
+    }
+
     /// Set the sampling temperature.
     pub fn temperature(mut self, temp: f32) -> Self {
         self.temperature = Some(temp);
@@ -314,6 +368,15 @@ impl LLMRequestBuilder {
     /// Set the maximum tokens to generate.
     pub fn max_tokens(mut self, tokens: u32) -> Self {
         self.max_tokens = Some(tokens);
+        self
+    }
+
+    /// Set the maximum tokens to generate, or `None` to use the provider default.
+    ///
+    /// Convenience for callers that already hold an `Option<u32>` (e.g. a
+    /// config field), avoiding a conditional chain.
+    pub fn maybe_max_tokens(mut self, tokens: Option<u32>) -> Self {
+        self.max_tokens = tokens;
         self
     }
 
@@ -350,7 +413,10 @@ impl LLMRequestBuilder {
 }
 
 /// A chat completion response from an LLM provider.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+///
+/// Implements [`Default`] for forward-compatible struct-update syntax
+/// (`LLMResponse { ..LLMResponse::default() }`).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct LLMResponse {
     /// Generated text content.
     pub content: String,
@@ -537,6 +603,43 @@ mod tests {
             .build();
         assert!(req.tools.is_some());
         assert_eq!(req.tools.unwrap().len(), 1);
+    }
+
+    /// `LLMRequest::default()` and `LLMRequest::builder().build()` must agree on
+    /// every field. The temperature default (0.7) in particular is duplicated
+    /// between the manual `Default` impl and the builder's `unwrap_or(0.7)`;
+    /// this test couples them so a future edit to one without the other is caught.
+    #[test]
+    fn default_matches_builder_default() {
+        let from_default = LLMRequest::default();
+        let from_builder = LLMRequest::builder().build();
+        assert_eq!(from_default.temperature, from_builder.temperature);
+        assert_eq!(from_default.temperature, 0.7);
+        assert!(from_default.system.is_none());
+        assert!(from_default.messages.is_empty());
+        assert!(from_default.max_tokens.is_none());
+        assert!(from_default.model.is_none());
+        assert!(from_default.response_format.is_none());
+        assert!(from_default.tools.is_none());
+    }
+
+    #[test]
+    fn builder_messages_setter_replaces_list() {
+        let conv = vec![ChatMessage::user("first"), ChatMessage::assistant("second")];
+        let req = LLMRequest::builder().messages(conv).build();
+        assert_eq!(req.messages.len(), 2);
+        assert_eq!(req.messages[0].role, MessageRole::User);
+        assert_eq!(req.messages[1].role, MessageRole::Assistant);
+    }
+
+    #[test]
+    fn builder_maybe_max_tokens_accepts_option() {
+        // Some — sets the value
+        let req = LLMRequest::builder().maybe_max_tokens(Some(512)).build();
+        assert_eq!(req.max_tokens, Some(512));
+        // None — explicitly defers to provider default
+        let req = LLMRequest::builder().maybe_max_tokens(None).build();
+        assert_eq!(req.max_tokens, None);
     }
 
     #[test]

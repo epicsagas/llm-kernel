@@ -157,7 +157,7 @@ let response = client.complete(LLMRequest {
     messages: vec![ChatMessage::user("Hello!")],
     temperature: 0.7,
     max_tokens: Some(1024),
-    model: None,
+    ..LLMRequest::default(),
 }).await?;
 
 println!("{}", response.content);
@@ -184,7 +184,7 @@ let stream = client.stream_complete(LLMRequest {
     messages: vec![ChatMessage::user("Explain Rust in one paragraph.")],
     temperature: 0.7,
     max_tokens: Some(256),
-    model: None,
+    ..LLMRequest::default(),
 }).await?;
 
 // Stream liefert Delta-, Usage- und Done-Ereignisse
