@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.2] - 2026-06-22
+
+### Added
+
+- **llm**: `LLMRequest` and `LLMResponse` now implement `Default`, enabling forward-compatible struct-update syntax (`LLMRequest { system: Some(..), ..LLMRequest::default() }`). `Default` for `LLMRequest` uses `temperature: 0.7`, matching the builder default — covered by the `default_matches_builder_default` test.
+- **llm**: `LLMRequestBuilder::messages(Vec<ChatMessage>)` — set the full message list in one call (the existing `.message()` appends one at a time).
+- **llm**: `LLMRequestBuilder::maybe_max_tokens(Option<u32>)` — set `max_tokens` from an `Option` directly, avoiding conditional chains for callers that hold a config `Option<u32>`.
+
+### Changed
+
+- **llm**: All `LLMRequest` examples in README, QUICKSTART, the 10 i18n READMEs, and `examples/` now use struct-update (`..LLMRequest::default()`) instead of exhaustive struct literals. **Call sites using `..LLMRequest::default()` will no longer break when new fields are added to `LLMRequest` in future releases** — this is the forward-compatible construction pattern going forward. Full struct literals still compile today but must be updated field-by-field on every `LLMRequest` field addition.
+
+### Notes
+
+- The `response_format` and `tools` fields added in 0.9.0 remain `Option` and default to `None`; they are not yet forwarded to provider APIs (planned for a future release). Existing call sites that did not set them are unaffected once migrated to struct-update.
+
 ## [0.9.1] - 2026-06-16
 
 ### Added
