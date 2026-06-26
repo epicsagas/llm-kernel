@@ -42,11 +42,18 @@ impl PartialOrd for OrderedFloat {
 
 /// One edge's traversal cost: `-ln(weight)`. `None` if the edge is impassable
 /// (weight below [`SHORTEST_PATH_W_MIN`] or non-positive).
+///
+/// Weight is clamped to at most `1.0`: the documented edge-weight contract is
+/// `[0, 1]` (see `GraphEdge::weight`), so a contract-violating weight > 1.0 is
+/// treated as maximal strength (cost 0) rather than producing a *negative*
+/// cost. Without this clamp Dijkstra's non-negative-edge assumption would be
+/// violated and it would silently return wrong shortest paths.
 fn edge_cost(weight: f64) -> Option<f64> {
     if weight < SHORTEST_PATH_W_MIN {
         return None;
     }
-    Some(-weight.ln())
+    let w = weight.min(1.0);
+    Some(-w.ln())
 }
 
 /// Dijkstra from `src`, returning `(node_index, distance)` for every reachable
@@ -255,5 +262,23 @@ mod tests {
         // dst index 5 is out of range for a 1-node graph.
         assert!(shortest_path(&g, 0, 5).is_none());
         assert!(dijkstra(&g, 5).is_empty());
+    }
+
+    #[test]
+    fn weight_above_one_clamped_non_negative() {
+        // A weight of 2.0 violates the [0, 1] contract. Without clamping,
+        // -ln(2.0) ≈ -0.693 would be a negative Dijkstra cost. Clamped to 1.0
+        // it costs -ln(1.0) = 0, and no node is ever assigned a negative
+        // distance.
+        let g = graph(&["A", "B"], &[edge("e1", "A", "B", 2.0)]);
+        let a = g.node_index("A").unwrap();
+        let b = g.node_index("B").unwrap();
+        let res = dijkstra(&g, a);
+        let b_dist = res.iter().find(|(i, _)| *i == b).unwrap().1;
+        assert!(b_dist.abs() < 1e-12, "weight > 1 clamps to zero cost");
+        assert!(
+            res.iter().all(|(_, d)| *d >= -1e-12),
+            "no negative distances despite contract-violating weight"
+        );
     }
 }
