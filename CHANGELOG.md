@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **graph**: Graph algorithm module (`algo/`) closing the Neo4j/GDS algorithm gap — pure-Rust, zero-dependency, compiled in behind the existing `graph` feature (no `Cargo.toml` change, no `petgraph`). New `CsrGraph` compressed-sparse-row snapshot plus weighted **PageRank** with dangling-node redistribution (`algo/pagerank.rs`), **connected components** (union-find) and **label propagation** (`algo/community.rs`), **Dijkstra** weighted shortest path using `distance = -ln(weight)` (`algo/path.rs`), and **Jaccard / common-neighbors / Adamic-Adar / link prediction** (`algo/similarity.rs`). All re-exported from `graph` as free functions; iterative math is backend-agnostic for zero drift.
+- **graph**: PageRank eval scenario (`query_type: "pagerank"` in `eval/datasets/graph.jsonl`) and criterion benchmarks for CSR build / PageRank / connected components / label propagation / Dijkstra / Jaccard in `benches/graph_bench.rs`.
+
+### Changed
+
+- **graph**: `smart_recall`'s graph boost (`W_GRAPH`) now ranks the top-100 candidates by true PageRank centrality over their induced subgraph, replacing the former neighbor-weight-sum (an approximate degree centrality). The SQLite (`recall.rs`) and PostgreSQL (`pg.rs`) recall paths share the same `pagerank_default`, permanently removing the boost-logic drift that previously existed between backends. New `store::edges_among` serves the induced-subgraph edge query.
+
 ## [0.9.2] - 2026-06-22
 
 ### Added

@@ -40,6 +40,7 @@
 //! }
 //! ```
 
+pub mod algo;
 pub mod backend;
 pub mod dedup;
 pub mod lifecycle;
@@ -67,6 +68,12 @@ pub mod async_pool;
 pub use async_pool::AsyncPoolGraph;
 
 // Re-export primary types and functions
+pub use algo::{
+    CsrGraph, LABEL_PROPAGATION_ITERS, PAGERANK_DAMPING, PAGERANK_EPS, PAGERANK_ITERS,
+    SHORTEST_PATH_W_MIN, adamic_adar, common_neighbors, connected_components, dijkstra,
+    jaccard_similarity, label_propagation, label_propagation_default, link_prediction, pagerank,
+    pagerank_default, pagerank_scores, shortest_path, shortest_path_ids,
+};
 pub use backend::{GraphBackend, SqliteGraph};
 pub use dedup::{find_duplicate, upsert_node_dedup};
 pub use lifecycle::{compute_stats, decay_importance, tag_stale_nodes, touch_node, touch_nodes};
