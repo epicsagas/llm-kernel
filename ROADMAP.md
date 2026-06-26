@@ -6,6 +6,7 @@ llm-kernel development roadmap from v0.3.2 to v1.0.0.
 * **[Roadmap Evaluation Report](docs/research/roadmap_evaluation.md)**
 * **[FTS5 CJK Alternatives Study](docs/research/fts5_cjk_alternatives.md)**
 * **[Future Milestones Feasibility Study](docs/research/future_roadmap_evaluation.md)**
+* **[Graph Performance Maximization Strategy](docs/research/graph_performance_strategy.md)**
 
 > **Current phase: v0.9.0 complete ✅ — Next: v1.0.0 Production Readiness**
 
