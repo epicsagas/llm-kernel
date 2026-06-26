@@ -262,7 +262,7 @@ mod tests {
                 source: "n1".into(),
                 target: "n2".into(),
                 relation: "related".into(),
-                weight: 2.0,
+                weight: 1.0,
                 ts: "2026-01-01T00:00:00Z".into(),
             },
         )
@@ -270,7 +270,19 @@ mod tests {
 
         let results = smart_recall(&conn, None, None, 10).unwrap();
         assert_eq!(results.len(), 2);
-        // Both should have graph boost applied (score > base importance)
+        // With hint=None and identical recency/importance/access, every score
+        // component is equal across n1 and n2 EXCEPT the graph boost. n2 is a
+        // dangling sink (no out-edges) and so accrues higher PageRank than n1
+        // — its sole in-bound rank source — so the boost pass must rank n2
+        // above n1. This is the one assertion that exercises the boost's
+        // actual ranking effect (the pagerank math itself is unit-tested in
+        // algo/pagerank.rs).
+        let n1 = results.iter().find(|s| s.node.id == "n1").unwrap();
+        let n2 = results.iter().find(|s| s.node.id == "n2").unwrap();
+        assert!(
+            n2.score > n1.score,
+            "dangling sink n2 must outrank source n1 via PageRank boost"
+        );
     }
 
     #[test]
