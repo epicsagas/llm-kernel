@@ -769,6 +769,22 @@ mod eval_graph {
                         .map(|n| n.id)
                         .collect()
                 }
+                "pagerank" => {
+                    // Top-k by PageRank centrality, k = |expected_ids|.
+                    let g = llm_kernel::graph::algo::CsrGraph::build_csr(&conn)
+                        .expect("pagerank eval: build_csr");
+                    let scores = llm_kernel::graph::algo::pagerank_default(&g);
+                    let k = entry.expected_ids.len().max(1);
+                    let mut ranked: Vec<(usize, f64)> =
+                        scores.iter().copied().enumerate().collect();
+                    ranked
+                        .sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+                    ranked.truncate(k);
+                    ranked
+                        .iter()
+                        .map(|(i, _)| g.node_id(*i as u32).to_string())
+                        .collect()
+                }
                 _ => continue,
             };
 

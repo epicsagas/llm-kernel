@@ -1,8 +1,13 @@
-//! Benchmarks for the knowledge graph module — smart_recall, BFS traversal, neighbor lookup.
+//! Benchmarks for the knowledge graph module — smart_recall, BFS traversal, neighbor lookup,
+//! CSR build, and PageRank centrality.
 
 use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
 use rusqlite::Connection;
 
+use llm_kernel::graph::algo::{
+    CsrGraph, connected_components, dijkstra, jaccard_similarity, label_propagation_default,
+    pagerank_default,
+};
 use llm_kernel::graph::recall::smart_recall;
 use llm_kernel::graph::schema::init_graph_schema;
 use llm_kernel::graph::store::{append_edge, upsert_node};
@@ -144,10 +149,137 @@ fn bench_graph_neighbors(c: &mut Criterion) {
     group.finish();
 }
 
+// ── CSR build ───────────────────────────────────────────
+
+fn bench_csr_build(c: &mut Criterion) {
+    let mut group = c.benchmark_group("graph_csr_build");
+
+    for &(nodes, epn) in &[(100, 2), (500, 3), (1000, 2)] {
+        let conn = mem_db();
+        populate(&conn, nodes, epn);
+
+        group.bench_with_input(BenchmarkId::new("nodes", nodes), &conn, |b, conn| {
+            b.iter(|| {
+                black_box(CsrGraph::build_csr(conn).unwrap());
+            });
+        });
+    }
+
+    group.finish();
+}
+
+// ── PageRank ────────────────────────────────────────────
+
+fn bench_pagerank(c: &mut Criterion) {
+    let mut group = c.benchmark_group("graph_pagerank");
+
+    // CSR is built once per size (setup), so this measures the pure
+    // power-iteration cost, not the edge-load + snapshot build.
+    for &(nodes, epn) in &[(100, 2), (500, 3), (1000, 2)] {
+        let conn = mem_db();
+        populate(&conn, nodes, epn);
+        let g = CsrGraph::build_csr(&conn).unwrap();
+
+        group.bench_with_input(BenchmarkId::new("nodes", nodes), &g, |b, g| {
+            b.iter(|| {
+                black_box(pagerank_default(g));
+            });
+        });
+    }
+
+    group.finish();
+}
+
+// ── Connected components (union-find) ───────────────────
+
+fn bench_connected_components(c: &mut Criterion) {
+    let mut group = c.benchmark_group("graph_connected_components");
+
+    for &(nodes, epn) in &[(100, 2), (500, 3), (1000, 2)] {
+        let conn = mem_db();
+        populate(&conn, nodes, epn);
+        let g = CsrGraph::build_csr(&conn).unwrap();
+
+        group.bench_with_input(BenchmarkId::new("nodes", nodes), &g, |b, g| {
+            b.iter(|| {
+                black_box(connected_components(g));
+            });
+        });
+    }
+
+    group.finish();
+}
+
+// ── Label propagation ───────────────────────────────────
+
+fn bench_label_propagation(c: &mut Criterion) {
+    let mut group = c.benchmark_group("graph_label_propagation");
+
+    for &(nodes, epn) in &[(100, 2), (500, 3), (1000, 2)] {
+        let conn = mem_db();
+        populate(&conn, nodes, epn);
+        let g = CsrGraph::build_csr(&conn).unwrap();
+
+        group.bench_with_input(BenchmarkId::new("nodes", nodes), &g, |b, g| {
+            b.iter(|| {
+                black_box(label_propagation_default(g));
+            });
+        });
+    }
+
+    group.finish();
+}
+
+// ── Dijkstra shortest path ──────────────────────────────
+
+fn bench_dijkstra(c: &mut Criterion) {
+    let mut group = c.benchmark_group("graph_dijkstra");
+
+    for &(nodes, epn) in &[(100, 2), (500, 3), (1000, 2)] {
+        let conn = mem_db();
+        populate(&conn, nodes, epn);
+        let g = CsrGraph::build_csr(&conn).unwrap();
+
+        group.bench_with_input(BenchmarkId::new("nodes", nodes), &g, |b, g| {
+            b.iter(|| {
+                black_box(dijkstra(g, 0));
+            });
+        });
+    }
+
+    group.finish();
+}
+
+// ── Jaccard similarity ──────────────────────────────────
+
+fn bench_jaccard(c: &mut Criterion) {
+    let mut group = c.benchmark_group("graph_jaccard");
+
+    for &(nodes, epn) in &[(100, 5), (200, 5)] {
+        let conn = mem_db();
+        populate(&conn, nodes, epn);
+        let g = CsrGraph::build_csr(&conn).unwrap();
+
+        group.bench_with_input(BenchmarkId::new("nodes", nodes), &g, |b, g| {
+            b.iter(|| {
+                black_box(jaccard_similarity(g, 0, 1));
+            });
+        });
+    }
+
+    group.finish();
+}
+
 criterion_group!(
     benches,
     bench_smart_recall,
     bench_related_nodes,
-    bench_graph_neighbors
+    bench_graph_neighbors,
+    bench_csr_build,
+    bench_pagerank,
+    bench_connected_components,
+    bench_label_propagation,
+    bench_dijkstra,
+    bench_jaccard
 );
 criterion_main!(benches);

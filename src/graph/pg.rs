@@ -26,6 +26,7 @@ use postgres::row::Row;
 use postgres::types::ToSql;
 use postgres::{Client, Config, NoTls};
 
+use super::algo::{CsrGraph, pagerank_default};
 use super::lifecycle::now_iso;
 use super::recall::{W_ACCESS, W_FTS, W_GRAPH, W_IMPORTANCE, W_RECENCY, compute_recency};
 use super::schema::GRAPH_SCHEMA_VERSION;
@@ -401,56 +402,66 @@ impl GraphBackend for PgGraph {
         });
         scored.truncate(limit);
 
-        // Graph-neighbor boost over the top participants (cap 100).
+        // Graph-boost pass: PageRank centrality over the induced subgraph of
+        // the top candidates. Shares the pagerank math with the SQLite recall
+        // path (zero drift) — only the edge-load SQL differs per backend.
         if scored.len() > 1 {
             const MAX_GRAPH_BOOST_PARTICIPANTS: usize = 100;
-            let boost_ids: Vec<&str> = scored
+            let candidate_ids: Vec<String> = scored
                 .iter()
                 .take(MAX_GRAPH_BOOST_PARTICIPANTS)
-                .map(|sn| sn.node.id.as_str())
+                .map(|sn| sn.node.id.clone())
                 .collect();
-            let n = boost_ids.len();
-            let group = |start: usize| -> String {
-                (0..n)
-                    .map(|i| format!("${}", start + i))
-                    .collect::<Vec<_>>()
-                    .join(",")
-            };
-            let (l1, l2, l3, l4) = (group(1), group(1 + n), group(1 + 2 * n), group(1 + 3 * n));
+            let n = candidate_ids.len();
+            let l1: String = (1..=n)
+                .map(|i| format!("${i}"))
+                .collect::<Vec<_>>()
+                .join(",");
+            let l2: String = ((n + 1)..=(2 * n))
+                .map(|i| format!("${i}"))
+                .collect::<Vec<_>>()
+                .join(",");
             let sql = format!(
-                "SELECT source AS node_id, SUM(weight) AS w FROM edges WHERE source IN ({l1}) AND target IN ({l2}) GROUP BY source \
-                 UNION ALL \
-                 SELECT target AS node_id, SUM(weight) AS w FROM edges WHERE source IN ({l3}) AND target IN ({l4}) GROUP BY target"
+                "SELECT id, source, target, relation, weight, ts FROM edges WHERE source IN ({l1}) AND target IN ({l2})"
             );
-            let mut bp: Vec<&(dyn ToSql + Sync)> = Vec::with_capacity(4 * n);
-            for _ in 0..4 {
-                for id in &boost_ids {
-                    bp.push(id);
-                }
+            let mut bp: Vec<&(dyn ToSql + Sync)> = Vec::with_capacity(2 * n);
+            for id in &candidate_ids {
+                bp.push(id);
             }
-            if let Ok(rows) = c.query(&sql, &bp) {
-                let mut weight_map: std::collections::HashMap<String, f64> =
-                    std::collections::HashMap::new();
-                for r in &rows {
-                    let nid: String = r.get(0);
-                    let w: f64 = r.get(1);
-                    *weight_map.entry(nid).or_default() += w;
-                }
-                let max_w = weight_map
-                    .values()
-                    .cloned()
-                    .fold(0.0_f64, f64::max)
-                    .max(1.0);
-                for sn in &mut scored {
-                    let boost = weight_map.get(&sn.node.id).copied().unwrap_or(0.0);
-                    sn.score += W_GRAPH * (boost / max_w);
-                }
-                scored.sort_by(|a, b| {
-                    b.score
-                        .partial_cmp(&a.score)
-                        .unwrap_or(std::cmp::Ordering::Equal)
-                });
+            for id in &candidate_ids {
+                bp.push(id);
             }
+            let sub_edges: Vec<GraphEdge> = match c.query(&sql, &bp) {
+                Ok(rows) => rows
+                    .iter()
+                    .map(|r| GraphEdge {
+                        id: r.get(0),
+                        source: r.get(1),
+                        target: r.get(2),
+                        relation: r.get(3),
+                        weight: r.get(4),
+                        ts: r.get(5),
+                    })
+                    .collect(),
+                Err(_) => Vec::new(),
+            };
+            let csr = CsrGraph::from_edges(&candidate_ids, &sub_edges);
+            let pr = pagerank_default(&csr);
+            let max_pr = pr.iter().copied().fold(0.0_f64, f64::max).max(1e-12);
+            let pr_map: std::collections::HashMap<String, f64> = candidate_ids
+                .iter()
+                .zip(pr.iter())
+                .map(|(id, &s)| (id.clone(), s / max_pr))
+                .collect();
+            for sn in &mut scored {
+                let boost = pr_map.get(&sn.node.id).copied().unwrap_or(0.0);
+                sn.score += W_GRAPH * boost;
+            }
+            scored.sort_by(|a, b| {
+                b.score
+                    .partial_cmp(&a.score)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            });
         }
 
         // Touch retrieved nodes in a single statement (access_count++,
