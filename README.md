@@ -613,9 +613,12 @@ Criterion benchmarks under `benches/`:
 
 ```bash
 cargo bench                          # Run all benchmarks
-cargo bench -- graph_bench           # Graph: smart_recall, BFS, neighbors
+cargo bench -- graph_bench           # Graph: smart_recall, BFS, neighbors, CSR/PageRank/community/path/similarity
 cargo bench -- compute_bench         # Token estimation, RRF fusion
 ```
+
+Graph algorithm baseline numbers (PageRank, Dijkstra, connected components,
+label propagation, Jaccard) are recorded in [docs/benchmarks/graph.md](docs/benchmarks/graph.md).
 
 ## Examples
 
