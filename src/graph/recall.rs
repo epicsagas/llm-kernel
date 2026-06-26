@@ -6,8 +6,10 @@ use rusqlite::Connection;
 
 use crate::error::{KernelError, Result};
 
+use super::algo::{CsrGraph, pagerank_default};
 use super::lifecycle::{parse_iso_to_secs, touch_nodes};
 use super::search::search_nodes;
+use super::store::edges_among;
 use super::types::{NODE_COLUMNS, ScoredNode, escape_like};
 
 /// Weight applied to recency in the composite relevance score.
@@ -100,61 +102,37 @@ pub fn smart_recall(
     });
     scored.truncate(limit);
 
-    // Graph-boost pass
+    // Graph-boost pass: PageRank centrality over the induced subgraph of the
+    // top candidates. Replaces the former neighbor-weight-sum (an approximate
+    // degree centrality) with true PageRank — strong connectors rise, dead
+    // ends sink. The pagerank math is backend-agnostic, so the SQLite and
+    // PostgreSQL recall paths share identical scoring (zero drift).
     if scored.len() > 1 {
         const MAX_GRAPH_BOOST_PARTICIPANTS: usize = 100;
-        let boost_ids: Vec<&str> = scored
+        let candidate_ids: Vec<String> = scored
             .iter()
             .take(MAX_GRAPH_BOOST_PARTICIPANTS)
-            .map(|sn| sn.node.id.as_str())
+            .map(|sn| sn.node.id.clone())
             .collect();
-        let ph = boost_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
-        let sql = format!(
-            "SELECT source AS node_id, SUM(weight) AS w FROM edges \
-             WHERE source IN ({ph}) AND target IN ({ph}) GROUP BY source \
-             UNION ALL \
-             SELECT target AS node_id, SUM(weight) AS w FROM edges \
-             WHERE source IN ({ph}) AND target IN ({ph}) GROUP BY target"
-        );
-        if let Ok(mut stmt) = conn.prepare(&sql) {
-            let base: Vec<&dyn rusqlite::ToSql> = boost_ids
-                .iter()
-                .map(|s| s as &dyn rusqlite::ToSql)
-                .collect();
-            let sql_params: Vec<&dyn rusqlite::ToSql> = base
-                .iter()
-                .copied()
-                .chain(base.iter().copied())
-                .chain(base.iter().copied())
-                .chain(base.iter().copied())
-                .collect();
-            let weight_map: std::collections::HashMap<String, f64> = stmt
-                .query_map(sql_params.as_slice(), |row| {
-                    Ok((row.get::<_, String>(0)?, row.get::<_, f64>(1)?))
-                })
-                .map(|rows| {
-                    let mut map: std::collections::HashMap<String, f64> = Default::default();
-                    for r in rows.flatten() {
-                        *map.entry(r.0).or_default() += r.1;
-                    }
-                    map
-                })
-                .unwrap_or_default();
-            let max_w = weight_map
-                .values()
-                .cloned()
-                .fold(0.0_f64, f64::max)
-                .max(1.0);
-            for sn in &mut scored {
-                let boost = weight_map.get(&sn.node.id).copied().unwrap_or(0.0);
-                sn.score += W_GRAPH * (boost / max_w);
-            }
-            scored.sort_by(|a, b| {
-                b.score
-                    .partial_cmp(&a.score)
-                    .unwrap_or(std::cmp::Ordering::Equal)
-            });
+        let id_refs: Vec<&str> = candidate_ids.iter().map(String::as_str).collect();
+        let sub_edges = edges_among(conn, &id_refs).unwrap_or_default();
+        let csr = CsrGraph::from_edges(&candidate_ids, &sub_edges);
+        let pr = pagerank_default(&csr);
+        let max_pr = pr.iter().copied().fold(0.0_f64, f64::max).max(1e-12);
+        let pr_map: std::collections::HashMap<String, f64> = candidate_ids
+            .iter()
+            .zip(pr.iter())
+            .map(|(id, &s)| (id.clone(), s / max_pr))
+            .collect();
+        for sn in &mut scored {
+            let boost = pr_map.get(&sn.node.id).copied().unwrap_or(0.0);
+            sn.score += W_GRAPH * boost;
         }
+        scored.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
     }
 
     // Touch retrieved nodes
@@ -284,7 +262,7 @@ mod tests {
                 source: "n1".into(),
                 target: "n2".into(),
                 relation: "related".into(),
-                weight: 2.0,
+                weight: 1.0,
                 ts: "2026-01-01T00:00:00Z".into(),
             },
         )
@@ -292,7 +270,19 @@ mod tests {
 
         let results = smart_recall(&conn, None, None, 10).unwrap();
         assert_eq!(results.len(), 2);
-        // Both should have graph boost applied (score > base importance)
+        // With hint=None and identical recency/importance/access, every score
+        // component is equal across n1 and n2 EXCEPT the graph boost. n2 is a
+        // dangling sink (no out-edges) and so accrues higher PageRank than n1
+        // — its sole in-bound rank source — so the boost pass must rank n2
+        // above n1. This is the one assertion that exercises the boost's
+        // actual ranking effect (the pagerank math itself is unit-tested in
+        // algo/pagerank.rs).
+        let n1 = results.iter().find(|s| s.node.id == "n1").unwrap();
+        let n2 = results.iter().find(|s| s.node.id == "n2").unwrap();
+        assert!(
+            n2.score > n1.score,
+            "dangling sink n2 must outrank source n1 via PageRank boost"
+        );
     }
 
     #[test]

@@ -138,6 +138,44 @@ pub fn read_edges(conn: &Connection, limit: usize) -> Result<Vec<GraphEdge>> {
     Ok(edges)
 }
 
+/// Read edges whose source AND target are both in `ids` — the induced subgraph
+/// over a candidate node set.
+///
+/// Used to build the candidate subgraph for PageRank boosting in
+/// [`smart_recall`](super::recall::smart_recall). `ids.len()` must stay under
+/// SQLite's bind-variable limit (999 by default); `smart_recall` caps at 100.
+pub fn edges_among(conn: &Connection, ids: &[&str]) -> Result<Vec<GraphEdge>> {
+    if ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let ph = ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+    let sql = format!(
+        "SELECT id, source, target, relation, weight, ts FROM edges \
+         WHERE source IN ({ph}) AND target IN ({ph})"
+    );
+    let mut stmt = conn
+        .prepare(&sql)
+        .map_err(|e| KernelError::Store(e.to_string()))?;
+    let edges: Vec<GraphEdge> = stmt
+        .query_map(
+            rusqlite::params_from_iter(ids.iter().chain(ids.iter()).copied()),
+            |row| {
+                Ok(GraphEdge {
+                    id: row.get(0)?,
+                    source: row.get(1)?,
+                    target: row.get(2)?,
+                    relation: row.get(3)?,
+                    weight: row.get(4)?,
+                    ts: row.get(5)?,
+                })
+            },
+        )
+        .map_err(|e| KernelError::Store(e.to_string()))?
+        .filter_map(|r| r.ok())
+        .collect();
+    Ok(edges)
+}
+
 /// Delete an edge by ID.
 pub fn delete_edge(conn: &Connection, id: &str) -> Result<bool> {
     let changed = conn
