@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.10.0] - 2026-06-29
 
 ### Added
 
@@ -15,6 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **graph**: `smart_recall`'s graph boost (`W_GRAPH`) now ranks the top-100 candidates by true PageRank centrality over their induced subgraph, replacing the former neighbor-weight-sum (an approximate degree centrality). The SQLite (`recall.rs`) and PostgreSQL (`pg.rs`) recall paths share the same `pagerank_default`, permanently removing the boost-logic drift that previously existed between backends. New `store::edges_among` serves the induced-subgraph edge query.
+
+### Fixed
+
+- **deps**: patched `quinn-proto` 0.11.14 → 0.11.15 to clear **RUSTSEC-2026-0185** (lockfile-only — the crate is not activated under any feature, but cargo-audit scans the full lock and was failing the `audit` CI gate on every PR).
+- **deps**: bumped `anyhow` 1.0.102 → 1.0.103.
 
 ## [0.9.2] - 2026-06-22
 
