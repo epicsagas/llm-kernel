@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0] - 2026-07-01
+
+### Added
+
+- **graph**: new optional `graph-pg-tls` feature adding TLS support to `PgGraph` connections, closing #48. `PgGraph::connect_native_tls(url)` is a one-call convenience constructor using `native-tls` with the system trust store (full certificate chain and hostname verification, not weakened) — covers the common case of a Postgres server requiring `sslmode=require`+ (e.g. RDS with `rds.force_ssl`). `PgGraph::connect_tls` / `connect_config_tls` are generic over any `postgres::tls::MakeTlsConnect` implementor for custom CAs, client certificates, or a caller-vendored connector. Existing `connect` / `connect_config` (`NoTls`) are unchanged — fully backward compatible, no new mandatory deps for `graph-pg` consumers.
+
 ## [0.10.0] - 2026-06-29
 
 ### Added
