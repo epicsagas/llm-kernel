@@ -17,6 +17,15 @@
 //! enabling `pg_trgm` out-of-band (`CREATE EXTENSION pg_trgm;
 //! CREATE INDEX nodes_trgm ON nodes USING gin ((title || ' ' || body || ' '
 //! || tags) gin_trgm_ops)`); the ILIKE queries then use it transparently.
+//!
+//! # TLS (`graph-pg-tls` feature)
+//!
+//! [`PgGraph::connect`] / [`PgGraph::connect_config`] always use
+//! [`NoTls`] — servers requiring `sslmode=require` or stricter reject that
+//! handshake. Enabling `graph-pg-tls` adds [`PgGraph::connect_native_tls`]
+//! (system trust store, one call) plus [`PgGraph::connect_tls`] /
+//! [`PgGraph::connect_config_tls`] for a caller-supplied
+//! `postgres::tls::MakeTlsConnect` implementor.
 
 use std::collections::HashSet;
 use std::sync::{Mutex, MutexGuard};
@@ -186,7 +195,59 @@ impl PgGraph {
     /// Connect from a pre-built [`Config`] (useful for overriding `dbname`,
     /// e.g. when targeting a throwaway test database).
     pub fn connect_config(config: &Config) -> Result<Self> {
-        let mut client = config.connect(NoTls).map_err(pg_err)?;
+        let client = config.connect(NoTls).map_err(pg_err)?;
+        Self::from_client(client)
+    }
+
+    /// Connect to `url` using a caller-supplied TLS connector — for servers
+    /// requiring `sslmode=require` or stricter (e.g. RDS with
+    /// `rds.force_ssl`). See [`Self::connect_native_tls`] for the common case
+    /// of a system-trust-store `native-tls` connector.
+    #[cfg(feature = "graph-pg-tls")]
+    pub fn connect_tls<T>(url: &str, connector: T) -> Result<Self>
+    where
+        T: postgres::tls::MakeTlsConnect<postgres::Socket> + Clone + Send + 'static,
+        T::TlsConnect: Send,
+        T::Stream: Send,
+        <T::TlsConnect as postgres::tls::TlsConnect<postgres::Socket>>::Future: Send,
+    {
+        let config: Config = url
+            .parse()
+            .map_err(|e| KernelError::Store(format!("invalid postgres config: {e}")))?;
+        Self::connect_config_tls(&config, connector)
+    }
+
+    /// Connect from a pre-built [`Config`] using a caller-supplied TLS
+    /// connector. Mirrors [`Self::connect_config`] but negotiates TLS instead
+    /// of [`NoTls`].
+    #[cfg(feature = "graph-pg-tls")]
+    pub fn connect_config_tls<T>(config: &Config, connector: T) -> Result<Self>
+    where
+        T: postgres::tls::MakeTlsConnect<postgres::Socket> + Clone + Send + 'static,
+        T::TlsConnect: Send,
+        T::Stream: Send,
+        <T::TlsConnect as postgres::tls::TlsConnect<postgres::Socket>>::Future: Send,
+    {
+        let client = config.connect(connector).map_err(pg_err)?;
+        Self::from_client(client)
+    }
+
+    /// Connect to `url` over TLS using `native-tls` with the system trust
+    /// store (default settings — full certificate chain *and* hostname
+    /// verification against the system trust store, not weakened) — covers
+    /// the common case of a Postgres server with a publicly-trusted
+    /// certificate (e.g. RDS `sslmode=require`). For custom CA bundles or
+    /// client certificates, build a connector and call [`Self::connect_tls`]
+    /// directly.
+    #[cfg(feature = "graph-pg-tls")]
+    pub fn connect_native_tls(url: &str) -> Result<Self> {
+        let tls = native_tls::TlsConnector::new()
+            .map_err(|e| KernelError::Store(format!("native-tls connector: {e}")))?;
+        Self::connect_tls(url, postgres_native_tls::MakeTlsConnector::new(tls))
+    }
+
+    /// Shared post-connect setup (schema + migrations) for every constructor.
+    fn from_client(mut client: Client) -> Result<Self> {
         init_schema(&mut client)?;
         let current = schema_version(&mut client)?;
         migrate(&mut client, current)?;
@@ -640,6 +701,31 @@ mod tests {
             search_patterns("rust db"),
             vec!["%rust%".to_string(), "%db%".to_string()]
         );
+    }
+
+    /// `connect_native_tls` against a live PostgreSQL configured for TLS
+    /// (skips without `LLMKERNEL_PG_URL`). If the server does not offer TLS,
+    /// `native-tls` negotiation fails and `connect_native_tls` surfaces that
+    /// as an `Err` rather than panicking — asserting only that shape, since
+    /// most local/CI Postgres instances run without TLS configured.
+    #[cfg(feature = "graph-pg-tls")]
+    #[test]
+    fn connect_native_tls_returns_result_not_panic() {
+        let base = match std::env::var("LLMKERNEL_PG_URL") {
+            Ok(u) => u,
+            Err(_) => {
+                eprintln!("skipped: LLMKERNEL_PG_URL unset (no live PostgreSQL)");
+                return;
+            }
+        };
+        match PgGraph::connect_native_tls(&base) {
+            Ok(g) => {
+                assert_eq!(g.current_version().unwrap(), 2);
+            }
+            Err(e) => {
+                eprintln!("connect_native_tls returned Err as expected on a non-TLS server: {e}");
+            }
+        }
     }
 
     /// Full `GraphBackend` conformance against a live PostgreSQL (skips without

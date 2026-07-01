@@ -51,9 +51,10 @@ Additional binary targets:
 
 Optional backend features (drivers compiled only when enabled; included in `full`):
 ```
-  graph-pg  — PostgreSQL GraphBackend (PgGraph)            src/graph/pg.rs        (driver: postgres)
-  qdrant    — Qdrant AsyncVectorIndex (QdrantVectorIndex)  src/embedding/qdrant.rs (driver: qdrant-client)
-  elastic   — Elasticsearch AsyncVectorIndex (ElasticsearchVectorIndex)  src/embedding/elastic.rs (hand-rolled reqwest; official elasticsearch crate is alpha-only)
+  graph-pg     — PostgreSQL GraphBackend (PgGraph)            src/graph/pg.rs        (driver: postgres)
+  graph-pg-tls — TLS PgGraph connections (connect_native_tls/connect_tls)  src/graph/pg.rs (driver: postgres-native-tls)
+  qdrant       — Qdrant AsyncVectorIndex (QdrantVectorIndex)  src/embedding/qdrant.rs (driver: qdrant-client)
+  elastic      — Elasticsearch AsyncVectorIndex (ElasticsearchVectorIndex)  src/embedding/elastic.rs (hand-rolled reqwest; official elasticsearch crate is alpha-only)
 ```
 Live integration tests for all three gate on `LLMKERNEL_PG_URL` / `LLMKERNEL_QDRANT_URL` / `LLMKERNEL_ELASTIC_URL` and self-skip when unset.
 
