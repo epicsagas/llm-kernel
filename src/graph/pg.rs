@@ -21,8 +21,8 @@
 //! # TLS (`graph-pg-tls` feature)
 //!
 //! [`PgGraph::connect`] / [`PgGraph::connect_config`] always use
-//! [`NoTls`] — servers requiring `sslmode=require` or stricter reject that
-//! handshake. Enabling `graph-pg-tls` adds [`PgGraph::connect_native_tls`]
+//! `postgres::NoTls` — servers requiring `sslmode=require` or stricter reject
+//! that handshake. Enabling `graph-pg-tls` adds [`PgGraph::connect_native_tls`]
 //! (system trust store, one call) plus [`PgGraph::connect_tls`] /
 //! [`PgGraph::connect_config_tls`] for a caller-supplied
 //! `postgres::tls::MakeTlsConnect` implementor.
@@ -219,7 +219,7 @@ impl PgGraph {
 
     /// Connect from a pre-built [`Config`] using a caller-supplied TLS
     /// connector. Mirrors [`Self::connect_config`] but negotiates TLS instead
-    /// of [`NoTls`].
+    /// of `postgres::NoTls`.
     #[cfg(feature = "graph-pg-tls")]
     pub fn connect_config_tls<T>(config: &Config, connector: T) -> Result<Self>
     where
