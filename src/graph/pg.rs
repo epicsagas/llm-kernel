@@ -186,10 +186,7 @@ impl PgGraph {
     /// Connect to `url` (libpq connstring or `postgresql://` URL), apply schema
     /// and migrations, and return a ready backend.
     pub fn connect(url: &str) -> Result<Self> {
-        let config: Config = url
-            .parse()
-            .map_err(|e| KernelError::Store(format!("invalid postgres config: {e}")))?;
-        Self::connect_config(&config)
+        Self::connect_config(&Self::parse_config(url)?)
     }
 
     /// Connect from a pre-built [`Config`] (useful for overriding `dbname`,
@@ -206,15 +203,12 @@ impl PgGraph {
     #[cfg(feature = "graph-pg-tls")]
     pub fn connect_tls<T>(url: &str, connector: T) -> Result<Self>
     where
-        T: postgres::tls::MakeTlsConnect<postgres::Socket> + Clone + Send + 'static,
+        T: postgres::tls::MakeTlsConnect<postgres::Socket> + Send + 'static,
         T::TlsConnect: Send,
         T::Stream: Send,
         <T::TlsConnect as postgres::tls::TlsConnect<postgres::Socket>>::Future: Send,
     {
-        let config: Config = url
-            .parse()
-            .map_err(|e| KernelError::Store(format!("invalid postgres config: {e}")))?;
-        Self::connect_config_tls(&config, connector)
+        Self::connect_config_tls(&Self::parse_config(url)?, connector)
     }
 
     /// Connect from a pre-built [`Config`] using a caller-supplied TLS
@@ -223,7 +217,7 @@ impl PgGraph {
     #[cfg(feature = "graph-pg-tls")]
     pub fn connect_config_tls<T>(config: &Config, connector: T) -> Result<Self>
     where
-        T: postgres::tls::MakeTlsConnect<postgres::Socket> + Clone + Send + 'static,
+        T: postgres::tls::MakeTlsConnect<postgres::Socket> + Send + 'static,
         T::TlsConnect: Send,
         T::Stream: Send,
         <T::TlsConnect as postgres::tls::TlsConnect<postgres::Socket>>::Future: Send,
@@ -244,6 +238,13 @@ impl PgGraph {
         let tls = native_tls::TlsConnector::new()
             .map_err(|e| KernelError::Store(format!("native-tls connector: {e}")))?;
         Self::connect_tls(url, postgres_native_tls::MakeTlsConnector::new(tls))
+    }
+
+    /// Parse a libpq connstring or `postgresql://` URL into a [`Config`],
+    /// shared by every `connect*(url, ..)` constructor.
+    fn parse_config(url: &str) -> Result<Config> {
+        url.parse()
+            .map_err(|e| KernelError::Store(format!("invalid postgres config: {e}")))
     }
 
     /// Shared post-connect setup (schema + migrations) for every constructor.
