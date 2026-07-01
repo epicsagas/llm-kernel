@@ -62,6 +62,10 @@ graph-cjk = ["graph"]
 # Mirrors the SQLite graph over the synchronous `postgres` driver.
 graph-pg = ["graph", "dep:postgres", "dep:clap"]
 
+# TLS-enabled PgGraph connections (connect_tls / connect_native_tls) via
+# postgres-native-tls — for Postgres servers requiring sslmode=require+.
+graph-pg-tls = ["graph-pg", "dep:postgres-native-tls", "dep:native-tls"]
+
 # MCP server framework (JSON-RPC 2.0, stdio transport, async handlers)
 mcp = ["dep:serde_json", "dep:async-trait"]
 
@@ -136,7 +140,7 @@ eval-full = ["eval", "graph"]
 # Everything except Windows-only execution backends.
 # embedding-fastembed-directml is intentionally excluded: it pulls in the ort
 # RC dependency which is not appropriate for cross-platform builds.
-full = ["provider", "discovery", "discovery-async", "client-async", "cache", "secrets", "store", "config", "graph", "graph-async", "graph-pool", "graph-cjk", "graph-pg", "mcp", "mcp-http", "tokens", "install", "search", "embedding", "embedding-openai", "embedding-fastembed", "embedding-fastembed-qwen3", "embedding-fastembed-nomic-moe", "vector-index", "qdrant", "elastic", "federation", "telemetry", "safety", "catalog-sync"]
+full = ["provider", "discovery", "discovery-async", "client-async", "cache", "secrets", "store", "config", "graph", "graph-async", "graph-pool", "graph-cjk", "graph-pg", "graph-pg-tls", "mcp", "mcp-http", "tokens", "install", "search", "embedding", "embedding-openai", "embedding-fastembed", "embedding-fastembed-qwen3", "embedding-fastembed-nomic-moe", "vector-index", "qdrant", "elastic", "federation", "telemetry", "safety", "catalog-sync"]
 
 [dependencies]
 # Always required
@@ -171,6 +175,8 @@ clap        = { version = "4", features = ["derive"], optional = true }
 turbovec    = { version = "0.9", optional = true }
 axum        = { version = "0.8", default-features = false, features = ["http1", "json", "tokio"], optional = true }
 postgres    = { version = "0.19", optional = true }
+postgres-native-tls = { version = "0.5", optional = true }
+native-tls  = { version = "0.2", optional = true }
 qdrant-client = { version = "1", optional = true }
 
 [dev-dependencies]
