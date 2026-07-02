@@ -28,7 +28,10 @@ pub fn importance_for_type(node_type: &str) -> f64 {
 ///
 /// Represents a discrete piece of knowledge — a decision, concept, pattern, etc.
 /// Stored as a single row in the `nodes` SQLite table.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+///
+/// Derives `Default` so callers can future-proof field additions with struct
+/// update syntax: `GraphNode { id, node_type, ..Default::default() }`.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct GraphNode {
     /// Unique node identifier (UUID).
     pub id: String,
@@ -65,7 +68,7 @@ pub struct GraphNode {
 }
 
 /// A directed, weighted edge between two nodes.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct GraphEdge {
     /// Unique edge identifier (UUID).
     pub id: String,
@@ -83,7 +86,8 @@ pub struct GraphEdge {
 
 /// Summary of a node for serialization (web viewer, API responses).
 /// Omits body and metadata fields for compact payloads.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[non_exhaustive]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct GraphNodeSummary {
     /// Unique node identifier.
     pub id: String,
@@ -119,7 +123,8 @@ pub struct ScoredNode {
 }
 
 /// Aggregate statistics about the knowledge graph.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[non_exhaustive]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct GraphStats {
     /// Total number of nodes.
     pub total_nodes: i64,

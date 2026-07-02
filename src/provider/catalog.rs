@@ -7,7 +7,8 @@ use std::sync::LazyLock;
 // ---------------------------------------------------------------------------
 
 /// Per-million-token pricing for a model.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct ModelCost {
     /// Price per million input (prompt) tokens in USD.
     pub input: f64,
@@ -22,7 +23,8 @@ pub struct ModelCost {
 }
 
 /// Token limits for a model.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct ModelLimit {
     /// Maximum context window in tokens (prompt + completion).
     pub context: u64,
@@ -31,7 +33,8 @@ pub struct ModelLimit {
 }
 
 /// Input/output modalities a model supports.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct ModelModalities {
     /// Accepted input modalities (e.g. `["text", "image"]`).
     pub input: Vec<String>,
@@ -40,7 +43,8 @@ pub struct ModelModalities {
 }
 
 /// Capability flags for a model.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct ModelCapabilities {
     /// Whether the model accepts file/image attachments.
     #[serde(default)]
@@ -64,7 +68,8 @@ fn default_true() -> bool {
 }
 
 /// A model offered by a provider (models.dev-compatible).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct ModelDescriptor {
     /// Unique model identifier (e.g. `"gpt-4o"`, `"claude-sonnet-4-6"`).
     pub id: String,
@@ -98,7 +103,8 @@ pub struct ModelDescriptor {
 // ---------------------------------------------------------------------------
 
 /// Describes an LLM provider service with all metadata needed to connect and use it.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct ServiceDescriptor {
     /// Unique provider identifier (e.g. `"openai"`, `"anthropic"`).
     pub id: String,
@@ -163,7 +169,8 @@ pub struct ServiceDescriptor {
 
 /// Legacy model choice (claudy-specific: id + description).
 /// Retained for backward compatibility with existing catalog.json entries.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct ModelChoice {
     /// Model identifier.
     pub id: String,

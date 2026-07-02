@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.0] - 2026-07-03
+
+A forward-compatibility release: stops the per-minor breakage caused by adding
+fields/variants to public types. **Several changes are breaking** — see
+migration notes below.
+
+### Added
+
+- **stability**: `Default` is now derived on every growable public data struct — `ServiceDescriptor`, `ModelDescriptor`, `ModelCapabilities`, `ModelCost`, `ModelLimit`, `ModelModalities`, `ModelChoice` (provider); `GraphNode`, `GraphEdge`, `GraphNodeSummary`, `GraphStats` (graph); `ToolDescription`, `ResourceDescription`, `PromptDescription`, `PromptArgument` (mcp). Downstream can now future-proof against field additions with struct-update syntax: `GraphNode { id, node_type, ..Default::default() }`.
+
+### Changed (breaking)
+
+- **error**: `KernelError` is now `#[non_exhaustive]`. New error variants may be added in any minor release; exhaustive `match`es on `KernelError` must add a `_ =>` arm. Match only the variants you act on (e.g. `RateLimited` / `Http` for retry logic).
+- **error**: `KernelError::Serialization` is now available whenever **any** feature that pulls `serde_json` is enabled (previously only under `provider`). Consumers of `mcp`, `search`, `graph`, etc. — which already link `serde_json` — now see the `Serialization` variant and can use the `#[from] serde_json::Error` conversion. The variant set of `KernelError` therefore depends on which features are enabled; treat it as `#[non_exhaustive]` regardless.
+- **catalog/graph/mcp**: the read-mostly catalog and result types are now `#[non_exhaustive]` — `ServiceDescriptor`, `ModelDescriptor`, `ModelCapabilities`, `ModelCost`, `ModelLimit`, `ModelModalities`, `ModelChoice`, `GraphStats`, `GraphNodeSummary`. These are obtained from the catalog or from queries; external struct-literal construction is no longer supported for them (use the catalog / query APIs, or `Default::default()` + field assignment). Types downstream constructs directly (`GraphNode`, `GraphEdge`, the MCP `*Description` types) are **not** marked `non_exhaustive` so struct literals keep working — use `..Default::default()` to insulate them from future field additions.
+- **llm** (breaking): `OpenAIClient::from_key` and `AnthropicClient::from_key` now return `Result<Self>` instead of `Self`. Previously a failure to build the timeout-bearing `reqwest::Client` silently fell back to a timeout-less `Client::default()`; it now propagates a `KernelError::Config`. Add `?` at call sites: `OpenAIClient::from_key(model, key)?`.
+
+### Migration
+
+- `match err { … }` on `KernelError` → add a `_ => { … }` arm.
+- `ServiceDescriptor { … }` / `ModelDescriptor { … }` literals (outside the catalog) → construct via `Default::default()` + field assignment, or read from `ProviderIndex`.
+- `OpenAIClient::from_key(m, k)` / `AnthropicClient::from_key(m, k)` → append `?`.
+
 ## [0.13.1] - 2026-07-03
 
 ### Fixed
