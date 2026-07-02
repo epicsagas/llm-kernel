@@ -3,7 +3,66 @@ use std::time::Duration;
 use async_trait::async_trait;
 
 use crate::error::{KernelError, Result};
-use crate::llm::types::{LLMRequest, LLMResponse, LLMStream, ModelConfig, StreamEvent, TokenUsage};
+use crate::llm::tool::{ToolCall, ToolDefinition};
+use crate::llm::types::{
+    LLMRequest, LLMResponse, LLMStream, ModelConfig, ResponseFormat, StreamEvent, TokenUsage,
+};
+
+/// Convert kernel [`ToolDefinition`]s into OpenAI `tools` (`type: "function"`).
+fn openai_tools(tools: &[ToolDefinition]) -> Vec<serde_json::Value> {
+    tools
+        .iter()
+        .map(|t| {
+            serde_json::json!({
+                "type": "function",
+                "function": {
+                    "name": t.name,
+                    "description": t.description,
+                    "parameters": t.input_schema,
+                }
+            })
+        })
+        .collect()
+}
+
+/// Map a [`ResponseFormat`] to OpenAI's `response_format` object, or `None` for
+/// the provider default (plain text).
+fn openai_response_format(rf: &ResponseFormat) -> Option<serde_json::Value> {
+    match rf {
+        ResponseFormat::Text => None,
+        ResponseFormat::Json => Some(serde_json::json!({ "type": "json_object" })),
+        ResponseFormat::JsonSchema { schema } => Some(serde_json::json!({
+            "type": "json_schema",
+            "json_schema": { "name": "response", "schema": schema, "strict": true }
+        })),
+    }
+}
+
+/// Convert kernel [`ToolDefinition`]s into Anthropic `tools` (with `input_schema`).
+fn anthropic_tools(tools: &[ToolDefinition]) -> Vec<serde_json::Value> {
+    tools
+        .iter()
+        .map(|t| {
+            serde_json::json!({
+                "name": t.name,
+                "description": t.description,
+                "input_schema": t.input_schema,
+            })
+        })
+        .collect()
+}
+
+/// Map a [`ResponseFormat`] to Anthropic's `output_config`. Only
+/// [`ResponseFormat::JsonSchema`] has a native equivalent; `Json` (schemaless)
+/// and `Text` return `None`.
+fn anthropic_output_config(rf: &ResponseFormat) -> Option<serde_json::Value> {
+    match rf {
+        ResponseFormat::JsonSchema { schema } => Some(serde_json::json!({
+            "format": { "type": "json_schema", "schema": schema }
+        })),
+        ResponseFormat::Json | ResponseFormat::Text => None,
+    }
+}
 
 /// Build a `reqwest::Client` with connect and total timeouts.
 fn http_client() -> Result<reqwest::Client> {
@@ -106,9 +165,13 @@ struct OpenAIChatRequest {
     max_tokens: Option<u32>,
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     stream: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tools: Option<Vec<serde_json::Value>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    response_format: Option<serde_json::Value>,
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(serde::Serialize)]
 struct OpenAIChatMessage {
     role: String,
     content: String,
@@ -116,6 +179,10 @@ struct OpenAIChatMessage {
 
 #[derive(serde::Deserialize)]
 struct OpenAIChatResponse {
+    #[serde(default)]
+    id: Option<String>,
+    #[serde(default)]
+    created: Option<u64>,
     choices: Vec<OpenAIChoice>,
     model: String,
     usage: Option<OpenAIUsage>,
@@ -123,7 +190,32 @@ struct OpenAIChatResponse {
 
 #[derive(serde::Deserialize)]
 struct OpenAIChoice {
-    message: OpenAIChatMessage,
+    message: OpenAIRespMessage,
+    #[serde(default)]
+    finish_reason: Option<String>,
+}
+
+/// Response-side assistant message. `content` is `null` on tool-call turns, so
+/// it is optional and defaults to empty.
+#[derive(serde::Deserialize)]
+struct OpenAIRespMessage {
+    #[serde(default)]
+    content: Option<String>,
+    #[serde(default)]
+    tool_calls: Vec<OpenAIToolCall>,
+}
+
+#[derive(serde::Deserialize)]
+struct OpenAIToolCall {
+    id: String,
+    function: OpenAIFunctionCall,
+}
+
+#[derive(serde::Deserialize)]
+struct OpenAIFunctionCall {
+    name: String,
+    #[serde(default)]
+    arguments: String,
 }
 
 #[derive(serde::Deserialize)]
@@ -139,6 +231,15 @@ impl LLMClient for OpenAIClient {
         let model = request.model.clone().unwrap_or_else(|| self.model.clone());
         let temperature = request.temperature;
         let max_tokens = request.max_tokens;
+        let tools = request
+            .tools
+            .as_deref()
+            .map(openai_tools)
+            .filter(|t| !t.is_empty());
+        let response_format = request
+            .response_format
+            .as_ref()
+            .and_then(openai_response_format);
         let messages: Vec<_> = request
             .into_openai_messages()
             .into_iter()
@@ -151,6 +252,8 @@ impl LLMClient for OpenAIClient {
             temperature,
             max_tokens,
             stream: false,
+            tools,
+            response_format,
         };
 
         let resp = self
@@ -179,12 +282,27 @@ impl LLMClient for OpenAIClient {
             .await
             .map_err(|e| KernelError::LlmApi(e.to_string()))?;
 
-        let content = chat_resp
-            .choices
-            .into_iter()
-            .next()
-            .map(|c| c.message.content)
-            .unwrap_or_default();
+        let id = chat_resp.id;
+        let created = chat_resp.created;
+        let first = chat_resp.choices.into_iter().next();
+        let finish_reason = first.as_ref().and_then(|c| c.finish_reason.clone());
+        let (content, tool_calls) = match first {
+            Some(c) => {
+                let content = c.message.content.unwrap_or_default();
+                let calls = c
+                    .message
+                    .tool_calls
+                    .into_iter()
+                    .map(|tc| ToolCall {
+                        id: tc.id,
+                        name: tc.function.name,
+                        arguments: tc.function.arguments,
+                    })
+                    .collect();
+                (content, calls)
+            }
+            None => (String::new(), Vec::new()),
+        };
 
         let usage = chat_resp.usage.map(|u| TokenUsage {
             prompt_tokens: u.prompt_tokens,
@@ -196,9 +314,10 @@ impl LLMClient for OpenAIClient {
             content,
             model: chat_resp.model,
             usage: usage.unwrap_or_default(),
-            finish_reason: None,
-            id: None,
-            created: None,
+            tool_calls,
+            finish_reason,
+            id,
+            created,
         })
     }
 
@@ -222,6 +341,10 @@ impl LLMClient for OpenAIClient {
             temperature,
             max_tokens,
             stream: true,
+            // Streaming is text-only here: the SSE parser emits text deltas and
+            // does not reassemble streamed tool-call fragments.
+            tools: None,
+            response_format: None,
         };
 
         let resp = self
@@ -426,9 +549,13 @@ struct AnthropicRequest {
     messages: Vec<AnthropicMessage>,
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     stream: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tools: Option<Vec<serde_json::Value>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    output_config: Option<serde_json::Value>,
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(serde::Serialize)]
 struct AnthropicMessage {
     role: String,
     content: String,
@@ -436,14 +563,29 @@ struct AnthropicMessage {
 
 #[derive(serde::Deserialize)]
 struct AnthropicResponse {
+    #[serde(default)]
+    id: Option<String>,
     content: Vec<AnthropicContentBlock>,
     model: String,
+    #[serde(default)]
+    stop_reason: Option<String>,
     usage: AnthropicUsage,
 }
 
+/// A response content block. `text` blocks carry `text`; `tool_use` blocks
+/// carry `id`/`name`/`input`.
 #[derive(serde::Deserialize)]
 struct AnthropicContentBlock {
+    #[serde(rename = "type")]
+    block_type: String,
+    #[serde(default)]
     text: Option<String>,
+    #[serde(default)]
+    id: Option<String>,
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    input: Option<serde_json::Value>,
 }
 
 #[derive(serde::Deserialize)]
@@ -459,6 +601,15 @@ impl LLMClient for AnthropicClient {
         let max_tokens = request.max_tokens.unwrap_or(4096);
         let temperature = request.temperature;
         let system = request.system.clone();
+        let tools = request
+            .tools
+            .as_deref()
+            .map(anthropic_tools)
+            .filter(|t| !t.is_empty());
+        let output_config = request
+            .response_format
+            .as_ref()
+            .and_then(anthropic_output_config);
         let messages: Vec<AnthropicMessage> = request
             .into_anthropic_messages()
             .into_iter()
@@ -472,6 +623,8 @@ impl LLMClient for AnthropicClient {
             system,
             messages,
             stream: false,
+            tools,
+            output_config,
         };
 
         let resp = self
@@ -502,12 +655,31 @@ impl LLMClient for AnthropicClient {
             .await
             .map_err(|e| KernelError::LlmApi(e.to_string()))?;
 
-        let content = chat_resp
-            .content
-            .into_iter()
-            .filter_map(|b| b.text)
-            .collect::<Vec<_>>()
-            .join("");
+        let mut content = String::new();
+        let mut tool_calls = Vec::new();
+        for block in chat_resp.content {
+            match block.block_type.as_str() {
+                "text" => {
+                    if let Some(t) = block.text {
+                        content.push_str(&t);
+                    }
+                }
+                "tool_use" => {
+                    if let (Some(id), Some(name)) = (block.id, block.name) {
+                        let arguments = block
+                            .input
+                            .map(|v| v.to_string())
+                            .unwrap_or_else(|| "{}".to_string());
+                        tool_calls.push(ToolCall {
+                            id,
+                            name,
+                            arguments,
+                        });
+                    }
+                }
+                _ => {}
+            }
+        }
 
         Ok(LLMResponse {
             content,
@@ -517,8 +689,9 @@ impl LLMClient for AnthropicClient {
                 completion_tokens: chat_resp.usage.output_tokens,
                 total_tokens: chat_resp.usage.input_tokens + chat_resp.usage.output_tokens,
             },
-            finish_reason: None,
-            id: None,
+            tool_calls,
+            finish_reason: chat_resp.stop_reason,
+            id: chat_resp.id,
             created: None,
         })
     }
@@ -545,6 +718,10 @@ impl LLMClient for AnthropicClient {
             system,
             messages,
             stream: true,
+            // Streaming is text-only here: the SSE parser emits text deltas and
+            // does not reassemble streamed tool-use blocks.
+            tools: None,
+            output_config: None,
         };
 
         let resp = self
@@ -706,5 +883,129 @@ mod tests {
     #[test]
     fn anthropic_unknown_event_ignored() {
         assert!(parse_anthropic_sse("ping", "{}").is_none());
+    }
+
+    fn sample_tool() -> ToolDefinition {
+        ToolDefinition {
+            name: "get_weather".into(),
+            description: "Get weather".into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": { "location": { "type": "string" } },
+                "required": ["location"]
+            }),
+        }
+    }
+
+    #[test]
+    fn openai_tools_use_function_wrapper() {
+        let out = openai_tools(&[sample_tool()]);
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0]["type"], "function");
+        assert_eq!(out[0]["function"]["name"], "get_weather");
+        // input_schema is forwarded verbatim as `parameters`.
+        assert_eq!(out[0]["function"]["parameters"]["required"][0], "location");
+    }
+
+    #[test]
+    fn openai_response_format_maps_each_variant() {
+        assert!(openai_response_format(&ResponseFormat::Text).is_none());
+        assert_eq!(
+            openai_response_format(&ResponseFormat::Json).unwrap()["type"],
+            "json_object"
+        );
+        let schema = serde_json::json!({"type": "object"});
+        let js = openai_response_format(&ResponseFormat::JsonSchema { schema }).unwrap();
+        assert_eq!(js["type"], "json_schema");
+        assert_eq!(js["json_schema"]["strict"], true);
+    }
+
+    #[test]
+    fn anthropic_tools_use_input_schema_key() {
+        let out = anthropic_tools(&[sample_tool()]);
+        assert_eq!(out[0]["name"], "get_weather");
+        assert_eq!(out[0]["input_schema"]["type"], "object");
+        assert!(out[0].get("function").is_none());
+    }
+
+    #[test]
+    fn anthropic_output_config_only_for_json_schema() {
+        assert!(anthropic_output_config(&ResponseFormat::Text).is_none());
+        assert!(anthropic_output_config(&ResponseFormat::Json).is_none());
+        let schema = serde_json::json!({"type": "object"});
+        let cfg = anthropic_output_config(&ResponseFormat::JsonSchema { schema }).unwrap();
+        assert_eq!(cfg["format"]["type"], "json_schema");
+    }
+
+    #[test]
+    fn openai_request_serializes_tools_and_format() {
+        let body = OpenAIChatRequest {
+            model: "gpt-4o".into(),
+            messages: vec![OpenAIChatMessage {
+                role: "user".into(),
+                content: "hi".into(),
+            }],
+            temperature: 0.7,
+            max_tokens: None,
+            stream: false,
+            tools: Some(openai_tools(&[sample_tool()])),
+            response_format: Some(serde_json::json!({ "type": "json_object" })),
+        };
+        let json = serde_json::to_value(&body).unwrap();
+        assert_eq!(json["tools"][0]["function"]["name"], "get_weather");
+        assert_eq!(json["response_format"]["type"], "json_object");
+        // Omitted when None (backward-compatible request shape).
+        assert!(json.get("max_tokens").is_none());
+    }
+
+    #[test]
+    fn openai_response_parses_tool_calls() {
+        let raw = r#"{
+            "id": "chatcmpl-1",
+            "created": 1700000000,
+            "model": "gpt-4o",
+            "choices": [{
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": null,
+                    "tool_calls": [{
+                        "id": "call_abc",
+                        "type": "function",
+                        "function": { "name": "get_weather", "arguments": "{\"location\":\"Paris\"}" }
+                    }]
+                },
+                "finish_reason": "tool_calls"
+            }],
+            "usage": { "prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15 }
+        }"#;
+        let resp: OpenAIChatResponse = serde_json::from_str(raw).unwrap();
+        assert_eq!(resp.id.as_deref(), Some("chatcmpl-1"));
+        let choice = resp.choices.into_iter().next().unwrap();
+        assert_eq!(choice.finish_reason.as_deref(), Some("tool_calls"));
+        assert!(choice.message.content.is_none());
+        assert_eq!(choice.message.tool_calls.len(), 1);
+        assert_eq!(choice.message.tool_calls[0].function.name, "get_weather");
+    }
+
+    #[test]
+    fn anthropic_response_parses_tool_use_block() {
+        let raw = r#"{
+            "id": "msg_1",
+            "model": "claude-sonnet-4-6",
+            "stop_reason": "tool_use",
+            "content": [
+                { "type": "text", "text": "Let me check." },
+                { "type": "tool_use", "id": "toolu_1", "name": "get_weather", "input": { "location": "Paris" } }
+            ],
+            "usage": { "input_tokens": 12, "output_tokens": 8 }
+        }"#;
+        let resp: AnthropicResponse = serde_json::from_str(raw).unwrap();
+        assert_eq!(resp.stop_reason.as_deref(), Some("tool_use"));
+        assert_eq!(resp.content.len(), 2);
+        assert_eq!(resp.content[0].block_type, "text");
+        assert_eq!(resp.content[1].block_type, "tool_use");
+        assert_eq!(resp.content[1].name.as_deref(), Some("get_weather"));
+        assert_eq!(resp.content[1].input.as_ref().unwrap()["location"], "Paris");
     }
 }
