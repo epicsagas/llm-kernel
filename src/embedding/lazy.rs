@@ -20,6 +20,7 @@
 //! ```
 
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::sync::{Condvar, Mutex};
 use std::time::{Duration, Instant};
 
@@ -30,6 +31,63 @@ use super::fastembed::FastembedProvider;
 use super::types::text_preview;
 use super::types::{EmbeddingProvider, EmbeddingResult};
 
+// ---------------------------------------------------------------------------
+// Load hook (panic-safe model instantiation)
+// ---------------------------------------------------------------------------
+
+/// Type of the model-load closure used by [`LazyFastembedProvider`].
+///
+/// Wrapped in `Arc` so the loader can be cheaply cloned out from under the
+/// `Inner` lock and invoked without holding the mutex across the
+/// (potentially minutes-long) model download/init.
+pub(crate) type LoadFn =
+    Arc<dyn Fn(EmbeddingModel, PathBuf) -> anyhow::Result<FastembedProvider> + Send + Sync>;
+
+/// Default loader: instantiate [`FastembedProvider`] directly.
+///
+/// This is a free function (rather than an inline call) so that tests can swap
+/// it for an injectable panicking/failing loader via
+/// [`LazyFastembedProvider::new_with_loader`] without needing real ONNX weights
+/// on disk.
+fn default_load(model: EmbeddingModel, cache_dir: PathBuf) -> anyhow::Result<FastembedProvider> {
+    FastembedProvider::new(model, Some(cache_dir))
+}
+
+/// Run `load` catching any panic, so a panicking ONNX init (e.g. a missing
+/// `libonnxruntime.so` under `ort-load-dynamic`) is surfaced as a clean `Err`
+/// instead of unwinding across the `Mutex`/`Condvar` boundary and wedging any
+/// waiter parked in [`LazyFastembedProvider::ensure_model`]'s `Loading` branch
+/// (see #50).
+///
+/// `AssertUnwindSafe` is sound here: on the `Err(panic)` path the closure's
+/// captures are discarded entirely, and the values read afterwards
+/// (`EmbeddingModel`/`PathBuf`) were copied in before the call — so no torn
+/// shared state escapes.
+fn load_catching_panics(
+    load: &LoadFn,
+    model: EmbeddingModel,
+    cache_dir: PathBuf,
+) -> anyhow::Result<FastembedProvider> {
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| load(model, cache_dir)));
+    match result {
+        Ok(inner) => inner,
+        Err(payload) => {
+            let msg = panic_message(&payload);
+            Err(anyhow::anyhow!("model init panicked: {msg}"))
+        }
+    }
+}
+
+/// Best-effort string extraction from a panic payload.
+fn panic_message(payload: &Box<dyn std::any::Any + Send>) -> String {
+    if let Some(s) = payload.downcast_ref::<&'static str>() {
+        (*s).to_string()
+    } else if let Some(s) = payload.downcast_ref::<String>() {
+        s.clone()
+    } else {
+        "<non-string panic payload>".to_string()
+    }
+}
 // ---------------------------------------------------------------------------
 // ModelState
 // ---------------------------------------------------------------------------
@@ -137,6 +195,9 @@ struct Inner {
     state: ModelState,
     provider: Option<FastembedProvider>,
     last_used: Option<Instant>,
+    /// Injectable model loader. Defaults to [`default_load`] (which calls
+    /// `FastembedProvider::new`); tests substitute a controllable loader.
+    load_fn: LoadFn,
 }
 
 /// Lazy-loading embedding provider backed by [`FastembedProvider`].
@@ -162,6 +223,20 @@ impl LazyFastembedProvider {
     ///
     /// Returns instantly — no model download or ONNX initialisation.
     pub fn new(model: EmbeddingModel, cache_dir: PathBuf, opts: LazyOpts) -> Self {
+        Self::new_with_loader(model, cache_dir, opts, Arc::new(default_load))
+    }
+
+    /// Create a lazy provider with an injected model loader.
+    ///
+    /// Production callers should use [`new`](Self::new); this constructor exists
+    /// so tests can drive the panic/failure paths of [`ensure_model`](Self::ensure_model)
+    /// deterministically without real ONNX weights.
+    pub fn new_with_loader(
+        model: EmbeddingModel,
+        cache_dir: PathBuf,
+        opts: LazyOpts,
+        load_fn: LoadFn,
+    ) -> Self {
         let initial_state = if is_model_cached(model, &cache_dir) {
             ModelState::Cached
         } else {
@@ -174,6 +249,7 @@ impl LazyFastembedProvider {
                 state: initial_state,
                 provider: None,
                 last_used: None,
+                load_fn,
             }),
             cvar: Condvar::new(),
             opts: opts.clone(),
@@ -253,12 +329,17 @@ impl LazyFastembedProvider {
                 guard.state = ModelState::Loading;
                 let model = guard.model;
                 let cache_dir = guard.cache_dir.clone();
+                // Clone the loader out from under the lock so we don't hold the
+                // mutex across the (potentially minutes-long) model load.
+                let load = Arc::clone(&guard.load_fn);
                 // Notify waiters that we've started loading (they'll keep waiting)
                 self.cvar.notify_all();
                 drop(guard);
 
-                // Do the actual loading (may download, takes seconds to minutes)
-                let result = FastembedProvider::new(model, Some(cache_dir));
+                // Do the actual loading (may download, takes seconds to minutes).
+                // Wrapped in `catch_unwind` so a panicking ONNX init surfaces as
+                // `Failed(..)` + `notify_all()` instead of wedging waiters (#50).
+                let result = load_catching_panics(&load, model, cache_dir);
 
                 let mut guard = self.inner.lock().unwrap_or_else(|e| e.into_inner());
                 match result {
@@ -512,5 +593,127 @@ mod tests {
             LazyOpts::default(),
         );
         assert_eq!(provider.state(), ModelState::Cached);
+    }
+
+    // ----- panic-safety regression tests (#50) -----
+    //
+    // These exercise the contract that a panicking (or failing) model loader
+    // transitions the provider to `Failed` and releases any waiter parked in
+    // the `Loading` branch, instead of hanging forever. They use the injected
+    // loader (`new_with_loader`) so no real ONNX weights are required.
+    //
+    // NOTE: the production `[profile.release]` sets `panic = "abort"`, under
+    // which a panic terminates the process directly (no unwind to catch). The
+    // `catch_unwind` guard therefore matters for panic-unwinding builds
+    // (debug, and release builds that override `panic`), and these tests run
+    // under the default test harness which unwinds. The guard is still
+    // valuable under `panic = "abort"` for the *failure* (non-panic) path and
+    // documents intent; the abort case is acceptable (a hard crash is a clearer
+    // failure than the previous silent deadlock).
+
+    fn panicking_loader() -> LoadFn {
+        Arc::new(
+            |_model: EmbeddingModel, _cache: PathBuf| -> anyhow::Result<FastembedProvider> {
+                panic!("simulated ort init failure (missing libonnxruntime.so)")
+            },
+        )
+    }
+
+    fn failing_loader(msg: &str) -> LoadFn {
+        let msg = msg.to_string();
+        Arc::new(
+            move |_model: EmbeddingModel, _cache: PathBuf| -> anyhow::Result<FastembedProvider> {
+                Err(anyhow::anyhow!("{msg}"))
+            },
+        )
+    }
+
+    #[test]
+    fn panic_during_load_transitions_to_failed() {
+        let dir = tempfile::tempdir().unwrap();
+        let provider = LazyFastembedProvider::new_with_loader(
+            EmbeddingModel::BGESmallENV15,
+            dir.path().to_path_buf(),
+            LazyOpts::default(),
+            panicking_loader(),
+        );
+        assert_eq!(provider.state(), ModelState::NotLoaded);
+
+        let err = provider.ensure_model().unwrap_err();
+        assert!(
+            err.contains("model init panicked"),
+            "expected panic message, got: {err}"
+        );
+        match provider.state() {
+            ModelState::Failed(msg) => assert!(
+                msg.contains("model init panicked"),
+                "expected panic in Failed state, got: {msg}"
+            ),
+            other => panic!("expected Failed state after panic, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn failure_during_load_transitions_to_failed() {
+        let dir = tempfile::tempdir().unwrap();
+        let provider = LazyFastembedProvider::new_with_loader(
+            EmbeddingModel::BGESmallENV15,
+            dir.path().to_path_buf(),
+            LazyOpts::default(),
+            failing_loader("download denied"),
+        );
+        let err = provider.ensure_model().unwrap_err();
+        assert!(err.contains("download denied"), "got: {err}");
+        assert!(matches!(provider.state(), ModelState::Failed(_)));
+    }
+
+    #[test]
+    fn concurrent_waiter_released_when_loader_panics() {
+        // AC4: a waiter blocked in the `Loading` branch must be released (with
+        // an `Err`) within a bounded time when the owning loader panics — not
+        // hang until load_timeout_secs, and not deadlock.
+        use std::sync::Barrier;
+        use std::thread;
+
+        let dir = tempfile::tempdir().unwrap();
+
+        // A loader that waits on a barrier until the waiter is parked, then
+        // panics — deterministically reproducing the #50 hang scenario.
+        let barrier = Arc::new(Barrier::new(2));
+        let loader_barrier = Arc::clone(&barrier);
+        let loader: LoadFn = Arc::new(move |_m, _c| {
+            // Let the waiter reach the `Loading` wait first.
+            loader_barrier.wait();
+            panic!("simulated ort init failure under contention");
+        });
+
+        let opts = LazyOpts {
+            load_timeout_secs: 30, // generous; we must release well before this
+            ..LazyOpts::default()
+        };
+        let provider = Arc::new(LazyFastembedProvider::new_with_loader(
+            EmbeddingModel::BGESmallENV15,
+            dir.path().to_path_buf(),
+            opts,
+            loader,
+        ));
+
+        // Waiter thread: parks in the `Loading` branch.
+        let waiter_provider = Arc::clone(&provider);
+        let waiter = thread::spawn(move || waiter_provider.ensure_model());
+
+        // Give the loader the chance to run; it waits for the barrier, the
+        // waiter parks in Loading, then this wait returns and the loader
+        // panics. The provider's panic guard converts that to Failed + notify.
+        barrier.wait();
+
+        // The waiter must terminate (with Err) promptly rather than hang.
+        let result = waiter.join().expect("waiter thread should not hang");
+        assert!(result.is_err(), "waiter should receive Err, not Ok");
+        assert!(
+            matches!(provider.state(), ModelState::Failed(_)),
+            "provider should be Failed after loader panic, got {:?}",
+            provider.state()
+        );
     }
 }

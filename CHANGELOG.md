@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **embedding**: stopped force-enabling `ort-load-dynamic` on the Linux/Windows `fastembed` target dependency (#50). `ort-load-dynamic` forwards to `ort-sys/disable-linking`, which makes `ort-sys`'s build script early-return and **skip the static-archive download step entirely** — so `ort-download-binaries-rustls-tls` was a silent no-op and the resulting binary expected `libonnxruntime.so` to be supplied externally at runtime. Since llm-kernel never ships that library, `embedding-fastembed` on Linux deadlocked silently on first `.embed()` instead of failing cleanly. The default build now statically links ONNX Runtime and produces self-contained binaries. We deliberately did **not** add an `embedding-fastembed-dynamic` opt-in feature: cargo feature unification would re-merge `ort-load-dynamic` into the static `fastembed` dep whenever both llm-kernel features were enabled together, silently reintroducing #50. Deployments that truly need dynamic loading should depend on `fastembed` directly in their own crate and enable `ort-load-dynamic` there.
+- **embedding**: `LazyFastembedProvider`'s model-load path is now **panic-safe**. A panic during `FastembedProvider::new()` (e.g. a missing `libonnxruntime.so` under dynamic loading) is caught via `catch_unwind` and converted into a `ModelState::Failed(..)` transition that notifies all `Condvar` waiters, so concurrent callers receive a clean error instead of wedging forever on `futex` (confirmed in production via `/proc/PID/wchan`). Guards against any future ort/fastembed init failure mode, not just the dynamic-linking one.
+
 ## [0.11.0] - 2026-07-01
 
 ### Added
