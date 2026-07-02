@@ -281,9 +281,8 @@ mod tests {
             // Extract the last sentence of the first chunk and confirm it is
             // carried into the next chunk as overlap context.
             let last_sentence = w[0]
-                .split(|c: char| matches!(c, '.' | '!' | '?'))
-                .filter(|s| !s.trim().is_empty())
-                .next_back()
+                .split(['.', '!', '?'])
+                .rfind(|s| !s.trim().is_empty())
                 .unwrap_or("")
                 .trim();
             assert!(
@@ -400,9 +399,8 @@ mod tests {
         assert!(chunks.len() > 1, "expected a split, got {}", chunks.len());
         for w in chunks.windows(2) {
             let last = w[0]
-                .split(|c: char| matches!(c, '.' | '!' | '?'))
-                .filter(|s| !s.trim().is_empty())
-                .next_back()
+                .split(['.', '!', '?'])
+                .rfind(|s| !s.trim().is_empty())
                 .unwrap_or("")
                 .trim();
             assert!(

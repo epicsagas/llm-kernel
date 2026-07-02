@@ -35,7 +35,7 @@ async fn main() {
         .expect("stream failed");
 
     let waker = Waker::noop();
-    let mut cx = Context::from_waker(&waker);
+    let mut cx = Context::from_waker(waker);
     let mut stream = stream;
 
     loop {

@@ -325,7 +325,7 @@ mod tests {
             description: "Echo input".into(),
             input_schema: serde_json::json!({"type": "object"}),
         });
-        server.set_handler("echo", |params| Ok(params));
+        server.set_handler("echo", Ok);
 
         let result = server
             .call_tool("echo", serde_json::json!({"msg": "hi"}))
@@ -417,7 +417,7 @@ mod tests {
     #[test]
     fn has_tool_reports_registration() {
         let mut server = McpServer::new("s", "1.0");
-        server.set_handler("echo", |p| Ok(p));
+        server.set_handler("echo", Ok);
         assert!(server.has_tool("echo"));
         assert!(!server.has_tool("nope"));
     }
@@ -517,7 +517,7 @@ mod tests {
             description: "Echo input synchronously".into(),
             input_schema: serde_json::json!({"type": "object"}),
         });
-        server.set_handler("sync-echo", |params| Ok(params));
+        server.set_handler("sync-echo", Ok);
 
         let result = server
             .call_tool_async("sync-echo", serde_json::json!({"x": 1}))

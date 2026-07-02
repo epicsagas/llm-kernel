@@ -112,7 +112,7 @@ mod tests {
 
     #[test]
     fn search_hit_sort_descending_by_score() {
-        let mut hits = vec![
+        let mut hits = [
             SearchHit { id: 1, score: 0.3 },
             SearchHit { id: 2, score: 0.9 },
             SearchHit { id: 3, score: 0.5 },
@@ -125,7 +125,7 @@ mod tests {
 
     #[test]
     fn search_hit_tie_break_by_id() {
-        let mut hits = vec![
+        let mut hits = [
             SearchHit { id: 30, score: 0.5 },
             SearchHit { id: 10, score: 0.5 },
             SearchHit { id: 20, score: 0.5 },

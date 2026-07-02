@@ -258,7 +258,7 @@ mod tests {
             description: "Echo input".into(),
             input_schema: serde_json::json!({"type": "object"}),
         });
-        server.set_handler("echo", |params| Ok(params));
+        server.set_handler("echo", Ok);
         server
     }
 

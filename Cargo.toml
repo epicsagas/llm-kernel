@@ -1,6 +1,6 @@
 [package]
 name         = "llm-kernel"
-version      = "0.13.0"
+version      = "0.13.1"
 edition      = "2024"
 description  = "Foundation library for Rust AI-native apps — provider catalog, LLM client, MCP server, search, telemetry, and safety"
 license      = "Apache-2.0"
@@ -38,7 +38,7 @@ client-async = ["dep:reqwest", "dep:serde_json", "dep:async-trait", "dep:tokio",
 discovery-async = ["discovery", "dep:reqwest", "dep:async-trait", "dep:tokio"]
 
 # Catalog sync tooling — refresh catalog.json from models.dev (sync-catalog binary)
-catalog-sync = ["provider", "discovery", "dep:clap"]
+catalog-sync = ["provider", "discovery", "dep:clap", "dep:anyhow"]
 
 # LLM response cache over a KvStore (wraps any LLMClient)
 cache = ["client-async", "store"]
@@ -149,7 +149,7 @@ telemetry = ["dep:serde_json"]
 safety = ["dep:regex"]
 
 # Quality evaluation CLI (datasets-based metrics)
-eval = ["dep:clap", "tokens", "safety", "embedding", "search"]
+eval = ["dep:clap", "dep:anyhow", "tokens", "safety", "embedding", "search"]
 eval-full = ["eval", "graph"]
 
 # Everything except Windows-only execution backends and dev-only CLI tooling.
@@ -164,8 +164,11 @@ full = ["provider", "discovery", "discovery-async", "client-async", "cache", "se
 # Always required
 serde       = { version = "1", features = ["derive"] }
 thiserror   = "2"
-anyhow      = "1"
 tracing     = "0.1"
+
+# Only the `eval` / `catalog-sync` binaries use anyhow; keep it out of the
+# default `provider` build and every library consumer's dependency graph.
+anyhow      = { version = "1", optional = true }
 
 # Feature-gated
 serde_json  = { version = "1", optional = true }

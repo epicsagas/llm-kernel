@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.1] - 2026-07-03
+
+### Fixed
+
+- **llm**: streaming responses no longer corrupt multi-byte (CJK, emoji) text. The SSE reader decoded each network chunk independently with `String::from_utf8_lossy`, so a single UTF-8 codepoint split across two TCP chunks was replaced with `U+FFFD`. Decoding is now deferred to whole, newline-terminated lines buffered at the byte level (`\n` is never a UTF-8 lead/continuation byte, so a line boundary can't cut a codepoint). Affects both OpenAI and Anthropic stream paths.
+- **embedding** (elastic): `add` / `remove` now chunk large batches into bounded `_bulk` requests (500 docs each) instead of building one unbounded NDJSON body that could exceed Elasticsearch's `http.max_content_length` (HTTP 413) or spike memory on very large upserts.
+- **llm** (retry): an honored server `Retry-After` header is now clamped to 5 minutes, so a misconfigured or hostile endpoint returning e.g. `Retry-After: 999999` can no longer stall a task for days.
+
+### Changed
+
+- **deps**: `anyhow` is now an optional dependency pulled only by the `eval` / `catalog-sync` binaries. The default `provider` build and every library consumer no longer compile `anyhow` — it appeared only in the two CLI binaries, never in the library surface.
+
+### Docs / Tooling
+
+- **i18n**: all 10 translated READMEs (`de`, `es`, `fr`, `it`, `ja`, `ko`, `pt`, `ru`, `zh-Hans`, `zh-Hant`) resynced to the English README — added the `embedding-fastembed-dynamic-linking` feature-table row and the *Async discovery*, *Cross-engine federation*, *Vector indexing*, and *Prompt templates* sections that had drifted behind, and dropped the stale *Safety utilities* heading.
+- **lint**: resolved all 34 `clippy` warnings under `--all-targets` (test/example/bench code) — the `criterion::black_box` deprecation is replaced with `std::hint::black_box`. `cargo clippy --all-features --all-targets -- -D warnings` is now clean.
+- **ci**: added `.cargo/audit.toml` so a `cargo audit` failure on a transitive-only dependency (one no enabled feature compiles into an active path, e.g. `quinn-proto` via reqwest's optional QUIC support) can be suppressed via a documented escape hatch instead of hard-failing release CI.
+- **docs**: `AGENTS.md` test count corrected (602 passed, 13 ignored).
+
 ## [0.13.0] - 2026-07-03
 
 ### Added
