@@ -51,7 +51,7 @@ Cada módulo é controlado por uma feature flag para que você só pague pelo qu
 | `secrets` | Gerenciamento de credenciais SecretVault | |
 | `store` | Helpers de inicialização SQLite (WAL, FTS5, versionamento de schema) | |
 | `config` | Carregador de configuração TOML | |
-| `graph` | Grafo de conhecimento — SQLite, FTS5, recall inteligente, travessia BFS | |
+| `graph` | Grafo de conhecimento — SQLite, FTS5, recall inteligente, travessia BFS |, algoritmos de grafo(PageRank/community/shortest-path/similarity) |
 | `graph-async` | Wrappers assíncronos do grafo (requer tokio) | |
 | `graph-pool` | Pool assíncrono multi-conexão do grafo (`AsyncPoolGraph`, concorrência WAL) | |
 | `graph-cjk` | CJK-aware graph search via Rust-side segmentation (no schema change) | |
@@ -84,28 +84,28 @@ Adicione ao seu `Cargo.toml`:
 
 ```toml
 [dependencies]
-llm-kernel = "0.9.1"
+llm-kernel = "0.11.0"
 ```
 
 A feature `provider` é habilitada por padrão. Para o cliente assíncrono:
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.9.1", features = ["client-async"] }
+llm-kernel = { version = "0.11.0", features = ["client-async"] }
 ```
 
 Para o grafo de conhecimento com wrappers assíncronos:
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.9.1", features = ["graph", "graph-async"] }
+llm-kernel = { version = "0.11.0", features = ["graph", "graph-async"] }
 ```
 
 Para embedding local (ONNX, sem chave de API):
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.9.1", features = ["embedding-fastembed"] }
+llm-kernel = { version = "0.11.0", features = ["embedding-fastembed"] }
 ```
 
 ## Uso
@@ -332,11 +332,11 @@ println!("{} nodes, {} edges", stats.total_nodes, stats.total_edges);
 ### Servidor MCP
 
 ```rust
-use llm_kernel::mcp::{McpServer, Tool, JsonRpcRequest};
+use llm_kernel::mcp::{McpServer, ToolDescription};
 use serde_json::json;
 
 let mut server = McpServer::new("my-server", "1.0.0");
-server.register_tool(Tool {
+server.register_tool(ToolDescription {
     name: "greet".into(),
     description: "Say hello".into(),
     input_schema: json!({

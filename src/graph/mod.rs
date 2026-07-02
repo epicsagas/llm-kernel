@@ -8,6 +8,7 @@
 //! - **Search**: FTS5 full-text search and dynamic filtering
 //! - **Recall**: [`smart_recall`] — composite scoring with recency, importance, access, FTS, graph boost
 //! - **Traversal**: [`graph_neighbors`] (1-hop), [`related_nodes`] (BFS via recursive CTE)
+//! - **Algorithms**: pure-Rust CSR algorithms in [`algo`] — [`pagerank()`], [`connected_components()`], [`label_propagation()`], [`dijkstra()`], [`jaccard_similarity()`]
 //! - **Lifecycle**: [`decay_importance`], [`tag_stale_nodes`], [`compute_stats`]
 //!
 //! All functions take `&rusqlite::Connection` — no hardcoded paths.

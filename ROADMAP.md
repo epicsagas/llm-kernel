@@ -8,7 +8,7 @@ llm-kernel development roadmap from v0.3.2 to v1.0.0.
 * **[Future Milestones Feasibility Study](docs/research/future_roadmap_evaluation.md)**
 * **[Graph Performance Maximization Strategy](docs/research/graph_performance_strategy.md)**
 
-> **Current phase: v0.9.0 complete ✅ — Next: v1.0.0 Production Readiness**
+> **Current phase: v0.11.0 complete ✅ — Next: v1.0.0 Production Readiness**
 
 Each phase has a clear theme, concrete deliverables, and exit criteria.
 The library's core philosophy — zero-mandatory-dep composability with feature gates — is preserved throughout.
@@ -179,6 +179,38 @@ Elasticsearch and cross-engine search federation.
 
 ---
 
+### v0.10.0 — Graph Algorithms ✅
+
+Pure-Rust, zero-dependency graph algorithms closing the Neo4j/GDS gap, compiled in behind the existing `graph` feature (no `Cargo.toml` change, no `petgraph`).
+
+| # | Deliverable | Scope | Key Files |
+|---|-------------|-------|-----------|
+| 1 | `CsrGraph` snapshot + weighted PageRank | M | `src/graph/algo/pagerank.rs` |
+| 2 | Connected components + label propagation | M | `src/graph/algo/community.rs` |
+| 3 | Dijkstra weighted shortest path | S | `src/graph/algo/path.rs` |
+| 4 | Jaccard / common-neighbors / Adamic-Adar / link prediction | S | `src/graph/algo/similarity.rs` |
+| 5 | `smart_recall` graph boost ranks by true PageRank centrality (SQLite + PostgreSQL share one impl) | M | `src/graph/recall.rs`, `src/graph/pg.rs` |
+
+**Exit criteria:** algorithms re-exported from `graph` as backend-agnostic free functions, PageRank eval scenario + criterion benchmarks in place, zero backend drift.
+
+---
+
+### v0.11.0 — Consistency & Protocol Compliance ✅
+
+Unify the public error surface and bring the LLM client and MCP server up to spec.
+
+| # | Deliverable | Scope | Key Files |
+|---|-------------|-------|-----------|
+| 1 | Unify `embedding` + `discovery` public APIs from `anyhow::Result` to `KernelError` (`Embedding` / `Discovery` variants) | L | `src/error.rs`, `src/embedding/*`, `src/discovery/*` |
+| 2 | Forward `LLMRequest::tools` + `response_format` to OpenAI/Anthropic; parse tool calls into `LLMResponse::tool_calls` | M | `src/llm/client.rs`, `src/llm/types.rs` |
+| 3 | MCP server: protocol 2025-06-18 negotiation, `ping`, prompts, string/number ids, `tools/call` `isError`, camelCase wire format | M | `src/mcp/*` |
+| 4 | Fix `LazyFastembedProvider::embed_batch` panic on truncated provider response; offload blocking cache I/O via `spawn_blocking` | S | `src/embedding/lazy.rs`, `src/llm/cache.rs` |
+| 5 | Isolated per-feature CI checks | S | `.github/workflows/ci.yml` |
+
+**Exit criteria:** no `anyhow` in the public library surface, MCP dispatch conforms to the spec, all features build in isolation.
+
+---
+
 ### v1.0.0 — Production Readiness
 
 API stability guarantee. Once shipped, all public types and signatures are locked under semver.
@@ -186,10 +218,10 @@ API stability guarantee. Once shipped, all public types and signatures are locke
 | # | Deliverable | Scope | Key Files |
 |---|-------------|-------|-----------|
 | 1 | Audit public API surface; reduce `pub` → `pub(crate)` where appropriate | L | All modules |
-| 2 | Comprehensive doc comments with `# Example` sections on every public item | L | All modules |
+| 2 | `# Example` sections on every public item (`#![deny(missing_docs)]` already enforced since v0.3.4) | L | All modules |
 | 3 | Performance baseline + CI regression detection (`--perf-baseline`) | M | `src/bin/eval.rs`, `benches/` |
 | 4 | `cargo-semver-checks` in CI as blocking job | M | `.github/workflows/ci.yml` |
-| 5 | Security audit + `SECURITY.md` | M | New `SECURITY.md`, `src/safety/`, `src/secrets/` |
+| 5 | Security audit (`SECURITY.md` already published; `cargo audit` + gitleaks already in CI) | M | `src/safety/`, `src/secrets/` |
 | 6 | Document `full` feature set and platform compatibility matrix | S | `README.md` |
 
 **Exit criteria:** `cargo-semver-checks` passes, every public item documented with examples, perf baselines in CI, security review complete, at least one external project integrated successfully.
@@ -222,6 +254,12 @@ v0.3.2
   │
   ├── v0.9.0  Search Integrations ✅
   │            Elasticsearch, federation
+  │
+  ├── v0.10.0 Graph Algorithms ✅
+  │            CSR PageRank, community, Dijkstra, similarity
+  │
+  ├── v0.11.0 Consistency & Protocol Compliance ✅
+  │            KernelError unification, tool forwarding, MCP 2025-06-18
   │
   └── v1.0.0  Production Readiness
                API audit, semver lock, perf baselines, security audit

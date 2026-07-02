@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0] - 2026-07-03
+
+### Added
+
+- **llm**: `LLMRequest::tools` and `LLMRequest::response_format` are now **forwarded to the provider APIs**. OpenAI receives `tools` (`type: "function"`) and `response_format` (`json_object` / `json_schema`); Anthropic receives `tools` (with `input_schema`) and, for `ResponseFormat::JsonSchema`, `output_config.format`. Previously both fields were accepted by the builder but silently dropped.
+- **llm**: `LLMResponse::tool_calls: Vec<ToolCall>` — tool calls the model requested are parsed back from OpenAI `tool_calls` and Anthropic `tool_use` content blocks. `LLMResponse` now also captures `finish_reason` (OpenAI `finish_reason` / Anthropic `stop_reason`), `id`, and `created` from the provider response.
+- **mcp**: protocol-version negotiation — `initialize` echoes the client's requested `protocolVersion` when supported (`2025-06-18`, `2025-03-26`, `2024-11-05`), otherwise proposes the server's latest (`2025-06-18`). Exposed via `McpServer::negotiate_protocol_version` and the `SUPPORTED_PROTOCOL_VERSIONS` / `LATEST_PROTOCOL_VERSION` constants.
+- **mcp**: `ping` method (returns `{}`), **prompts** support (`prompts/list`, `prompts/get`, `McpServer::register_prompt` / `set_prompt_handler`, `PromptDescription` / `PromptArgument`), and `resources/templates/list`. The `prompts` capability is advertised in `initialize` when prompts are registered. Both stdio and HTTP/SSE transports support all new methods.
+- **error**: `KernelError::Embedding` and `KernelError::Discovery` variants (with `KernelError::embedding` / `KernelError::discovery` constructors).
+
+### Changed
+
+- **error** (**breaking**): the `embedding` and `discovery` subsystems now return `crate::error::Result` (`KernelError`) instead of `anyhow::Result` — the `EmbeddingProvider` / `VectorIndex` / `AsyncVectorIndex` traits, all provider and index constructors (`FastembedProvider`, `OpenAIEmbeddingClient`, `Qwen3Provider`, `NomicMoeProvider`, `LazyFastembedProvider`, `TurbovecIndex`, `QdrantVectorIndex`, `ElasticsearchVectorIndex`), `DiscoverySource`, `chunk_batch`, the `discovery::fetch*` functions, and `provider::sync::*`. `anyhow` no longer appears in the library's public surface. Downstream code that matched on `anyhow::Error` must switch to `KernelError`.
+- **mcp** (**breaking**): `McpServer::initialize_response` now takes the client's requested protocol version (`initialize_response(Option<&str>)`).
+- **mcp**: `ToolDescription` and `ResourceDescription` now serialize with the correct MCP wire-format field names — `inputSchema` (was `input_schema`) and `mimeType` (was `mime_type`).
+- **mcp**: JSON-RPC request `id`s are preserved verbatim (string **or** number) in responses, per JSON-RPC 2.0 — previously only integer ids round-tripped.
+- **mcp**: `tools/call` reports **tool-execution failures in-band** as a result with `isError: true` (so the model can react), and reserves the JSON-RPC error path (`-32602`) for an unknown tool — matching the MCP spec.
+
+### Fixed
+
+- **embedding**: `LazyFastembedProvider::embed_batch` no longer panics with an index-out-of-bounds when the inner provider returns fewer vectors than inputs (a truncated/malformed response); it now returns a `KernelError::Embedding`.
+- **llm**: `CacheClient::complete` offloads the synchronous `KvStore` read/write to `tokio::task::spawn_blocking`, so a slow or remote store (or a single-threaded runtime) no longer blocks the async reactor on the completion hot path.
+
+### CI
+
+- Isolated per-feature build/test matrix entries added for `cache`, `discovery-async`, `graph-async`, `graph-pool`, `graph-cjk`, `mcp`, `mcp-http`, `tokens`, `safety`, `telemetry`, `search`, `federation`, `embedding`, `embedding-openai`, `vector-index`, and `install`, so a missing `#[cfg]` gate is caught even when a sibling feature isn't co-enabled.
+
 ## [0.10.0] - 2026-06-29
 
 ### Added

@@ -51,7 +51,7 @@ Jedes Modul wird durch ein Feature-Flag gesteuert, sodass Sie nur bezahlen, was 
 | `secrets` | SecretVault-Anmeldeinformationsverwaltung | |
 | `store` | SQLite-Initialisierungshilfen (WAL, FTS5, Schema-Versionierung) | |
 | `config` | TOML-Konfigurationslader | |
-| `graph` | Wissensgraph — SQLite, FTS5, intelligenter Recall, BFS-Traversierung | |
+| `graph` | Wissensgraph — SQLite, FTS5, intelligenter Recall, BFS-Traversierung |, Graph-Algorithmen(PageRank/community/shortest-path/similarity) |
 | `graph-async` | Async-Graph-Wrapper (erfordert tokio) | |
 | `graph-pool` | Multi-Verbindungs-Async-Graph-Pool (`AsyncPoolGraph`, WAL-Konkurrenz) | |
 | `graph-cjk` | CJK-aware graph search via Rust-side segmentation (no schema change) | |
@@ -84,28 +84,28 @@ Zu Ihrer `Cargo.toml` hinzufügen:
 
 ```toml
 [dependencies]
-llm-kernel = "0.9.1"
+llm-kernel = "0.11.0"
 ```
 
 Das `provider`-Feature ist standardmäßig aktiviert. Für den Async-Client:
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.9.1", features = ["client-async"] }
+llm-kernel = { version = "0.11.0", features = ["client-async"] }
 ```
 
 Für den Wissensgraphen mit Async-Wrappern:
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.9.1", features = ["graph", "graph-async"] }
+llm-kernel = { version = "0.11.0", features = ["graph", "graph-async"] }
 ```
 
 Für lokales Embedding (ONNX, kein API-Schlüssel):
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.9.1", features = ["embedding-fastembed"] }
+llm-kernel = { version = "0.11.0", features = ["embedding-fastembed"] }
 ```
 
 ## Verwendung
@@ -332,11 +332,11 @@ println!("{} nodes, {} edges", stats.total_nodes, stats.total_edges);
 ### MCP-Server
 
 ```rust
-use llm_kernel::mcp::{McpServer, Tool, JsonRpcRequest};
+use llm_kernel::mcp::{McpServer, ToolDescription};
 use serde_json::json;
 
 let mut server = McpServer::new("my-server", "1.0.0");
-server.register_tool(Tool {
+server.register_tool(ToolDescription {
     name: "greet".into(),
     description: "Say hello".into(),
     input_schema: json!({
