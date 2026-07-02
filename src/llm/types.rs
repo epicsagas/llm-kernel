@@ -258,10 +258,18 @@ pub struct LLMRequest {
     pub model: Option<String>,
     /// Desired response format. `None` uses the provider default.
     ///
-    /// Note: client-side handling (passing to provider APIs) is planned for v0.5.0.
+    /// Forwarded to the provider by [`OpenAIClient`](crate::llm::OpenAIClient)
+    /// (OpenAI `response_format`) and, for [`ResponseFormat::JsonSchema`], by
+    /// [`AnthropicClient`](crate::llm::AnthropicClient) (Anthropic
+    /// `output_config.format`). [`ResponseFormat::Json`] without a schema has no
+    /// native Anthropic equivalent and is a no-op there.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub response_format: Option<ResponseFormat>,
     /// Tool definitions available to the model for this request.
+    ///
+    /// Forwarded to both OpenAI (`tools` with `type: "function"`) and Anthropic
+    /// (`tools` with `input_schema`). Any tool calls the model makes are returned
+    /// in [`LLMResponse::tool_calls`].
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tools: Option<Vec<crate::llm::ToolDefinition>>,
 }
@@ -424,6 +432,13 @@ pub struct LLMResponse {
     pub model: String,
     /// Token usage statistics.
     pub usage: TokenUsage,
+    /// Tool calls the model requested this turn.
+    ///
+    /// Empty unless the request supplied [`LLMRequest::tools`] and the model
+    /// chose to call one. Each entry carries the provider-assigned call `id`,
+    /// tool `name`, and JSON-encoded `arguments`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tool_calls: Vec<crate::llm::ToolCall>,
     /// Reason the generation stopped (e.g. `"stop"`, `"length"`, `"tool_calls"`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub finish_reason: Option<String>,

@@ -51,7 +51,7 @@ Ogni modulo è protetto da una flag di feature, così paghi solo per ciò che ut
 | `secrets` | Gestione credenziali SecretVault | |
 | `store` | Helper init SQLite (WAL, FTS5, versionamento schema) | |
 | `config` | Caricatore configurazione TOML | |
-| `graph` | Grafo di conoscenza — SQLite, FTS5, richiamo intelligente, attraversamento BFS | |
+| `graph` | Grafo di conoscenza — SQLite, FTS5, richiamo intelligente, attraversamento BFS |, algoritmi su grafo(PageRank/community/shortest-path/similarity) |
 | `graph-async` | Wrapper grafo asincroni (richiede tokio) | |
 | `graph-pool` | Pool grafo asincrono multi-connessione (`AsyncPoolGraph`, concorrenza WAL) | |
 | `graph-cjk` | CJK-aware graph search via Rust-side segmentation (no schema change) | |
@@ -84,28 +84,28 @@ Aggiungi al tuo `Cargo.toml`:
 
 ```toml
 [dependencies]
-llm-kernel = "0.9.1"
+llm-kernel = "0.13.0"
 ```
 
 La feature `provider` è abilitata per impostazione predefinita. Per il client asincrono:
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.9.1", features = ["client-async"] }
+llm-kernel = { version = "0.13.0", features = ["client-async"] }
 ```
 
 Per il grafo di conoscenza con wrapper asincroni:
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.9.1", features = ["graph", "graph-async"] }
+llm-kernel = { version = "0.13.0", features = ["graph", "graph-async"] }
 ```
 
 Per l'embedding locale (ONNX, nessuna chiave API):
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.9.1", features = ["embedding-fastembed"] }
+llm-kernel = { version = "0.13.0", features = ["embedding-fastembed"] }
 ```
 
 ## Utilizzo
@@ -330,11 +330,11 @@ println!("{} nodes, {} edges", stats.total_nodes, stats.total_edges);
 ### Server MCP
 
 ```rust
-use llm_kernel::mcp::{McpServer, Tool, JsonRpcRequest};
+use llm_kernel::mcp::{McpServer, ToolDescription};
 use serde_json::json;
 
 let mut server = McpServer::new("my-server", "1.0.0");
-server.register_tool(Tool {
+server.register_tool(ToolDescription {
     name: "greet".into(),
     description: "Say hello".into(),
     input_schema: json!({

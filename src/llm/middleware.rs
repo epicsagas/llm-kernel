@@ -107,7 +107,6 @@ impl<C: LLMClient, M: LLMClientMiddleware> LLMClient for MiddlewareClient<C, M> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::llm::types::TokenUsage;
     use std::sync::{Arc, Mutex};
 
     /// A middleware that records hook invocations.
@@ -144,10 +143,7 @@ mod tests {
                 response: std::sync::Mutex::new(Some(Ok(LLMResponse {
                     content: "hello".into(),
                     model: "mock".into(),
-                    usage: TokenUsage::default(),
-                    finish_reason: None,
-                    id: None,
-                    created: None,
+                    ..Default::default()
                 }))),
             }
         }

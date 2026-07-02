@@ -1,23 +1,41 @@
 # Progress
 
-> Auto-generated status snapshot. Last updated: 2026-06-15
+> Auto-generated status snapshot. Last updated: 2026-07-03
 
-## Current Version: v0.9.0
+## Current Version: v0.13.0
 
 | Metric | Value |
 |--------|-------|
-| Version | `0.9.0` |
+| Version | `0.13.0` |
 | Edition | Rust 2024, MSRV 1.92 |
-| Lines of code | ~18,100 |
-| Total tests | 511 (499 passed, 12 ignored, 0 failed) |
+| Lines of code | ~23,000 |
+| Total tests | `--all-features`: 599 passed, 13 ignored, 0 failed |
 | Backend features | `graph-pg` (PostgreSQL), `qdrant` (vector search), `elastic` (Elasticsearch vector search) |
-| Open PRs | 1 |
-| Open branches | 1 |
-| Last commit | `feat: v0.9.0 search integrations` |
+| Last commit | `chore: bump v0.13.0` |
 
 ---
 
 ## Recent Releases
+
+### v0.13.0 (2026-07-03)
+
+- **error**: unified `embedding` + `discovery` public APIs onto `KernelError` (new `Embedding` / `Discovery` variants) — no more `anyhow::Result` in the library's public surface (**breaking**)
+- **llm**: `LLMRequest::tools` and `response_format` are now forwarded to OpenAI and Anthropic; tool calls are parsed back into `LLMResponse::tool_calls`
+- **mcp**: protocol version negotiation (2025-06-18), `ping`, prompts (`prompts/list` / `prompts/get`), string/number JSON-RPC ids, `tools/call` in-band `isError`, and camelCase wire format (`inputSchema` / `mimeType`)
+- **embedding**: fixed a `LazyFastembedProvider::embed_batch` panic on a truncated provider response; `CacheClient` now offloads blocking store I/O via `spawn_blocking`
+- **ci**: isolated per-feature build/test matrix entries (`mcp`, `tokens`, `safety`, `search`, `cache`, …)
+
+### v0.12.0 (2026-07-02)
+
+- **embedding** (breaking): `ModelState::Failed(String)` → `Failed { message, panicked }`; dropped default `ort-load-dynamic` so `embedding-fastembed` statically links ONNX Runtime, made the model-load path panic-safe via `catch_unwind`, and added `LazyFastembedProvider::reset()` + opt-in `embedding-fastembed-dynamic-linking` (#50)
+
+### v0.11.0 (2026-07-01)
+
+- **graph** (`graph-pg-tls`): TLS support for `PgGraph` connections — `connect_native_tls` / `connect_tls` / `connect_config_tls` (#48)
+
+### v0.10.0 (2026-06-29)
+
+- **graph**: pure-Rust CSR graph algorithms (`algo/`) — weighted PageRank, connected components, label propagation, Dijkstra, Jaccard/Adamic-Adar similarity; `smart_recall`'s graph boost now ranks by true PageRank centrality (SQLite + PostgreSQL share one impl)
 
 ### v0.9.0 (2026-06-15)
 
@@ -151,8 +169,8 @@ safety       → secret masking, error classification, prompt-injection detectio
 
 | Check | Status |
 |-------|--------|
-| All tests pass | ✅ 489/489 (477 passed, 12 ignored) |
+| All tests pass | ✅ 593 passed, 13 ignored, 0 failed (`--all-features`) |
 | Clippy clean | ✅ (verified before each release) |
 | CI passing | ✅ Linux + macOS dual runner |
 | Crate structure | ✅ Monolithic (subcrate removed) |
-| Roadmap on track | ✅ v0.7.0 complete, v0.8.0 ready to start |
+| Roadmap on track | ✅ v0.13.0 complete, v1.0.0 next |

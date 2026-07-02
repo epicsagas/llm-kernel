@@ -51,7 +51,7 @@ Chaque module est derriere un indicateur de fonctionnalite afin que vous ne payi
 | `secrets` | Gestion de credentials SecretVault | |
 | `store` | Aides d'initialisation SQLite (WAL, FTS5, versionnage de schema) | |
 | `config` | Chargeur de configuration TOML | |
-| `graph` | Graphe de connaissances -- SQLite, FTS5, rappel intelligent, parcours BFS | |
+| `graph` | Graphe de connaissances -- SQLite, FTS5, rappel intelligent, parcours BFS |, algorithmes de graphe(PageRank/community/shortest-path/similarity) |
 | `graph-async` | Enveloppes de graphe asynchrones (necessite tokio) | |
 | `graph-pool` | Pool de graphe asynchrone multi-connexion (`AsyncPoolGraph`, concurrence WAL) | |
 | `graph-cjk` | CJK-aware graph search via Rust-side segmentation (no schema change) | |
@@ -84,28 +84,28 @@ Ajoutez a votre `Cargo.toml` :
 
 ```toml
 [dependencies]
-llm-kernel = "0.9.1"
+llm-kernel = "0.13.0"
 ```
 
 La fonctionnalite `provider` est activee par defaut. Pour le client asynchrone :
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.9.1", features = ["client-async"] }
+llm-kernel = { version = "0.13.0", features = ["client-async"] }
 ```
 
 Pour le graphe de connaissances avec enveloppes asynchrones :
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.9.1", features = ["graph", "graph-async"] }
+llm-kernel = { version = "0.13.0", features = ["graph", "graph-async"] }
 ```
 
 Pour l'embedding local (ONNX, sans cle API) :
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.9.1", features = ["embedding-fastembed"] }
+llm-kernel = { version = "0.13.0", features = ["embedding-fastembed"] }
 ```
 
 ## Utilisation
@@ -333,11 +333,11 @@ println!("{} nodes, {} edges", stats.total_nodes, stats.total_edges);
 ### Serveur MCP
 
 ```rust
-use llm_kernel::mcp::{McpServer, Tool, JsonRpcRequest};
+use llm_kernel::mcp::{McpServer, ToolDescription};
 use serde_json::json;
 
 let mut server = McpServer::new("my-server", "1.0.0");
-server.register_tool(Tool {
+server.register_tool(ToolDescription {
     name: "greet".into(),
     description: "Say hello".into(),
     input_schema: json!({

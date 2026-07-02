@@ -3,6 +3,7 @@
 use serde::Deserialize;
 
 use crate::embedding::types::{EmbeddingProvider, EmbeddingResult};
+use crate::error::{KernelError, Result};
 
 #[derive(Deserialize)]
 struct EmbeddingData {
@@ -72,9 +73,9 @@ impl OpenAIEmbeddingClient {
     ///
     /// Always uses `text-embedding-3-small` (1536-dim). For a different model
     /// use [`new_with_model`](Self::new_with_model) after reading the key manually.
-    pub fn from_env() -> anyhow::Result<Self> {
+    pub fn from_env() -> Result<Self> {
         let key = std::env::var("OPENAI_API_KEY")
-            .map_err(|_| anyhow::anyhow!("OPENAI_API_KEY not set"))?;
+            .map_err(|_| KernelError::Embedding("OPENAI_API_KEY not set".into()))?;
         Ok(Self::new_small(key))
     }
 }
@@ -90,7 +91,7 @@ impl EmbeddingProvider for OpenAIEmbeddingClient {
         &self.model
     }
 
-    fn embed(&self, text: &str) -> anyhow::Result<EmbeddingResult> {
+    fn embed(&self, text: &str) -> Result<EmbeddingResult> {
         let config = ureq::config::Config::builder()
             .timeout_global(Some(std::time::Duration::from_secs(30)))
             .build();
@@ -105,15 +106,19 @@ impl EmbeddingProvider for OpenAIEmbeddingClient {
             .post("https://api.openai.com/v1/embeddings")
             .header("Authorization", format!("Bearer {}", self.api_key))
             .header("Content-Type", "application/json")
-            .send_json(body)?;
+            .send_json(body)
+            .map_err(KernelError::embedding)?;
 
-        let payload: EmbeddingResponse = resp.body_mut().read_json()?;
+        let payload: EmbeddingResponse = resp
+            .body_mut()
+            .read_json()
+            .map_err(KernelError::embedding)?;
 
         let vector = payload
             .data
             .into_iter()
             .next()
-            .ok_or_else(|| anyhow::anyhow!("empty embedding response"))?
+            .ok_or_else(|| KernelError::Embedding("empty embedding response".into()))?
             .embedding;
 
         Ok(EmbeddingResult {
@@ -122,7 +127,7 @@ impl EmbeddingProvider for OpenAIEmbeddingClient {
         })
     }
 
-    fn embed_batch(&self, texts: &[&str]) -> anyhow::Result<Vec<EmbeddingResult>> {
+    fn embed_batch(&self, texts: &[&str]) -> Result<Vec<EmbeddingResult>> {
         if texts.is_empty() {
             return Ok(vec![]);
         }
@@ -141,9 +146,13 @@ impl EmbeddingProvider for OpenAIEmbeddingClient {
             .post("https://api.openai.com/v1/embeddings")
             .header("Authorization", format!("Bearer {}", self.api_key))
             .header("Content-Type", "application/json")
-            .send_json(body)?;
+            .send_json(body)
+            .map_err(KernelError::embedding)?;
 
-        let payload: EmbeddingResponse = resp.body_mut().read_json()?;
+        let payload: EmbeddingResponse = resp
+            .body_mut()
+            .read_json()
+            .map_err(KernelError::embedding)?;
 
         // The OpenAI API does not guarantee that `data` is returned in input
         // order; sort by `index` before zipping with `texts`.
@@ -151,11 +160,11 @@ impl EmbeddingProvider for OpenAIEmbeddingClient {
         data.sort_unstable_by_key(|d| d.index);
 
         if data.len() != texts.len() {
-            anyhow::bail!(
+            return Err(KernelError::Embedding(format!(
                 "API returned {} embeddings for {} inputs",
                 data.len(),
                 texts.len()
-            );
+            )));
         }
 
         let results = data
