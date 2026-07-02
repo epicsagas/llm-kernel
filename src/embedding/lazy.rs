@@ -63,17 +63,23 @@ fn default_load(model: EmbeddingModel, cache_dir: PathBuf) -> anyhow::Result<Fas
 /// captures are discarded entirely, and the values read afterwards
 /// (`EmbeddingModel`/`PathBuf`) were copied in before the call — so no torn
 /// shared state escapes.
+///
+/// The returned bool is `true` iff the failure came from a caught panic
+/// (as opposed to an ordinary `Err` from `load`) — callers use this to mark
+/// [`ModelState::Failed`] as panic-originated, since a panic during ort/ONNX
+/// init may leave process-global state in a way that makes blind retries
+/// riskier than retrying after an ordinary (e.g. network) failure.
 fn load_catching_panics(
     load: &LoadFn,
     model: EmbeddingModel,
     cache_dir: PathBuf,
-) -> anyhow::Result<FastembedProvider> {
+) -> (anyhow::Result<FastembedProvider>, bool) {
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| load(model, cache_dir)));
     match result {
-        Ok(inner) => inner,
+        Ok(inner) => (inner, false),
         Err(payload) => {
             let msg = panic_message(&payload);
-            Err(anyhow::anyhow!("model init panicked: {msg}"))
+            (Err(anyhow::anyhow!("model init panicked: {msg}")), true)
         }
     }
 }
@@ -106,7 +112,29 @@ pub enum ModelState {
     /// Feature disabled by configuration.
     Disabled,
     /// Last attempt failed (preserves error).
-    Failed(String),
+    ///
+    /// `panicked` is `true` when the failure came from a caught panic during
+    /// loader init (e.g. ort/ONNX init panicking on a missing dylib) rather
+    /// than an ordinary `Err` returned by the loader (e.g. a network error
+    /// during model download). Callers that want to retry after `Failed`
+    /// (via [`LazyFastembedProvider::reset`]) should treat a panic-origin
+    /// failure with more caution — process-global ort state may be corrupted
+    /// — whereas an ordinary failure is generally safe to retry blindly.
+    Failed {
+        /// Human-readable error description.
+        message: String,
+        /// `true` if the failure came from a caught panic during loader
+        /// init, `false` if the loader returned an ordinary `Err`.
+        panicked: bool,
+    },
+}
+
+impl ModelState {
+    /// Whether this is a `Failed` state that originated from a caught panic
+    /// (as opposed to an ordinary loader `Err`).
+    pub fn is_panic(&self) -> bool {
+        matches!(self, ModelState::Failed { panicked: true, .. })
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -266,10 +294,32 @@ impl LazyFastembedProvider {
     /// Whether the model is loaded and ready for inference.
     ///
     /// Cheaper than [`state`](Self::state) for hot-path polling — avoids
-    /// cloning the `Failed(String)` variant.
+    /// cloning the `Failed { message, .. }` variant's string.
     pub fn is_ready(&self) -> bool {
         let guard = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         matches!(guard.state, ModelState::Ready)
+    }
+
+    /// Clear a `Failed` state so the next [`ensure_model`](Self::ensure_model)
+    /// call retries the load, instead of returning the cached error forever.
+    ///
+    /// No-op if the provider isn't currently `Failed`. Resets to `Cached` if
+    /// weights are already on disk, `NotLoaded` otherwise — mirroring the
+    /// initial-state logic in [`new_with_loader`](Self::new_with_loader).
+    ///
+    /// Callers should check [`ModelState::is_panic`] before calling this:
+    /// retrying after a panic-origin failure re-enters the same loader (and
+    /// thus the same ort/ONNX init path) that just panicked, which may hit
+    /// corrupted process-global state rather than a fresh, safe retry.
+    pub fn reset(&self) {
+        let mut guard = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        if matches!(guard.state, ModelState::Failed { .. }) {
+            guard.state = if is_model_cached(guard.model, &guard.cache_dir) {
+                ModelState::Cached
+            } else {
+                ModelState::NotLoaded
+            };
+        }
     }
 
     /// Block until the model is ready for inference.
@@ -296,7 +346,7 @@ impl LazyFastembedProvider {
         match &guard.state {
             ModelState::Ready => Ok(()),
             ModelState::Disabled => Err("model is disabled".into()),
-            ModelState::Failed(e) => Err(e.clone()),
+            ModelState::Failed { message, .. } => Err(message.clone()),
             ModelState::Loading => {
                 // Wait for existing loading thread
                 let timeout = Duration::from_secs(self.opts.load_timeout_secs);
@@ -307,7 +357,10 @@ impl LazyFastembedProvider {
                     Ok((mut g, timeout_result)) => {
                         if timeout_result.timed_out() {
                             if matches!(g.state, ModelState::Loading) {
-                                g.state = ModelState::Failed("model loading timed out".into());
+                                g.state = ModelState::Failed {
+                                    message: "model loading timed out".into(),
+                                    panicked: false,
+                                };
                                 self.cvar.notify_all();
                             }
                             return Err("model loading timed out".into());
@@ -320,7 +373,7 @@ impl LazyFastembedProvider {
                 }
                 match &guard.state {
                     ModelState::Ready => Ok(()),
-                    ModelState::Failed(e) => Err(e.clone()),
+                    ModelState::Failed { message, .. } => Err(message.clone()),
                     other => Err(format!("unexpected state after wait: {other:?}")),
                 }
             }
@@ -338,8 +391,8 @@ impl LazyFastembedProvider {
 
                 // Do the actual loading (may download, takes seconds to minutes).
                 // Wrapped in `catch_unwind` so a panicking ONNX init surfaces as
-                // `Failed(..)` + `notify_all()` instead of wedging waiters (#50).
-                let result = load_catching_panics(&load, model, cache_dir);
+                // `Failed{..}` + `notify_all()` instead of wedging waiters (#50).
+                let (result, panicked) = load_catching_panics(&load, model, cache_dir);
 
                 let mut guard = self.inner.lock().unwrap_or_else(|e| e.into_inner());
                 match result {
@@ -351,7 +404,10 @@ impl LazyFastembedProvider {
                         Ok(())
                     }
                     Err(e) => {
-                        guard.state = ModelState::Failed(e.to_string());
+                        guard.state = ModelState::Failed {
+                            message: e.to_string(),
+                            panicked,
+                        };
                         self.cvar.notify_all();
                         Err(e.to_string())
                     }
@@ -645,12 +701,19 @@ mod tests {
             "expected panic message, got: {err}"
         );
         match provider.state() {
-            ModelState::Failed(msg) => assert!(
-                msg.contains("model init panicked"),
-                "expected panic in Failed state, got: {msg}"
-            ),
+            ModelState::Failed { message, panicked } => {
+                assert!(
+                    message.contains("model init panicked"),
+                    "expected panic in Failed state, got: {message}"
+                );
+                assert!(
+                    panicked,
+                    "panic-originated failure should set panicked=true"
+                );
+            }
             other => panic!("expected Failed state after panic, got {other:?}"),
         }
+        assert!(provider.state().is_panic());
     }
 
     #[test]
@@ -664,7 +727,58 @@ mod tests {
         );
         let err = provider.ensure_model().unwrap_err();
         assert!(err.contains("download denied"), "got: {err}");
-        assert!(matches!(provider.state(), ModelState::Failed(_)));
+        match provider.state() {
+            ModelState::Failed { panicked, .. } => {
+                assert!(!panicked, "ordinary Err should not set panicked=true");
+            }
+            other => panic!("expected Failed state, got {other:?}"),
+        }
+        assert!(!provider.state().is_panic());
+    }
+
+    #[test]
+    fn reset_after_failure_allows_retry() {
+        let dir = tempfile::tempdir().unwrap();
+        let attempts = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let attempts_clone = Arc::clone(&attempts);
+        let loader: LoadFn = Arc::new(move |_m, _c| {
+            attempts_clone.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Err(anyhow::anyhow!("transient failure"))
+        });
+        let provider = LazyFastembedProvider::new_with_loader(
+            EmbeddingModel::BGESmallENV15,
+            dir.path().to_path_buf(),
+            LazyOpts::default(),
+            loader,
+        );
+
+        assert!(provider.ensure_model().is_err());
+        assert!(matches!(provider.state(), ModelState::Failed { .. }));
+        assert_eq!(attempts.load(std::sync::atomic::Ordering::SeqCst), 1);
+
+        // Without reset, ensure_model just replays the cached error.
+        assert!(provider.ensure_model().is_err());
+        assert_eq!(attempts.load(std::sync::atomic::Ordering::SeqCst), 1);
+
+        // After reset, ensure_model retries the loader.
+        provider.reset();
+        assert_eq!(provider.state(), ModelState::NotLoaded);
+        assert!(provider.ensure_model().is_err());
+        assert_eq!(attempts.load(std::sync::atomic::Ordering::SeqCst), 2);
+    }
+
+    #[test]
+    fn reset_is_noop_when_not_failed() {
+        let dir = tempfile::tempdir().unwrap();
+        let provider = LazyFastembedProvider::new_with_loader(
+            EmbeddingModel::BGESmallENV15,
+            dir.path().to_path_buf(),
+            LazyOpts::default(),
+            failing_loader("irrelevant"),
+        );
+        assert_eq!(provider.state(), ModelState::NotLoaded);
+        provider.reset();
+        assert_eq!(provider.state(), ModelState::NotLoaded);
     }
 
     #[test]
@@ -711,9 +825,10 @@ mod tests {
         let result = waiter.join().expect("waiter thread should not hang");
         assert!(result.is_err(), "waiter should receive Err, not Ok");
         assert!(
-            matches!(provider.state(), ModelState::Failed(_)),
+            matches!(provider.state(), ModelState::Failed { .. }),
             "provider should be Failed after loader panic, got {:?}",
             provider.state()
         );
+        assert!(provider.state().is_panic());
     }
 }

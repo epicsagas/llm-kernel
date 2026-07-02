@@ -120,6 +120,21 @@ embedding-fastembed-nomic-moe = ["embedding-fastembed", "fastembed/nomic-v2-moe"
 # DirectML GPU execution provider for FastembedProvider (Windows only)
 embedding-fastembed-directml = ["embedding-fastembed", "dep:ort"]
 
+# Opt-in dynamic ONNX Runtime linking (loads libonnxruntime.{so,dylib,dll} at
+# runtime instead of statically linking a prebuilt archive at build time).
+#
+# Only use this if your deployment target cannot satisfy the static build's
+# requirements — e.g. a glibc <2.38 Linux host (ort's prebuilt static archive
+# needs glibc 2.38+; see #50) — and you can guarantee `libonnxruntime.*` is
+# present on the runtime host. Do NOT combine this feature with a build that
+# also depends on plain `embedding-fastembed` elsewhere in the same binary's
+# feature graph: Cargo feature unification merges both `ort-load-dynamic` and
+# `ort-download-binaries-*` into the shared `fastembed`/`ort-sys` crate,
+# which silently turns the static path into a no-op again (the original #50
+# failure mode). Enable this feature alone, or ensure nothing else in your
+# build enables `embedding-fastembed`/`full` at the same time.
+embedding-fastembed-dynamic-linking = ["embedding-fastembed", "fastembed/ort-load-dynamic"]
+
 # Knowledge graph with async wrappers (requires tokio)
 graph-async = ["graph", "dep:tokio"]
 
@@ -228,11 +243,11 @@ codegen-units = 4
 inherits = "release"
 lto = "thin"
 
-# Statically link ONNX Runtime on every platform via `ort-download-binaries-rustls-tls`:
+# Statically link ONNX Runtime by default via `ort-download-binaries-rustls-tls`:
 # ort-sys downloads + links a prebuilt static archive at build time, producing a
 # self-contained binary with no runtime dylib resolution.
 #
-# We deliberately do NOT enable `ort-load-dynamic` here: that feature forwards to
+# We do NOT enable `ort-load-dynamic` by default: that feature forwards to
 # `ort-sys/disable-linking`, which makes ort-sys's build script early-return and
 # SKIP the download step entirely — so `ort-download-binaries-*` becomes a silent
 # no-op and the resulting binary expects `libonnxruntime.{so,dll}` to be supplied
@@ -240,10 +255,12 @@ lto = "thin"
 # manifested as a silent deadlock rather than a clean missing-library error
 # (see #50).
 #
-# We do not expose an `embedding-fastembed-dynamic` opt-in feature either: cargo
-# feature unification would merge `ort-load-dynamic` into the static `fastembed`
-# dep whenever both llm-kernel features were enabled together, silently
-# re-introducing #50. Deployments that truly need dynamic loading should depend
-# on `fastembed` directly in their own crate and enable `ort-load-dynamic` there.
+# CAVEAT — static linking does not fully replace ort-load-dynamic: ort's
+# prebuilt static archive requires glibc 2.38+ (`__isoc23_strtol` etc.), which
+# is resolved against the *executing* host's libc at runtime, not the build
+# host's. Linux hosts on glibc <2.38 (e.g. Ubuntu 22.04, Debian 12) will fail
+# to load the statically-linked binary at first ONNX Runtime init. Such
+# deployments should enable the `embedding-fastembed-dynamic-linking` feature
+# instead (see above) and ensure `libonnxruntime.so` is present on the host.
 [target.'cfg(any(target_os = "windows", target_os = "linux"))'.dependencies]
 fastembed   = { version = "5", default-features = false, features = ["hf-hub-rustls-tls", "ort-download-binaries-rustls-tls"], optional = true }
