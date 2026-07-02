@@ -5,7 +5,7 @@
 //!
 //! ## Quick start
 //!
-//! ```no_run
+//! ```
 //! use llm_kernel::mcp::{McpServer, ToolDescription, JsonRpcDispatcher};
 //!
 //! let mut server = McpServer::new("my-server", "1.0.0");
@@ -21,9 +21,16 @@
 //!     }),
 //! });
 //!
-//! server.set_handler("greet", |params| {
+//! server.set_handler("greet", |_params| {
 //!     Ok(serde_json::json!({ "greeting": "Hello!" }))
 //! });
+//!
+//! // Route a JSON-RPC request through the stdio dispatcher.
+//! let dispatcher = JsonRpcDispatcher::new(&server);
+//! let response = dispatcher
+//!     .dispatch(r#"{"jsonrpc":"2.0","id":1,"method":"tools/list"}"#)
+//!     .unwrap();
+//! assert!(response.contains("greet"));
 //! ```
 
 pub mod auth;
@@ -32,8 +39,10 @@ pub mod server;
 pub mod transport;
 
 pub use auth::BearerAuth;
-pub use schema::{ResourceDescription, ToolDescription};
-pub use server::{AsyncToolHandler, Handler, McpServer};
+pub use schema::{PromptArgument, PromptDescription, ResourceDescription, ToolDescription};
+pub use server::{
+    AsyncToolHandler, Handler, LATEST_PROTOCOL_VERSION, McpServer, SUPPORTED_PROTOCOL_VERSIONS,
+};
 pub use transport::JsonRpcDispatcher;
 
 /// HTTP/SSE remote transport for MCP (axum + tokio).
