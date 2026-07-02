@@ -7,7 +7,7 @@
 use serde::{Deserialize, Serialize};
 
 /// Describes an MCP tool that an AI agent can invoke.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ToolDescription {
     /// The tool name (unique within the server).
     pub name: String,
@@ -21,7 +21,7 @@ pub struct ToolDescription {
 }
 
 /// Describes an MCP resource that an AI agent can read.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ResourceDescription {
     /// The resource URI (e.g. "docs://project/README.md").
     pub uri: String,
@@ -38,7 +38,7 @@ pub struct ResourceDescription {
 }
 
 /// A single argument accepted by an MCP prompt.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct PromptArgument {
     /// Argument name.
     pub name: String,
@@ -52,7 +52,7 @@ pub struct PromptArgument {
 
 /// Describes an MCP prompt (a reusable, parameterized message template) that a
 /// client can list via `prompts/list` and render via `prompts/get`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct PromptDescription {
     /// The prompt name (unique within the server).
     pub name: String,

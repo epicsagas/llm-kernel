@@ -128,13 +128,17 @@ impl OpenAIClient {
     }
 
     /// Create a new client with an explicit API key, using the default OpenAI base URL.
-    pub fn from_key(model: impl Into<String>, api_key: impl Into<String>) -> Self {
-        Self {
+    ///
+    /// Returns a [`KernelError::Config`] if the HTTP client (with its connect /
+    /// total timeouts) cannot be built, rather than silently falling back to a
+    /// timeout-less `reqwest::Client::default()`.
+    pub fn from_key(model: impl Into<String>, api_key: impl Into<String>) -> Result<Self> {
+        Ok(Self {
             api_key: api_key.into(),
             model: model.into(),
             base_url: "https://api.openai.com/v1".into(),
-            client: http_client().unwrap_or_default(),
-        }
+            client: http_client()?,
+        })
     }
 
     /// Create from an explicit key and a shared `reqwest::Client`.
@@ -530,13 +534,17 @@ impl AnthropicClient {
     }
 
     /// Create a new client with an explicit API key, using the default Anthropic base URL.
-    pub fn from_key(model: impl Into<String>, api_key: impl Into<String>) -> Self {
-        Self {
+    ///
+    /// Returns a [`KernelError::Config`] if the HTTP client (with its connect /
+    /// total timeouts) cannot be built, rather than silently falling back to a
+    /// timeout-less `reqwest::Client::default()`.
+    pub fn from_key(model: impl Into<String>, api_key: impl Into<String>) -> Result<Self> {
+        Ok(Self {
             api_key: api_key.into(),
             model: model.into(),
             base_url: "https://api.anthropic.com/v1".into(),
-            client: http_client().unwrap_or_default(),
-        }
+            client: http_client()?,
+        })
     }
 
     /// Create from an explicit key and a shared `reqwest::Client`.

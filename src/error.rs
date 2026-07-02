@@ -3,6 +3,11 @@
 use thiserror::Error;
 
 /// Errors that can occur when using llm-kernel.
+///
+/// `#[non_exhaustive]`: new variants may be added in any minor release. External
+/// `match`es must include a `_ =>` arm; prefer matching only the variants you
+/// act on (e.g. [`KernelError::RateLimited`] / [`KernelError::Http`] for retry).
+#[non_exhaustive]
 #[derive(Debug, Error)]
 pub enum KernelError {
     /// An LLM API returned an error response.
@@ -55,7 +60,24 @@ pub enum KernelError {
     Discovery(String),
 
     /// A serialization/deserialization error.
-    #[cfg(feature = "provider")]
+    ///
+    /// Available whenever any feature that pulls in `serde_json` is enabled —
+    /// not just `provider`. Add new serde_json-using features to this `any(...)`
+    /// list so a `?`-conversion into `KernelError` keeps compiling everywhere
+    /// `serde_json` is available.
+    #[cfg(any(
+        feature = "provider",
+        feature = "client-async",
+        feature = "graph",
+        feature = "mcp",
+        feature = "install",
+        feature = "search",
+        feature = "vector-index",
+        feature = "qdrant",
+        feature = "elastic",
+        feature = "embedding-openai",
+        feature = "telemetry"
+    ))]
     #[error("Serialization error: {0}")]
     Serialization(#[from] serde_json::Error),
 }

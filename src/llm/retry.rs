@@ -13,7 +13,7 @@
 //! use llm_kernel::llm::{LLMClient, OpenAIClient, RetryClient, RetryConfig};
 //! use std::time::Duration;
 //!
-//! let client = OpenAIClient::from_key("gpt-4o", "sk-...");
+//! let client = OpenAIClient::from_key("gpt-4o", "sk-...")?;
 //! let retry = RetryClient::new(client, RetryConfig {
 //!     max_retries: 3,
 //!     base_delay: Duration::from_secs(1),
