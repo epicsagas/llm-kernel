@@ -285,8 +285,8 @@ mod tests {
 
         let mut h = ConversationHistory::new();
         h.push(ChatMessage::system("system")).unwrap();
-        h.push(ChatMessage::user(&"x".repeat(200))).unwrap();
-        h.push(ChatMessage::assistant(&"y".repeat(200))).unwrap();
+        h.push(ChatMessage::user("x".repeat(200))).unwrap();
+        h.push(ChatMessage::assistant("y".repeat(200))).unwrap();
         let len_before = h.len();
 
         // Need 50 tokens but only 10 remaining → must truncate

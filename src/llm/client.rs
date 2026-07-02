@@ -371,7 +371,7 @@ impl LLMClient for OpenAIClient {
 
         tokio::spawn(async move {
             let mut stream = std::pin::pin!(resp.bytes_stream());
-            let mut buffer = String::new();
+            let mut buffer: Vec<u8> = Vec::new();
 
             use tokio_stream::StreamExt;
 
@@ -383,12 +383,8 @@ impl LLMClient for OpenAIClient {
                         return;
                     }
                 };
-                buffer.push_str(&String::from_utf8_lossy(&chunk));
 
-                while let Some(pos) = buffer.find('\n') {
-                    let line = buffer[..pos].trim_end().to_string();
-                    buffer = buffer[pos + 1..].to_string();
-
+                for line in drain_sse_lines(&mut buffer, &chunk) {
                     if let Some(data) = parse_sse_line(&line)
                         && let Some(event) = parse_openai_sse(data)
                     {
@@ -410,6 +406,25 @@ impl LLMClient for OpenAIClient {
 /// Returns `None` for non-data lines and for `data: [DONE]`.
 fn parse_sse_line(line: &str) -> Option<&str> {
     line.strip_prefix("data: ").filter(|d| *d != "[DONE]")
+}
+
+/// Append a raw network chunk to `buffer` and drain every complete,
+/// newline-terminated line, decoded as UTF-8.
+///
+/// Decoding is deferred until a line's bytes are fully buffered. A single
+/// codepoint can straddle two network chunks, and decoding each chunk eagerly
+/// with [`String::from_utf8_lossy`] would replace the split bytes with `U+FFFD`
+/// — corrupting e.g. CJK or emoji deltas. Because `\n` (`0x0A`) is never a UTF-8
+/// lead or continuation byte, splitting on it can't cut a codepoint, so every
+/// drained line is a whole number of codepoints and decodes losslessly.
+fn drain_sse_lines(buffer: &mut Vec<u8>, chunk: &[u8]) -> Vec<String> {
+    buffer.extend_from_slice(chunk);
+    let mut lines = Vec::new();
+    while let Some(pos) = buffer.iter().position(|&b| b == b'\n') {
+        let line: Vec<u8> = buffer.drain(..=pos).collect();
+        lines.push(String::from_utf8_lossy(&line).trim_end().to_string());
+    }
+    lines
 }
 
 /// Parse an OpenAI streaming JSON chunk into a StreamEvent.
@@ -750,7 +765,7 @@ impl LLMClient for AnthropicClient {
 
         tokio::spawn(async move {
             let mut stream = std::pin::pin!(resp.bytes_stream());
-            let mut buffer = String::new();
+            let mut buffer: Vec<u8> = Vec::new();
             let mut current_event = String::new();
 
             use tokio_stream::StreamExt;
@@ -763,12 +778,8 @@ impl LLMClient for AnthropicClient {
                         return;
                     }
                 };
-                buffer.push_str(&String::from_utf8_lossy(&chunk));
 
-                while let Some(pos) = buffer.find('\n') {
-                    let line = buffer[..pos].trim_end().to_string();
-                    buffer = buffer[pos + 1..].to_string();
-
+                for line in drain_sse_lines(&mut buffer, &chunk) {
                     if let Some(evt) = line.strip_prefix("event: ") {
                         current_event = evt.to_string();
                     } else if let Some(data) = line.strip_prefix("data: ") {
@@ -814,6 +825,37 @@ mod tests {
     fn parse_sse_line_skips_non_data() {
         assert_eq!(parse_sse_line("event: ping"), None);
         assert_eq!(parse_sse_line(""), None);
+    }
+
+    #[test]
+    fn drain_sse_lines_reassembles_multibyte_split_across_chunks() {
+        // "data: 안녕\n" — "data: " is 6 bytes, 안/녕 are 3 bytes each.
+        let full = "data: 안녕\n".as_bytes().to_vec();
+        // Split at byte 7, mid-way through "안"'s 3-byte sequence.
+        let (first, rest) = full.split_at(7);
+
+        let mut buffer = Vec::new();
+        // No newline yet, and the trailing bytes are a partial codepoint:
+        // nothing should be emitted, and nothing should be corrupted.
+        assert!(drain_sse_lines(&mut buffer, first).is_empty());
+
+        let lines = drain_sse_lines(&mut buffer, rest);
+        assert_eq!(lines, vec!["data: 안녕".to_string()]);
+        // A per-chunk from_utf8_lossy would instead have produced U+FFFD here.
+        assert!(!lines[0].contains('\u{FFFD}'));
+    }
+
+    #[test]
+    fn drain_sse_lines_handles_multiple_lines_and_keeps_partial_tail() {
+        let mut buffer = Vec::new();
+        let lines = drain_sse_lines(&mut buffer, b"event: ping\r\ndata: {}\npartial");
+        assert_eq!(
+            lines,
+            vec!["event: ping".to_string(), "data: {}".to_string()]
+        );
+        // The unterminated "partial" tail stays buffered for the next chunk.
+        let lines = drain_sse_lines(&mut buffer, b" tail\n");
+        assert_eq!(lines, vec!["partial tail".to_string()]);
     }
 
     #[test]

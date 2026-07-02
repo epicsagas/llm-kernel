@@ -1,7 +1,9 @@
 //! Benchmarks for the knowledge graph module — smart_recall, BFS traversal, neighbor lookup,
 //! CSR build, and PageRank centrality.
 
-use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
+use std::hint::black_box;
+
+use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use rusqlite::Connection;
 
 use llm_kernel::graph::algo::{
@@ -25,11 +27,16 @@ fn mem_db() -> Connection {
 fn make_node(id: usize, importance: f64, tags: Vec<&str>) -> GraphNode {
     GraphNode {
         id: format!("n{id}"),
-        node_type: if id % 3 == 0 { "decision" } else { "concept" }.to_string(),
+        node_type: if id.is_multiple_of(3) {
+            "decision"
+        } else {
+            "concept"
+        }
+        .to_string(),
         title: format!("Node {id} — some descriptive text about topic {id}"),
         body: format!("Body content for node {id} with keywords rust, async, graph"),
         tags: tags.into_iter().map(|s| s.to_string()).collect(),
-        projects: if id % 5 == 0 {
+        projects: if id.is_multiple_of(5) {
             vec!["bench-proj".to_string()]
         } else {
             vec![]

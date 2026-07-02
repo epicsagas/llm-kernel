@@ -1,0 +1,15 @@
+# cargo-audit configuration — read automatically by `cargo audit` (CI runs it
+# bare from the repo root).
+#
+# `ignore` is the escape hatch for advisories on dependencies that end up in the
+# lock file transitively but that NO enabled feature actually compiles into an
+# active code path. The canonical example is `quinn-proto` / `quinn`, dragged in
+# by reqwest 0.13's optional QUIC / HTTP3 support — which this crate never
+# enables. Without this file, a single RUSTSEC advisory on such a dead dependency
+# hard-fails release CI even though llm-kernel is not reachable through it.
+#
+# Add an advisory ID below (with a dated one-line justification) ONLY for such
+# transitive-but-inactive dependencies. Never use it to silence an advisory on a
+# dependency that is genuinely compiled into the library.
+[advisories]
+ignore = []

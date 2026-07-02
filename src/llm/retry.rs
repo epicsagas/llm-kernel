@@ -72,14 +72,20 @@ impl<C> RetryClient<C> {
     }
 }
 
+/// Upper bound on an honored server `Retry-After`. A misconfigured or hostile
+/// endpoint returning e.g. `Retry-After: 999999` would otherwise wedge the task
+/// for ~11 days; we cap the honored hint at 5 minutes.
+const MAX_RETRY_AFTER_SECS: u64 = 300;
+
 /// Determine whether an error is retryable and extract the suggested delay.
 ///
 /// Returns `None` for non-retryable errors.
 fn retry_delay(err: &KernelError, attempt: u32, base_delay: Duration) -> Option<Duration> {
     match err {
         KernelError::RateLimited(secs) => {
-            // Use the server's retry-after hint, but still apply backoff scaling
-            let server_delay = Duration::from_secs(*secs);
+            // Honor the server's retry-after hint (still applying backoff
+            // scaling), but clamp it so an absurd value can't stall for days.
+            let server_delay = Duration::from_secs((*secs).min(MAX_RETRY_AFTER_SECS));
             Some(std::cmp::max(
                 server_delay,
                 backoff_with_jitter(attempt, base_delay),
@@ -189,6 +195,14 @@ mod tests {
         assert!(delay.is_some());
         // Should be at least 30s (server hint) or backoff, whichever is larger
         assert!(delay.unwrap() >= Duration::from_secs(30));
+    }
+
+    #[test]
+    fn retry_delay_rate_limited_is_clamped() {
+        // A hostile Retry-After must not stall the task for days.
+        let err = KernelError::RateLimited(999_999);
+        let delay = retry_delay(&err, 0, Duration::from_secs(1)).unwrap();
+        assert!(delay <= Duration::from_secs(MAX_RETRY_AFTER_SECS));
     }
 
     #[test]

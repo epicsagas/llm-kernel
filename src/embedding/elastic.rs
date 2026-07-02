@@ -180,7 +180,30 @@ impl ElasticsearchVectorIndex {
             &self.index, body
         ))
     }
+
+    /// POST one already-built NDJSON bulk `body` and validate the response.
+    /// `op` names the operation (`upsert`/`delete`) for error messages.
+    async fn submit_bulk(&self, body: String, op: &str) -> Result<()> {
+        let resp = self.ndjson("/_bulk?refresh=wait_for", body).await?;
+        if !resp.status().is_success() {
+            return Err(self.status_err(resp).await);
+        }
+        let parsed: BulkResponse = decode(resp).await?;
+        if parsed.errors {
+            return Err(KernelError::Embedding(format!(
+                "elasticsearch bulk {op} reported per-item errors [url redacted]: {}",
+                first_failing_bulk_item(&parsed.items)
+            )));
+        }
+        Ok(())
+    }
 }
+
+/// Max documents per `_bulk` request. A single request must stay under ES's
+/// `http.max_content_length` (default 100 MB); at 500 docs even 1024-dim `f32`
+/// vectors keep each batch a few MB, so large `add`/`remove` calls are chunked
+/// instead of built into one unbounded body.
+const BULK_CHUNK_SIZE: usize = 500;
 
 #[async_trait::async_trait]
 impl AsyncVectorIndex for ElasticsearchVectorIndex {
@@ -195,37 +218,34 @@ impl AsyncVectorIndex for ElasticsearchVectorIndex {
         if vectors.is_empty() {
             return Ok(());
         }
-        let mut body = String::new();
-        for (v, &id) in vectors.iter().zip(ids.iter()) {
-            body.push_str(
-                &serde_json::to_string(&serde_json::json!({
-                    "index": { "_index": &self.index, "_id": id.to_string() }
-                }))
-                .map_err(|e| KernelError::Embedding(format!("bulk encode: {e}")))?,
-            );
-            body.push('\n');
-            body.push_str(
-                &serde_json::to_string(&serde_json::json!({
-                    "ext_id": id,
-                    "vector": v
-                }))
-                .map_err(|e| KernelError::Embedding(format!("bulk encode: {e}")))?,
-            );
-            body.push('\n');
-        }
-        // `refresh=wait_for` makes the write immediately searchable, matching
-        // Qdrant's `wait(true)` so the conformance test's subsequent searches
-        // see the upsert without a race.
-        let resp = self.ndjson("/_bulk?refresh=wait_for", body).await?;
-        if !resp.status().is_success() {
-            return Err(self.status_err(resp).await);
-        }
-        let parsed: BulkResponse = decode(resp).await?;
-        if parsed.errors {
-            return Err(KernelError::Embedding(format!(
-                "elasticsearch bulk upsert reported per-item errors [url redacted]: {}",
-                first_failing_bulk_item(&parsed.items)
-            )));
+        // Chunk into bounded `_bulk` requests so a large batch can't build one
+        // unbounded body that exceeds ES's `http.max_content_length` (413) or
+        // spikes memory. `refresh=wait_for` on each batch makes the writes
+        // immediately searchable, matching Qdrant's `wait(true)` so the
+        // conformance test's subsequent searches see the upsert without a race.
+        for (vchunk, idchunk) in vectors
+            .chunks(BULK_CHUNK_SIZE)
+            .zip(ids.chunks(BULK_CHUNK_SIZE))
+        {
+            let mut body = String::new();
+            for (v, &id) in vchunk.iter().zip(idchunk.iter()) {
+                body.push_str(
+                    &serde_json::to_string(&serde_json::json!({
+                        "index": { "_index": &self.index, "_id": id.to_string() }
+                    }))
+                    .map_err(|e| KernelError::Embedding(format!("bulk encode: {e}")))?,
+                );
+                body.push('\n');
+                body.push_str(
+                    &serde_json::to_string(&serde_json::json!({
+                        "ext_id": id,
+                        "vector": v
+                    }))
+                    .map_err(|e| KernelError::Embedding(format!("bulk encode: {e}")))?,
+                );
+                body.push('\n');
+            }
+            self.submit_bulk(body, "upsert").await?;
         }
         Ok(())
     }
@@ -234,28 +254,20 @@ impl AsyncVectorIndex for ElasticsearchVectorIndex {
         if ids.is_empty() {
             return Ok(());
         }
-        let mut body = String::new();
-        for &id in ids {
-            body.push_str(
-                &serde_json::to_string(&serde_json::json!({
-                    "delete": { "_index": &self.index, "_id": id.to_string() }
-                }))
-                .map_err(|e| KernelError::Embedding(format!("bulk encode: {e}")))?,
-            );
-            body.push('\n');
-        }
-        let resp = self.ndjson("/_bulk?refresh=wait_for", body).await?;
-        if !resp.status().is_success() {
-            return Err(self.status_err(resp).await);
-        }
-        // Per-item `not_found` for deletes does NOT set `errors: true`, so this
-        // mirrors Qdrant's "silently ignore missing ids" contract.
-        let parsed: BulkResponse = decode(resp).await?;
-        if parsed.errors {
-            return Err(KernelError::Embedding(format!(
-                "elasticsearch bulk delete reported per-item errors [url redacted]: {}",
-                first_failing_bulk_item(&parsed.items)
-            )));
+        for idchunk in ids.chunks(BULK_CHUNK_SIZE) {
+            let mut body = String::new();
+            for &id in idchunk {
+                body.push_str(
+                    &serde_json::to_string(&serde_json::json!({
+                        "delete": { "_index": &self.index, "_id": id.to_string() }
+                    }))
+                    .map_err(|e| KernelError::Embedding(format!("bulk encode: {e}")))?,
+                );
+                body.push('\n');
+            }
+            // Per-item `not_found` for deletes does NOT set `errors: true`, so
+            // this mirrors Qdrant's "silently ignore missing ids" contract.
+            self.submit_bulk(body, "delete").await?;
         }
         Ok(())
     }

@@ -1,7 +1,9 @@
 //! Benchmarks for pure-compute modules — token estimation, RRF fusion, and
 //! embedding similarity.
 
-use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
+use std::hint::black_box;
+
+use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 
 use llm_kernel::embedding::cosine_similarity;
 use llm_kernel::search::rrf::rrf_fuse;
