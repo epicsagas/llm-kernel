@@ -29,10 +29,12 @@ impl<'a> JsonRpcDispatcher<'a> {
     ) -> Option<String> {
         let provided = auth_header.unwrap_or("");
         if !self.server.check_auth(provided) {
-            // Return an error for every request id we can parse, else a fixed-id error.
+            // Echo back the request id (string or number) when we can parse one,
+            // else a null id per JSON-RPC.
             let id = serde_json::from_str::<serde_json::Value>(request.trim())
                 .ok()
-                .and_then(|v| v.get("id").and_then(|id| id.as_i64()));
+                .and_then(|v| v.get("id").cloned())
+                .unwrap_or(serde_json::Value::Null);
             return Some(self.error_response(id, -32001, "Unauthorized"));
         }
         self.dispatch(request)
@@ -46,7 +48,11 @@ impl<'a> JsonRpcDispatcher<'a> {
             let reqs: Vec<serde_json::Value> = match serde_json::from_str(trimmed) {
                 Ok(v) => v,
                 Err(e) => {
-                    return Some(self.error_response(None, -32700, &format!("Parse error: {e}")));
+                    return Some(self.error_response(
+                        serde_json::Value::Null,
+                        -32700,
+                        &format!("Parse error: {e}"),
+                    ));
                 }
             };
             let responses: Vec<String> = reqs
@@ -62,7 +68,11 @@ impl<'a> JsonRpcDispatcher<'a> {
             let req: serde_json::Value = match serde_json::from_str(trimmed) {
                 Ok(v) => v,
                 Err(e) => {
-                    return Some(self.error_response(None, -32700, &format!("Parse error: {e}")));
+                    return Some(self.error_response(
+                        serde_json::Value::Null,
+                        -32700,
+                        &format!("Parse error: {e}"),
+                    ));
                 }
             };
             self.dispatch_single(&req)
@@ -71,21 +81,36 @@ impl<'a> JsonRpcDispatcher<'a> {
 
     /// Dispatch a single pre-parsed JSON-RPC request.
     fn dispatch_single(&self, req: &serde_json::Value) -> Option<String> {
-        // Notifications (no id) don't get responses
+        // Notifications (the `id` member is absent) don't get responses. This is
+        // distinct from a null id, which is a request that must be answered.
         req.get("id")?;
-
-        let id = req.get("id").and_then(|v| v.as_i64());
+        // Preserve the id verbatim (JSON-RPC ids may be a string or a number).
+        let id = req.get("id").cloned().unwrap_or(serde_json::Value::Null);
         let method = req.get("method").and_then(|v| v.as_str()).unwrap_or("");
 
         let result = match method {
-            "initialize" => Ok(self.server.initialize_response()),
+            "initialize" => {
+                let requested = req
+                    .get("params")
+                    .and_then(|p| p.get("protocolVersion"))
+                    .and_then(|v| v.as_str());
+                Ok(self.server.initialize_response(requested))
+            }
+            "ping" => Ok(serde_json::json!({})),
             "tools/list" => Ok(serde_json::json!({
                 "tools": self.server.tools()
             })),
             "resources/list" => Ok(serde_json::json!({
                 "resources": self.server.resources()
             })),
-            "tools/call" => self.handle_tool_call(req),
+            "resources/templates/list" => Ok(serde_json::json!({
+                "resourceTemplates": []
+            })),
+            "prompts/list" => Ok(serde_json::json!({
+                "prompts": self.server.prompts()
+            })),
+            "prompts/get" => self.handle_prompt_get(req),
+            "tools/call" => return Some(self.handle_tool_call(&id, req)),
             "resources/read" => self.handle_resource_read(req),
             _ => Err((-32601, format!("Method not found: {method}"))),
         };
@@ -115,10 +140,13 @@ impl<'a> JsonRpcDispatcher<'a> {
         Ok(())
     }
 
-    fn handle_tool_call(
-        &self,
-        req: &serde_json::Value,
-    ) -> std::result::Result<serde_json::Value, (i32, String)> {
+    /// Handle `tools/call`. Returns a full JSON-RPC response string.
+    ///
+    /// An **unknown tool** is a protocol error (`-32602`, invalid params). A
+    /// tool that runs and **fails** is reported in-band as a successful result
+    /// with `isError: true`, per the MCP spec — so the model sees the error and
+    /// can adapt rather than the whole request failing at the transport layer.
+    fn handle_tool_call(&self, id: &serde_json::Value, req: &serde_json::Value) -> String {
         let tool_name = req
             .get("params")
             .and_then(|p| p.get("name"))
@@ -131,17 +159,47 @@ impl<'a> JsonRpcDispatcher<'a> {
             .cloned()
             .unwrap_or(serde_json::json!(null));
 
-        self.server
-            .call_tool(tool_name, params)
-            .map(|result| {
+        if !self.server.has_tool(tool_name) {
+            return self.error_response(id.clone(), -32602, &format!("Unknown tool: {tool_name}"));
+        }
+
+        match self.server.call_tool(tool_name, params) {
+            Ok(result) => self.success_response(
+                id.clone(),
                 serde_json::json!({
-                    "content": [{
-                        "type": "text",
-                        "text": result.to_string()
-                    }]
-                })
-            })
-            .map_err(|e| (-32603, e.to_string()))
+                    "content": [{ "type": "text", "text": result.to_string() }],
+                    "isError": false
+                }),
+            ),
+            Err(e) => self.success_response(
+                id.clone(),
+                serde_json::json!({
+                    "content": [{ "type": "text", "text": e.to_string() }],
+                    "isError": true
+                }),
+            ),
+        }
+    }
+
+    /// Handle `prompts/get`: render a registered prompt with the given
+    /// arguments. An unknown prompt is an invalid-params error.
+    fn handle_prompt_get(
+        &self,
+        req: &serde_json::Value,
+    ) -> std::result::Result<serde_json::Value, (i32, String)> {
+        let name = req
+            .get("params")
+            .and_then(|p| p.get("name"))
+            .and_then(|n| n.as_str())
+            .unwrap_or("");
+        let args = req
+            .get("params")
+            .and_then(|p| p.get("arguments"))
+            .cloned()
+            .unwrap_or(serde_json::json!({}));
+        self.server
+            .get_prompt(name, args)
+            .map_err(|e| (-32602, e.to_string()))
     }
 
     fn handle_resource_read(
@@ -166,29 +224,25 @@ impl<'a> JsonRpcDispatcher<'a> {
             .map_err(|e| (-32603, e.to_string()))
     }
 
-    fn success_response(&self, id: Option<i64>, result: serde_json::Value) -> String {
-        let mut resp = serde_json::json!({
+    fn success_response(&self, id: serde_json::Value, result: serde_json::Value) -> String {
+        serde_json::to_string(&serde_json::json!({
             "jsonrpc": "2.0",
+            "id": id,
             "result": result,
-        });
-        if let Some(id) = id {
-            resp["id"] = serde_json::json!(id);
-        }
-        serde_json::to_string(&resp).unwrap_or_default()
+        }))
+        .unwrap_or_default()
     }
 
-    fn error_response(&self, id: Option<i64>, code: i32, message: &str) -> String {
-        let mut resp = serde_json::json!({
+    fn error_response(&self, id: serde_json::Value, code: i32, message: &str) -> String {
+        serde_json::to_string(&serde_json::json!({
             "jsonrpc": "2.0",
+            "id": id,
             "error": {
                 "code": code,
                 "message": message,
             }
-        });
-        if let Some(id) = id {
-            resp["id"] = serde_json::json!(id);
-        }
-        serde_json::to_string(&resp).unwrap_or_default()
+        }))
+        .unwrap_or_default()
     }
 }
 
@@ -262,13 +316,132 @@ mod tests {
     }
 
     #[test]
-    fn dispatch_unknown_tool() {
+    fn dispatch_unknown_tool_is_invalid_params() {
+        // An unknown tool is a protocol error (-32602), not an in-band failure.
         let server = test_server();
         let dispatcher = JsonRpcDispatcher::new(&server);
         let req = r#"{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"missing","arguments":{}}}"#;
         let resp = dispatcher.dispatch(req).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&resp).unwrap();
-        assert_eq!(parsed["error"]["code"], -32603);
+        assert_eq!(parsed["error"]["code"], -32602);
+    }
+
+    #[test]
+    fn dispatch_ping_returns_empty_result() {
+        let server = test_server();
+        let dispatcher = JsonRpcDispatcher::new(&server);
+        let resp = dispatcher
+            .dispatch(r#"{"jsonrpc":"2.0","id":9,"method":"ping"}"#)
+            .unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&resp).unwrap();
+        assert_eq!(parsed["id"], 9);
+        assert!(parsed["result"].is_object());
+        assert_eq!(parsed["result"].as_object().unwrap().len(), 0);
+    }
+
+    #[test]
+    fn dispatch_preserves_string_id() {
+        let server = test_server();
+        let dispatcher = JsonRpcDispatcher::new(&server);
+        let resp = dispatcher
+            .dispatch(r#"{"jsonrpc":"2.0","id":"req-abc","method":"tools/list"}"#)
+            .unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&resp).unwrap();
+        assert_eq!(parsed["id"], "req-abc");
+    }
+
+    #[test]
+    fn initialize_echoes_client_protocol_version() {
+        let server = test_server();
+        let dispatcher = JsonRpcDispatcher::new(&server);
+        let resp = dispatcher
+            .dispatch(
+                r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05"}}"#,
+            )
+            .unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&resp).unwrap();
+        assert_eq!(parsed["result"]["protocolVersion"], "2024-11-05");
+    }
+
+    #[test]
+    fn tool_execution_error_reported_in_band() {
+        // A registered tool whose handler fails → result with isError: true,
+        // NOT a JSON-RPC error object.
+        let mut server = McpServer::new("t", "1.0");
+        server.register_tool(ToolDescription {
+            name: "boom".into(),
+            description: "always fails".into(),
+            input_schema: serde_json::json!({"type": "object"}),
+        });
+        server.set_handler("boom", |_| {
+            Err(crate::error::KernelError::Config("kaboom".into()))
+        });
+        let dispatcher = JsonRpcDispatcher::new(&server);
+        let req = r#"{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"boom","arguments":{}}}"#;
+        let resp = dispatcher.dispatch(req).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&resp).unwrap();
+        assert!(
+            parsed.get("error").is_none(),
+            "should not be a protocol error"
+        );
+        assert_eq!(parsed["result"]["isError"], true);
+        assert!(
+            parsed["result"]["content"][0]["text"]
+                .as_str()
+                .unwrap()
+                .contains("kaboom")
+        );
+    }
+
+    #[test]
+    fn dispatch_prompts_list_and_get() {
+        let mut server = McpServer::new("t", "1.0");
+        server.register_prompt(crate::mcp::schema::PromptDescription {
+            name: "greet".into(),
+            description: Some("Greet".into()),
+            arguments: Vec::new(),
+        });
+        server.set_prompt_handler("greet", |_| {
+            Ok(serde_json::json!({
+                "messages": [{ "role": "user", "content": { "type": "text", "text": "hi" } }]
+            }))
+        });
+        let dispatcher = JsonRpcDispatcher::new(&server);
+
+        let list = dispatcher
+            .dispatch(r#"{"jsonrpc":"2.0","id":1,"method":"prompts/list"}"#)
+            .unwrap();
+        let list: serde_json::Value = serde_json::from_str(&list).unwrap();
+        assert_eq!(list["result"]["prompts"][0]["name"], "greet");
+
+        let got = dispatcher
+            .dispatch(r#"{"jsonrpc":"2.0","id":2,"method":"prompts/get","params":{"name":"greet","arguments":{}}}"#)
+            .unwrap();
+        let got: serde_json::Value = serde_json::from_str(&got).unwrap();
+        assert_eq!(got["result"]["messages"][0]["content"]["text"], "hi");
+    }
+
+    #[test]
+    fn dispatch_resource_templates_list_is_empty() {
+        let server = test_server();
+        let dispatcher = JsonRpcDispatcher::new(&server);
+        let resp = dispatcher
+            .dispatch(r#"{"jsonrpc":"2.0","id":1,"method":"resources/templates/list"}"#)
+            .unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&resp).unwrap();
+        assert!(parsed["result"]["resourceTemplates"].is_array());
+    }
+
+    #[test]
+    fn notification_without_id_gets_no_response() {
+        let server = test_server();
+        let dispatcher = JsonRpcDispatcher::new(&server);
+        // `notifications/initialized` is a notification (no id) → no response.
+        assert!(
+            dispatcher
+                .dispatch(r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#)
+                .is_none()
+        );
     }
 
     #[test]

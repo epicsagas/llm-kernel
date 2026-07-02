@@ -7,7 +7,16 @@ use std::sync::Arc;
 use async_trait::async_trait;
 
 use crate::mcp::auth::BearerAuth;
-use crate::mcp::schema::{ResourceDescription, ToolDescription};
+use crate::mcp::schema::{PromptDescription, ResourceDescription, ToolDescription};
+
+/// MCP protocol versions this server understands, newest first.
+///
+/// During `initialize` the server echoes the client's requested version when it
+/// appears here, otherwise it falls back to [`LATEST_PROTOCOL_VERSION`].
+pub const SUPPORTED_PROTOCOL_VERSIONS: &[&str] = &["2025-06-18", "2025-03-26", "2024-11-05"];
+
+/// The newest MCP protocol version this server implements.
+pub const LATEST_PROTOCOL_VERSION: &str = "2025-06-18";
 
 /// Handler function type for MCP tool calls (synchronous).
 pub type Handler =
@@ -40,15 +49,17 @@ where
     }
 }
 
-/// An MCP server that manages tools, resources, and dispatches calls.
+/// An MCP server that manages tools, resources, prompts, and dispatches calls.
 pub struct McpServer {
     server_name: String,
     server_version: String,
     tools: Vec<ToolDescription>,
     resources: Vec<ResourceDescription>,
+    prompts: Vec<PromptDescription>,
     handlers: HashMap<String, Handler>,
     async_handlers: HashMap<String, Arc<dyn AsyncToolHandler>>,
     resource_handlers: HashMap<String, Handler>,
+    prompt_handlers: HashMap<String, Handler>,
     auth: Option<BearerAuth>,
 }
 
@@ -60,9 +71,11 @@ impl McpServer {
             server_version: version.into(),
             tools: Vec::new(),
             resources: Vec::new(),
+            prompts: Vec::new(),
             handlers: HashMap::new(),
             async_handlers: HashMap::new(),
             resource_handlers: HashMap::new(),
+            prompt_handlers: HashMap::new(),
             auth: None,
         }
     }
@@ -179,6 +192,54 @@ impl McpServer {
         handler(params)
     }
 
+    /// Register a prompt with the server.
+    pub fn register_prompt(&mut self, prompt: PromptDescription) {
+        self.prompts.push(prompt);
+    }
+
+    /// Set the handler for a prompt by name.
+    ///
+    /// The handler receives the `prompts/get` arguments object and returns the
+    /// result value — typically `{ "description": ..., "messages": [...] }`.
+    pub fn set_prompt_handler(
+        &mut self,
+        prompt_name: &str,
+        handler: impl Fn(serde_json::Value) -> crate::error::Result<serde_json::Value>
+        + Send
+        + Sync
+        + 'static,
+    ) {
+        self.prompt_handlers
+            .insert(prompt_name.to_string(), Box::new(handler));
+    }
+
+    /// List all registered prompts.
+    pub fn prompts(&self) -> &[PromptDescription] {
+        &self.prompts
+    }
+
+    /// Render a prompt by name with the given arguments.
+    pub fn get_prompt(
+        &self,
+        name: &str,
+        params: serde_json::Value,
+    ) -> crate::error::Result<serde_json::Value> {
+        let handler = self
+            .prompt_handlers
+            .get(name)
+            .ok_or_else(|| crate::error::KernelError::Config(format!("unknown prompt: {name}")))?;
+        handler(params)
+    }
+
+    /// Whether a tool with `name` is registered (has a sync or async handler).
+    ///
+    /// Lets a transport distinguish an *unknown tool* (a protocol-level invalid
+    /// params error) from a tool that ran and *failed* (reported in-band with
+    /// `isError: true`).
+    pub fn has_tool(&self, name: &str) -> bool {
+        self.handlers.contains_key(name) || self.async_handlers.contains_key(name)
+    }
+
     /// Call a tool by name with the given parameters.
     pub fn call_tool(
         &self,
@@ -211,14 +272,39 @@ impl McpServer {
         )))
     }
 
-    /// Build the `initialize` response.
-    pub fn initialize_response(&self) -> serde_json::Value {
+    /// Resolve the protocol version to report in `initialize`.
+    ///
+    /// Echoes `requested` when it is one of [`SUPPORTED_PROTOCOL_VERSIONS`];
+    /// otherwise returns [`LATEST_PROTOCOL_VERSION`] (per the MCP spec, the
+    /// server proposes its own latest when it cannot honor the client's).
+    pub fn negotiate_protocol_version(&self, requested: Option<&str>) -> &'static str {
+        match requested {
+            Some(v) => SUPPORTED_PROTOCOL_VERSIONS
+                .iter()
+                .find(|&&s| s == v)
+                .copied()
+                .unwrap_or(LATEST_PROTOCOL_VERSION),
+            None => LATEST_PROTOCOL_VERSION,
+        }
+    }
+
+    /// Build the `initialize` response, negotiating the protocol version against
+    /// the client's requested version.
+    ///
+    /// The advertised capabilities reflect what the server actually supports:
+    /// `tools` and `resources` are always present; `prompts` is included only
+    /// when at least one prompt is registered.
+    pub fn initialize_response(&self, requested_version: Option<&str>) -> serde_json::Value {
+        let mut capabilities = serde_json::json!({
+            "tools": { "listChanged": false },
+            "resources": { "subscribe": false, "listChanged": false },
+        });
+        if !self.prompts.is_empty() {
+            capabilities["prompts"] = serde_json::json!({ "listChanged": false });
+        }
         serde_json::json!({
-            "protocolVersion": "2024-11-05",
-            "capabilities": {
-                "tools": { "listChanged": false },
-                "resources": { "subscribe": false, "listChanged": false },
-            },
+            "protocolVersion": self.negotiate_protocol_version(requested_version),
+            "capabilities": capabilities,
             "serverInfo": {
                 "name": self.server_name,
                 "version": self.server_version,
@@ -257,9 +343,83 @@ mod tests {
     #[test]
     fn initialize_response_shape() {
         let server = McpServer::new("my-server", "2.0.0");
-        let resp = server.initialize_response();
+        let resp = server.initialize_response(None);
         assert_eq!(resp["serverInfo"]["name"], "my-server");
-        assert_eq!(resp["protocolVersion"], "2024-11-05");
+        assert_eq!(resp["protocolVersion"], LATEST_PROTOCOL_VERSION);
+        // No prompts registered → no prompts capability advertised.
+        assert!(resp["capabilities"].get("prompts").is_none());
+    }
+
+    #[test]
+    fn initialize_negotiates_supported_version() {
+        let server = McpServer::new("s", "1.0");
+        // A supported version the client asked for is echoed back.
+        assert_eq!(
+            server.initialize_response(Some("2024-11-05"))["protocolVersion"],
+            "2024-11-05"
+        );
+        // An unsupported version falls back to the server's latest.
+        assert_eq!(
+            server.initialize_response(Some("1999-01-01"))["protocolVersion"],
+            LATEST_PROTOCOL_VERSION
+        );
+    }
+
+    #[test]
+    fn initialize_advertises_prompts_when_registered() {
+        let mut server = McpServer::new("s", "1.0");
+        server.register_prompt(PromptDescription {
+            name: "greet".into(),
+            description: None,
+            arguments: Vec::new(),
+        });
+        let resp = server.initialize_response(None);
+        assert!(resp["capabilities"]["prompts"].is_object());
+    }
+
+    #[test]
+    fn register_and_get_prompt() {
+        let mut server = McpServer::new("s", "1.0");
+        server.register_prompt(PromptDescription {
+            name: "greet".into(),
+            description: Some("Greet someone".into()),
+            arguments: vec![crate::mcp::schema::PromptArgument {
+                name: "name".into(),
+                description: None,
+                required: true,
+            }],
+        });
+        server.set_prompt_handler("greet", |params| {
+            let who = params
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("world");
+            Ok(serde_json::json!({
+                "messages": [{
+                    "role": "user",
+                    "content": { "type": "text", "text": format!("Hello, {who}!") }
+                }]
+            }))
+        });
+        assert_eq!(server.prompts().len(), 1);
+        let result = server
+            .get_prompt("greet", serde_json::json!({ "name": "Ada" }))
+            .unwrap();
+        assert_eq!(result["messages"][0]["content"]["text"], "Hello, Ada!");
+    }
+
+    #[test]
+    fn unknown_prompt_returns_error() {
+        let server = McpServer::new("s", "1.0");
+        assert!(server.get_prompt("missing", serde_json::json!({})).is_err());
+    }
+
+    #[test]
+    fn has_tool_reports_registration() {
+        let mut server = McpServer::new("s", "1.0");
+        server.set_handler("echo", |p| Ok(p));
+        assert!(server.has_tool("echo"));
+        assert!(!server.has_tool("nope"));
     }
 
     #[test]

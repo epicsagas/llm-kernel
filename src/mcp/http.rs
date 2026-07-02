@@ -57,6 +57,8 @@ pub async fn serve(server: Arc<McpServer>, addr: SocketAddr) -> std::io::Result<
 
 /// JSON-RPC code for "method not found".
 const ERR_METHOD_NOT_FOUND: i32 = -32601;
+/// JSON-RPC code for invalid params (unknown tool / prompt / resource).
+const ERR_INVALID_PARAMS: i32 = -32602;
 /// JSON-RPC code for a tool-execution / internal error.
 const ERR_INTERNAL: i32 = -32603;
 /// JSON-RPC code for unauthorized access.
@@ -65,17 +67,39 @@ const ERR_UNAUTHORIZED: i32 = -32001;
 /// Dispatch a single JSON-RPC request against the server (async path).
 ///
 /// `tools/call` is awaited via [`McpServer::call_tool_async`]; `initialize`,
-/// `tools/list`, and `resources/list` are handled synchronously. Notifications
-/// (no `id`) return `None`.
+/// `ping`, `tools/list`, `resources/list`, `resources/templates/list`,
+/// `prompts/list`, `prompts/get`, and `resources/read` are handled
+/// synchronously. Notifications (no `id`) return `None`.
 async fn dispatch_async(server: &McpServer, req: &Value) -> Option<Value> {
     // Notifications (no id) get no response.
     let id = req.get("id")?.clone();
     let method = req.get("method").and_then(|v| v.as_str()).unwrap_or("");
 
     let result: Result<Value, (i32, String)> = match method {
-        "initialize" => Ok(server.initialize_response()),
+        "initialize" => {
+            let requested = req
+                .pointer("/params/protocolVersion")
+                .and_then(|v| v.as_str());
+            Ok(server.initialize_response(requested))
+        }
+        "ping" => Ok(serde_json::json!({})),
         "tools/list" => Ok(serde_json::json!({ "tools": server.tools() })),
         "resources/list" => Ok(serde_json::json!({ "resources": server.resources() })),
+        "resources/templates/list" => Ok(serde_json::json!({ "resourceTemplates": [] })),
+        "prompts/list" => Ok(serde_json::json!({ "prompts": server.prompts() })),
+        "prompts/get" => {
+            let name = req
+                .pointer("/params/name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let args = req
+                .pointer("/params/arguments")
+                .cloned()
+                .unwrap_or(serde_json::json!({}));
+            server
+                .get_prompt(name, args)
+                .map_err(|e| (ERR_INVALID_PARAMS, e.to_string()))
+        }
         "resources/read" => {
             let uri = req
                 .pointer("/params/uri")
@@ -99,15 +123,21 @@ async fn dispatch_async(server: &McpServer, req: &Value) -> Option<Value> {
                 .pointer("/params/arguments")
                 .cloned()
                 .unwrap_or(serde_json::json!(null));
-            server
-                .call_tool_async(name, params)
-                .await
-                .map(|r| {
-                    serde_json::json!({
-                        "content": [{ "type": "text", "text": r.to_string() }]
-                    })
-                })
-                .map_err(|e| (ERR_INTERNAL, e.to_string()))
+            if !server.has_tool(name) {
+                Err((ERR_INVALID_PARAMS, format!("Unknown tool: {name}")))
+            } else {
+                // Execution failures are reported in-band with isError: true.
+                match server.call_tool_async(name, params).await {
+                    Ok(r) => Ok(serde_json::json!({
+                        "content": [{ "type": "text", "text": r.to_string() }],
+                        "isError": false
+                    })),
+                    Err(e) => Ok(serde_json::json!({
+                        "content": [{ "type": "text", "text": e.to_string() }],
+                        "isError": true
+                    })),
+                }
+            }
         }
         _ => Err((ERR_METHOD_NOT_FOUND, format!("Method not found: {method}"))),
     };
