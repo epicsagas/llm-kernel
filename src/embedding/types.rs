@@ -1,5 +1,7 @@
 //! Embedding types and trait definitions.
 
+use crate::error::{KernelError, Result};
+
 /// A single embedding result.
 #[derive(Debug, Clone)]
 pub struct EmbeddingResult {
@@ -71,7 +73,7 @@ pub trait EmbeddingProvider: Send + Sync {
     fn dim(&self) -> usize;
 
     /// Embed a single text string.
-    fn embed(&self, text: &str) -> anyhow::Result<EmbeddingResult>;
+    fn embed(&self, text: &str) -> Result<EmbeddingResult>;
 
     /// Embed multiple texts in batch.
     ///
@@ -79,7 +81,7 @@ pub trait EmbeddingProvider: Send + Sync {
     /// Returns an error on the **first** failure — successful results up to
     /// that point are discarded. For fine-grained error handling, call
     /// [`embed`](Self::embed) individually and collect results manually.
-    fn embed_batch(&self, texts: &[&str]) -> anyhow::Result<Vec<EmbeddingResult>> {
+    fn embed_batch(&self, texts: &[&str]) -> Result<Vec<EmbeddingResult>> {
         texts.iter().map(|t| self.embed(t)).collect()
     }
 
@@ -104,12 +106,9 @@ pub trait EmbeddingProvider: Send + Sync {
 /// let chunks = chunk_batch(&["a", "b", "c", "d", "e"], 2).unwrap();
 /// assert_eq!(chunks, vec![vec!["a", "b"], vec!["c", "d"], vec!["e"]]);
 /// ```
-pub fn chunk_batch<'a>(
-    texts: &[&'a str],
-    max_batch_size: usize,
-) -> anyhow::Result<Vec<Vec<&'a str>>> {
+pub fn chunk_batch<'a>(texts: &[&'a str], max_batch_size: usize) -> Result<Vec<Vec<&'a str>>> {
     if max_batch_size == 0 {
-        anyhow::bail!("max_batch_size must be > 0");
+        return Err(KernelError::Embedding("max_batch_size must be > 0".into()));
     }
     Ok(texts.chunks(max_batch_size).map(|c| c.to_vec()).collect())
 }

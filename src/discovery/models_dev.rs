@@ -12,6 +12,7 @@
 //! models.dev metadata (pricing, limits, modalities, capabilities) so they can
 //! feed [`crate::provider::ProviderIndex::with_discovered`].
 
+use crate::error::{KernelError, Result};
 use crate::provider::{ModelCapabilities, ModelCost, ModelDescriptor, ModelLimit, ModelModalities};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -268,26 +269,28 @@ fn raw_to_entry(provider_id: &str, m: &RawModel) -> ModelEntry {
 // ---------------------------------------------------------------------------
 
 /// Fetch the raw response body from `url` with a bounded timeout.
-fn http_get(url: &str) -> anyhow::Result<String> {
+fn http_get(url: &str) -> Result<String> {
     let config = ureq::config::Config::builder()
         .timeout_global(Some(std::time::Duration::from_secs(10)))
         .build();
     let agent = ureq::Agent::new_with_config(config);
-    let mut resp = agent.get(url).call()?;
-    Ok(resp.body_mut().read_to_string()?)
+    let mut resp = agent.get(url).call().map_err(KernelError::discovery)?;
+    resp.body_mut()
+        .read_to_string()
+        .map_err(KernelError::discovery)
 }
 
 /// Fetch and parse the models.dev catalog from `url` (no disk cache).
 ///
 /// **Trust boundary:** the URL is used verbatim with no host allowlist; pass
 /// only admin-configured values.
-pub fn fetch_from(url: &str) -> anyhow::Result<ModelsDevPayload> {
+pub fn fetch_from(url: &str) -> Result<ModelsDevPayload> {
     let body = http_get(url)?;
     serde_json::from_str(&body).map_err(Into::into)
 }
 
 /// Fetch and parse the catalog from the default models.dev endpoint (no cache).
-pub fn fetch() -> anyhow::Result<ModelsDevPayload> {
+pub fn fetch() -> Result<ModelsDevPayload> {
     fetch_from(MODELS_DEV_URL)
 }
 
@@ -296,7 +299,7 @@ pub fn fetch() -> anyhow::Result<ModelsDevPayload> {
 /// The cache file is written byte-identical to the upstream response, so it
 /// diffs cleanly against `https://models.dev/api.json` and round-trips through
 /// [`load_cache`].
-pub fn fetch_and_cache(cache_path: &str) -> anyhow::Result<ModelsDevPayload> {
+pub fn fetch_and_cache(cache_path: &str) -> Result<ModelsDevPayload> {
     let body = http_get(MODELS_DEV_URL)?;
 
     if let Some(parent) = Path::new(cache_path).parent() {
@@ -308,7 +311,7 @@ pub fn fetch_and_cache(cache_path: &str) -> anyhow::Result<ModelsDevPayload> {
 }
 
 /// Load previously cached models.dev data.
-pub fn load_cache(cache_path: &str) -> anyhow::Result<Option<ModelsDevPayload>> {
+pub fn load_cache(cache_path: &str) -> Result<Option<ModelsDevPayload>> {
     if !Path::new(cache_path).exists() {
         return Ok(None);
     }

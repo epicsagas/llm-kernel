@@ -11,16 +11,15 @@
 //! search, filtered search, length, dimensionality — and omits `save` because
 //! remote backends persist server-side (just as [`VectorIndex`] omits `load`
 //! to stay object-safe). Concrete implementations live in this crate behind
-//! feature flags (e.g. the `qdrant` feature at `src/embedding/qdrant.rs`);
-//! Elasticsearch will implement it in v0.9.0.
+//! feature flags: the `qdrant` feature (`src/embedding/qdrant.rs`) and the
+//! `elastic` feature (`src/embedding/elastic.rs`).
 //!
 //! The trait has no concrete dependencies beyond `async_trait`. It is defined
 //! behind the `embedding` feature so the shared contract stays in the kernel
 //! while the heavy client crates remain opt-in.
 
-use anyhow::Result;
-
 use crate::embedding::vector_index::SearchHit;
+use crate::error::Result;
 
 /// Async, object-safe vector index for remote/shared backends.
 ///

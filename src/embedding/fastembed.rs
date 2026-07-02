@@ -17,6 +17,7 @@ use std::sync::Mutex;
 
 use crate::embedding::catalog::EmbeddingModel;
 use crate::embedding::types::{EmbeddingProvider, EmbeddingResult};
+use crate::error::{KernelError, Result};
 
 /// Local ONNX embedding provider backed by fastembed-rs.
 ///
@@ -33,13 +34,13 @@ impl FastembedProvider {
     ///
     /// `cache_dir` overrides the HuggingFace model cache directory.
     /// Pass `None` to use the default cache location.
-    pub fn new(model: EmbeddingModel, cache_dir: Option<PathBuf>) -> anyhow::Result<Self> {
+    pub fn new(model: EmbeddingModel, cache_dir: Option<PathBuf>) -> Result<Self> {
         let mut options = fastembed::TextInitOptions::new(model.as_fastembed())
             .with_show_download_progress(false);
         if let Some(dir) = cache_dir {
             options = options.with_cache_dir(dir);
         }
-        let te = fastembed::TextEmbedding::try_new(options)?;
+        let te = fastembed::TextEmbedding::try_new(options).map_err(KernelError::embedding)?;
         Ok(Self {
             inner: Mutex::new(te),
             model,
@@ -57,10 +58,7 @@ impl FastembedProvider {
     ///
     /// `cache_dir` overrides the HuggingFace model cache directory.
     #[cfg(all(feature = "embedding-fastembed-directml", target_os = "windows"))]
-    pub fn new_with_directml(
-        model: EmbeddingModel,
-        cache_dir: Option<PathBuf>,
-    ) -> anyhow::Result<Self> {
+    pub fn new_with_directml(model: EmbeddingModel, cache_dir: Option<PathBuf>) -> Result<Self> {
         use ort::execution_providers::DirectMLExecutionProvider;
         let mut options = fastembed::TextInitOptions::new(model.as_fastembed())
             .with_show_download_progress(false)
@@ -68,7 +66,7 @@ impl FastembedProvider {
         if let Some(dir) = cache_dir {
             options = options.with_cache_dir(dir);
         }
-        let te = fastembed::TextEmbedding::try_new(options)?;
+        let te = fastembed::TextEmbedding::try_new(options).map_err(KernelError::embedding)?;
         Ok(Self {
             inner: Mutex::new(te),
             model,
@@ -80,14 +78,14 @@ impl FastembedProvider {
         model: EmbeddingModel,
         cache_dir: Option<PathBuf>,
         max_length: usize,
-    ) -> anyhow::Result<Self> {
+    ) -> Result<Self> {
         let mut options = fastembed::TextInitOptions::new(model.as_fastembed())
             .with_show_download_progress(false)
             .with_max_length(max_length);
         if let Some(dir) = cache_dir {
             options = options.with_cache_dir(dir);
         }
-        let te = fastembed::TextEmbedding::try_new(options)?;
+        let te = fastembed::TextEmbedding::try_new(options).map_err(KernelError::embedding)?;
         Ok(Self {
             inner: Mutex::new(te),
             model,
@@ -106,7 +104,7 @@ impl EmbeddingProvider for FastembedProvider {
         self.model.as_str()
     }
 
-    fn embed(&self, text: &str) -> anyhow::Result<EmbeddingResult> {
+    fn embed(&self, text: &str) -> Result<EmbeddingResult> {
         let owned = match self.model.query_prefix() {
             Some(prefix) => format!("{prefix}{text}"),
             None => text.to_string(),
@@ -114,12 +112,14 @@ impl EmbeddingProvider for FastembedProvider {
         let mut te = self
             .inner
             .lock()
-            .map_err(|e| anyhow::anyhow!("lock: {e}"))?;
-        let embeddings = te.embed(vec![owned], None)?;
+            .map_err(|e| KernelError::Embedding(format!("lock: {e}")))?;
+        let embeddings = te
+            .embed(vec![owned], None)
+            .map_err(KernelError::embedding)?;
         let vector = embeddings
             .into_iter()
             .next()
-            .ok_or_else(|| anyhow::anyhow!("empty embedding output"))?;
+            .ok_or_else(|| KernelError::Embedding("empty embedding output".into()))?;
 
         Ok(EmbeddingResult {
             vector,
@@ -127,7 +127,7 @@ impl EmbeddingProvider for FastembedProvider {
         })
     }
 
-    fn embed_batch(&self, texts: &[&str]) -> anyhow::Result<Vec<EmbeddingResult>> {
+    fn embed_batch(&self, texts: &[&str]) -> Result<Vec<EmbeddingResult>> {
         if texts.is_empty() {
             return Ok(vec![]);
         }
@@ -143,8 +143,8 @@ impl EmbeddingProvider for FastembedProvider {
         let mut te = self
             .inner
             .lock()
-            .map_err(|e| anyhow::anyhow!("lock: {e}"))?;
-        let embeddings = te.embed(prepared, None)?;
+            .map_err(|e| KernelError::Embedding(format!("lock: {e}")))?;
+        let embeddings = te.embed(prepared, None).map_err(KernelError::embedding)?;
 
         Ok(embeddings
             .into_iter()

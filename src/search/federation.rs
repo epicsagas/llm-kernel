@@ -351,10 +351,10 @@ mod async_tests {
     use std::sync::Arc;
     use std::time::Duration;
 
-    use anyhow::{Result, anyhow};
     use async_trait::async_trait;
 
     use crate::embedding::{AsyncVectorIndex, SearchHit};
+    use crate::error::{KernelError, Result};
     use crate::search::federation::{FederatedSearch, FusionStrategy};
 
     /// Configurable stub backend: returns canned hits, optionally fails, or
@@ -379,7 +379,7 @@ mod async_tests {
                 tokio::time::sleep(d).await;
             }
             if self.fail {
-                return Err(anyhow!("stub backend failure"));
+                return Err(KernelError::Embedding("stub backend failure".into()));
             }
             Ok(self.hits.clone())
         }

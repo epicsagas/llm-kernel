@@ -46,10 +46,33 @@ pub enum KernelError {
     #[error("Search error: {0}")]
     Search(String),
 
+    /// An embedding provider or vector-index error.
+    #[error("Embedding error: {0}")]
+    Embedding(String),
+
+    /// A model-discovery error.
+    #[error("Discovery error: {0}")]
+    Discovery(String),
+
     /// A serialization/deserialization error.
     #[cfg(feature = "provider")]
     #[error("Serialization error: {0}")]
     Serialization(#[from] serde_json::Error),
+}
+
+impl KernelError {
+    /// Construct an [`KernelError::Embedding`] from any displayable error.
+    ///
+    /// Convenience for mapping external errors (HTTP clients, ONNX runtimes) at
+    /// `?` sites: `.map_err(KernelError::embedding)?`.
+    pub fn embedding(e: impl std::fmt::Display) -> Self {
+        Self::Embedding(e.to_string())
+    }
+
+    /// Construct an [`KernelError::Discovery`] from any displayable error.
+    pub fn discovery(e: impl std::fmt::Display) -> Self {
+        Self::Discovery(e.to_string())
+    }
 }
 
 /// Alias for `Result<T, KernelError>`.

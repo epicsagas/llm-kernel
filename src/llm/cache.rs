@@ -115,29 +115,33 @@ impl<C> CacheClient<C> {
     pub fn inner(&self) -> &C {
         &self.inner
     }
+}
 
-    /// Look up a non-expired cached response for `key`, if any.
-    fn lookup(&self, key: &str) -> Option<LLMResponse> {
-        let bytes = self.store.get(key).ok()??;
-        let entry: CachedResponse = serde_json::from_slice(&bytes).ok()?;
-        if let Some(ttl) = self.ttl {
-            let age = now_secs().saturating_sub(entry.stored_at_secs);
-            if age > ttl.as_secs() {
-                return None;
-            }
+/// Look up a non-expired cached response for `key`, if any.
+///
+/// Free function (rather than a method) so it can run inside
+/// [`tokio::task::spawn_blocking`] with only an owned `Arc<dyn KvStore>`
+/// captured — see [`CacheClient::complete`].
+fn lookup(store: &dyn KvStore, ttl: Option<Duration>, key: &str) -> Option<LLMResponse> {
+    let bytes = store.get(key).ok()??;
+    let entry: CachedResponse = serde_json::from_slice(&bytes).ok()?;
+    if let Some(ttl) = ttl {
+        let age = now_secs().saturating_sub(entry.stored_at_secs);
+        if age > ttl.as_secs() {
+            return None;
         }
-        Some(entry.response)
     }
+    Some(entry.response)
+}
 
-    /// Store a response under `key` (best-effort; failures are dropped).
-    fn store_entry(&self, key: &str, response: &LLMResponse) {
-        let entry = CachedResponse {
-            stored_at_secs: now_secs(),
-            response: response.clone(),
-        };
-        if let Ok(bytes) = serde_json::to_vec(&entry) {
-            let _ = self.store.put(key, &bytes);
-        }
+/// Store a response under `key` (best-effort; failures are dropped).
+fn store_entry(store: &dyn KvStore, key: &str, response: &LLMResponse) {
+    let entry = CachedResponse {
+        stored_at_secs: now_secs(),
+        response: response.clone(),
+    };
+    if let Ok(bytes) = serde_json::to_vec(&entry) {
+        let _ = store.put(key, &bytes);
     }
 }
 
@@ -146,12 +150,35 @@ impl<C: LLMClient> LLMClient for CacheClient<C> {
     async fn complete(&self, request: LLMRequest) -> Result<LLMResponse> {
         let key = cache_key(self.inner.model_name(), &request);
 
-        if let Some(response) = self.lookup(&key) {
-            return Ok(response);
+        // The `KvStore` API is synchronous. `CacheClient` wraps an arbitrary
+        // `Arc<dyn KvStore>` on the hot path of every completion, so offload the
+        // read/write to the blocking pool: a slow (or remote) store, or a
+        // single-threaded runtime, must not stall the async reactor.
+        {
+            let store = self.store.clone();
+            let ttl = self.ttl;
+            let key = key.clone();
+            let hit = tokio::task::spawn_blocking(move || lookup(store.as_ref(), ttl, &key))
+                .await
+                .unwrap_or(None);
+            if let Some(response) = hit {
+                return Ok(response);
+            }
         }
 
         let response = self.inner.complete(request).await?;
-        self.store_entry(&key, &response);
+
+        {
+            let store = self.store.clone();
+            let key = key.clone();
+            let to_store = response.clone();
+            // Best-effort write; join errors (task panic) are ignored, matching
+            // the store's own dropped-error semantics.
+            let _ =
+                tokio::task::spawn_blocking(move || store_entry(store.as_ref(), &key, &to_store))
+                    .await;
+        }
+
         Ok(response)
     }
 
@@ -168,7 +195,6 @@ impl<C: LLMClient> LLMClient for CacheClient<C> {
 mod tests {
     use super::*;
     use crate::error::KernelError;
-    use crate::llm::types::TokenUsage;
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -186,10 +212,7 @@ mod tests {
             Ok(LLMResponse {
                 content: self.body.clone(),
                 model: self.model.to_string(),
-                usage: TokenUsage::default(),
-                finish_reason: None,
-                id: None,
-                created: None,
+                ..Default::default()
             })
         }
         fn model_name(&self) -> &str {
@@ -295,10 +318,7 @@ mod tests {
             response: LLMResponse {
                 content: "stale".into(),
                 model: "mock".into(),
-                usage: TokenUsage::default(),
-                finish_reason: None,
-                id: None,
-                created: None,
+                ..Default::default()
             },
         };
         store

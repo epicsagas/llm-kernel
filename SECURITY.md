@@ -2,9 +2,13 @@
 
 ## Supported Versions
 
-| Version | Supported |
-| ------- | ---------- |
-| 0.1.x   | ✅ |
+Until a 1.0 release, security fixes land on the latest published minor and are
+not backported to earlier `0.x` versions.
+
+| Version  | Supported |
+| -------- | --------- |
+| 0.13.x   | ✅        |
+| < 0.13   | ❌        |
 
 ## Reporting a Vulnerability
 

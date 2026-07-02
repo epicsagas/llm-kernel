@@ -261,10 +261,7 @@ mod tests {
         Ok(LLMResponse {
             content: "ok".into(),
             model: "mock".into(),
-            usage: Default::default(),
-            finish_reason: None,
-            id: None,
-            created: None,
+            ..Default::default()
         })
     }
 

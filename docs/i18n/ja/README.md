@@ -51,7 +51,7 @@ llm-kernelは、RustでLLM搭載ツール、エージェント、サーバーを
 | `secrets` | SecretVaultクレデンシャル管理 | |
 | `store` | SQLite初期化ヘルパー（WAL、FTS5、スキーマバージョニング） | |
 | `config` | TOML設定ローダー | |
-| `graph` | ナレッジグラフ — SQLite、FTS5、スマートリコール、BFSトラバーサル | |
+| `graph` | ナレッジグラフ — SQLite、FTS5、スマートリコール、BFSトラバーサル、グラフアルゴリズム（PageRank/community/shortest-path/similarity） | |
 | `graph-async` | 非同期グラフラッパー（tokioが必要） | |
 | `graph-pool` | マルチ接続非同期グラフプール（`AsyncPoolGraph`、WAL同時実行） | |
 | `graph-cjk` | CJK-aware graph search via Rust-side segmentation (no schema change) | |
@@ -84,28 +84,28 @@ llm-kernelは、RustでLLM搭載ツール、エージェント、サーバーを
 
 ```toml
 [dependencies]
-llm-kernel = "0.9.1"
+llm-kernel = "0.13.0"
 ```
 
 `provider`フィーチャーはデフォルトで有効です。非同期クライアントを使用する場合：
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.9.1", features = ["client-async"] }
+llm-kernel = { version = "0.13.0", features = ["client-async"] }
 ```
 
 非同期ラッパー付きナレッジグラフを使用する場合：
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.9.1", features = ["graph", "graph-async"] }
+llm-kernel = { version = "0.13.0", features = ["graph", "graph-async"] }
 ```
 
 ローカルエンベディング（ONNX、APIキー不要）を使用する場合：
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.9.1", features = ["embedding-fastembed"] }
+llm-kernel = { version = "0.13.0", features = ["embedding-fastembed"] }
 ```
 
 ## 使用方法
@@ -327,11 +327,11 @@ println!("{} nodes, {} edges", stats.total_nodes, stats.total_edges);
 ### MCPサーバー
 
 ```rust
-use llm_kernel::mcp::{McpServer, Tool, JsonRpcRequest};
+use llm_kernel::mcp::{McpServer, ToolDescription};
 use serde_json::json;
 
 let mut server = McpServer::new("my-server", "1.0.0");
-server.register_tool(Tool {
+server.register_tool(ToolDescription {
     name: "greet".into(),
     description: "Say hello".into(),
     input_schema: json!({
