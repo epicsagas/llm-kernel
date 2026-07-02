@@ -5,7 +5,7 @@
 //! — remote vector services are async-only and naturally shared, so they
 //! cannot implement the synchronous `VectorIndex`.
 
-use anyhow::{Result, anyhow};
+use crate::error::{KernelError, Result};
 use qdrant_client::qdrant::point_id::PointIdOptions;
 use qdrant_client::qdrant::{
     Condition, CountPointsBuilder, CreateCollectionBuilder, DeletePointsBuilder, Distance, Filter,
@@ -30,7 +30,9 @@ impl QdrantVectorIndex {
     /// Connect to `url` (e.g. `http://localhost:6334`) and ensure `collection`
     /// exists with a Cosine-distance vector config of `dim` dimensions.
     pub async fn new(url: &str, collection: &str, dim: usize) -> Result<Self> {
-        let client = Qdrant::from_url(url).build()?;
+        let client = Qdrant::from_url(url)
+            .build()
+            .map_err(KernelError::embedding)?;
         let idx = Self {
             client,
             collection: collection.to_string(),
@@ -42,21 +44,30 @@ impl QdrantVectorIndex {
 
     /// Create the collection if it does not already exist.
     async fn ensure_collection(&self) -> Result<()> {
-        if !self.client.collection_exists(&self.collection).await? {
+        if !self
+            .client
+            .collection_exists(&self.collection)
+            .await
+            .map_err(KernelError::embedding)?
+        {
             self.client
                 .create_collection(
                     CreateCollectionBuilder::new(&self.collection).vectors_config(
                         VectorParamsBuilder::new(self.dim as u64, Distance::Cosine),
                     ),
                 )
-                .await?;
+                .await
+                .map_err(KernelError::embedding)?;
         }
         Ok(())
     }
 
     /// Drop the collection (useful for test cleanup or full reset).
     pub async fn delete_collection(&self) -> Result<()> {
-        self.client.delete_collection(&self.collection).await?;
+        self.client
+            .delete_collection(&self.collection)
+            .await
+            .map_err(KernelError::embedding)?;
         Ok(())
     }
 
@@ -86,17 +97,17 @@ impl QdrantVectorIndex {
 impl AsyncVectorIndex for QdrantVectorIndex {
     async fn add(&self, vectors: &[Vec<f32>], ids: &[u64]) -> Result<()> {
         if vectors.len() != ids.len() {
-            return Err(anyhow!(
+            return Err(KernelError::Embedding(format!(
                 "vectors.len() ({}) must equal ids.len() ({})",
                 vectors.len(),
                 ids.len()
-            ));
+            )));
         }
         if vectors.is_empty() {
             return Ok(());
         }
         let payload = Payload::try_from(serde_json::json!({}))
-            .map_err(|e| anyhow!("invalid empty payload: {e}"))?;
+            .map_err(|e| KernelError::Embedding(format!("invalid empty payload: {e}")))?;
         let points: Vec<PointStruct> = vectors
             .iter()
             .zip(ids.iter())
@@ -104,7 +115,8 @@ impl AsyncVectorIndex for QdrantVectorIndex {
             .collect();
         self.client
             .upsert_points(UpsertPointsBuilder::new(&self.collection, points).wait(true))
-            .await?;
+            .await
+            .map_err(KernelError::embedding)?;
         Ok(())
     }
 
@@ -121,7 +133,8 @@ impl AsyncVectorIndex for QdrantVectorIndex {
                     .points(id_list)
                     .wait(true),
             )
-            .await?;
+            .await
+            .map_err(KernelError::embedding)?;
         Ok(())
     }
 
@@ -134,7 +147,8 @@ impl AsyncVectorIndex for QdrantVectorIndex {
                     .limit(k as u64)
                     .with_payload(false),
             )
-            .await?;
+            .await
+            .map_err(KernelError::embedding)?;
         Ok(res.result.iter().filter_map(Self::scored_to_hit).collect())
     }
 
@@ -158,7 +172,8 @@ impl AsyncVectorIndex for QdrantVectorIndex {
                     .with_payload(false)
                     .filter(filter),
             )
-            .await?;
+            .await
+            .map_err(KernelError::embedding)?;
         Ok(res.result.iter().filter_map(Self::scored_to_hit).collect())
     }
 
@@ -166,7 +181,8 @@ impl AsyncVectorIndex for QdrantVectorIndex {
         let res = self
             .client
             .count(CountPointsBuilder::new(&self.collection).exact(true))
-            .await?;
+            .await
+            .map_err(KernelError::embedding)?;
         Ok(res.result.map(|c| c.count as usize).unwrap_or(0))
     }
 
@@ -208,10 +224,10 @@ mod tests {
     /// letting the caller clean up the throwaway collection in every case.
     async fn run_live_conformance(idx: &QdrantVectorIndex) -> Result<()> {
         if idx.dim() != DIM {
-            return Err(anyhow!("dim mismatch"));
+            return Err(KernelError::Embedding("dim mismatch".into()));
         }
         if !idx.is_empty().await? {
-            return Err(anyhow!("not empty at start"));
+            return Err(KernelError::Embedding("not empty at start".into()));
         }
         idx.add(
             &[vec![1.0, 0.0, 0.0, 0.0], vec![0.0, 1.0, 0.0, 0.0]],
@@ -219,31 +235,33 @@ mod tests {
         )
         .await?;
         if idx.len().await? != 2 {
-            return Err(anyhow!("len != 2 after add"));
+            return Err(KernelError::Embedding("len != 2 after add".into()));
         }
 
         let hits = idx.search(&[1.0, 0.0, 0.0, 0.0], 1).await?;
         if hits.len() != 1 || hits[0].id != 1 {
-            return Err(anyhow!("nearest neighbor != id 1"));
+            return Err(KernelError::Embedding("nearest neighbor != id 1".into()));
         }
 
         let filtered = idx.search_filtered(&[1.0, 0.0, 0.0, 0.0], 2, &[2]).await?;
         if filtered.len() != 1 || filtered[0].id != 2 {
-            return Err(anyhow!("filtered search != id 2"));
+            return Err(KernelError::Embedding("filtered search != id 2".into()));
         }
 
         idx.add(&[vec![0.9, 0.1, 0.0, 0.0]], &[1]).await?;
         if idx.len().await? != 2 {
-            return Err(anyhow!("len != 2 after re-add"));
+            return Err(KernelError::Embedding("len != 2 after re-add".into()));
         }
 
         idx.remove(&[1]).await?;
         if idx.len().await? != 1 {
-            return Err(anyhow!("len != 1 after remove"));
+            return Err(KernelError::Embedding("len != 1 after remove".into()));
         }
         let after = idx.search(&[1.0, 0.0, 0.0, 0.0], 5).await?;
         if after.iter().any(|h| h.id == 1) {
-            return Err(anyhow!("id 1 still present after remove"));
+            return Err(KernelError::Embedding(
+                "id 1 still present after remove".into(),
+            ));
         }
         Ok(())
     }

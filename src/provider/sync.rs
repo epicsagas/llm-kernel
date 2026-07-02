@@ -12,6 +12,7 @@
 //! `merge_catalog` is pure (no I/O) so it is unit-testable without network.
 
 use crate::discovery::ModelsDevPayload;
+use crate::error::Result;
 use crate::provider::mapping::{self, Mapping};
 use crate::provider::{ModelDescriptor, ServiceDescriptor};
 use serde::{Deserialize, Serialize};
@@ -20,7 +21,7 @@ use serde::{Deserialize, Serialize};
 ///
 /// **Trust boundary:** `api_url` is forwarded verbatim to [`crate::discovery::fetch_from`]
 /// — pass only admin-configured values.
-pub fn fetch_models_dev(api_url: Option<&str>) -> anyhow::Result<ModelsDevPayload> {
+pub fn fetch_models_dev(api_url: Option<&str>) -> Result<ModelsDevPayload> {
     match api_url {
         Some(url) => crate::discovery::fetch_from(url),
         None => crate::discovery::fetch(),
@@ -34,14 +35,14 @@ struct Envelope {
 }
 
 /// Parse a `catalog.json` document into its provider list.
-pub fn parse_catalog(json: &str) -> anyhow::Result<Vec<ServiceDescriptor>> {
+pub fn parse_catalog(json: &str) -> Result<Vec<ServiceDescriptor>> {
     let env: Envelope = serde_json::from_str(json)?;
     Ok(env.providers)
 }
 
 /// Serialize a provider list back into the canonical `catalog.json` form
 /// (pretty-printed, 2-space indent, trailing newline).
-pub fn serialize_catalog(providers: &[ServiceDescriptor]) -> anyhow::Result<String> {
+pub fn serialize_catalog(providers: &[ServiceDescriptor]) -> Result<String> {
     let env = Envelope {
         providers: providers.to_vec(),
     };
@@ -143,7 +144,7 @@ impl std::fmt::Display for CatalogDiff {
 pub fn merge_catalog(
     current: &[ServiceDescriptor],
     upstream: &ModelsDevPayload,
-) -> anyhow::Result<(Vec<ServiceDescriptor>, CatalogDiff)> {
+) -> Result<(Vec<ServiceDescriptor>, CatalogDiff)> {
     let mut diff = CatalogDiff {
         providers_seen: current.len(),
         ..CatalogDiff::default()

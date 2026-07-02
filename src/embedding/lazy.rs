@@ -29,6 +29,7 @@ use super::catalog::EmbeddingModel;
 use super::fastembed::FastembedProvider;
 use super::types::text_preview;
 use super::types::{EmbeddingProvider, EmbeddingResult};
+use crate::error::{KernelError, Result};
 
 // ---------------------------------------------------------------------------
 // ModelState
@@ -203,7 +204,7 @@ impl LazyFastembedProvider {
     /// yet loaded, this triggers download and initialisation on the calling
     /// thread. Concurrent callers wait on a `Condvar` for up to
     /// `load_timeout_secs`.
-    pub fn ensure_model(&self) -> Result<(), String> {
+    pub fn ensure_model(&self) -> std::result::Result<(), String> {
         let mut guard = self.inner.lock().unwrap_or_else(|e| e.into_inner());
 
         // Idle eviction: drop ONNX session if quiet for too long.
@@ -291,7 +292,7 @@ impl EmbeddingProvider for LazyFastembedProvider {
         guard.model.as_str()
     }
 
-    fn embed(&self, text: &str) -> anyhow::Result<EmbeddingResult> {
+    fn embed(&self, text: &str) -> Result<EmbeddingResult> {
         // Check query cache
         {
             let mut cache = self.query_cache.lock().unwrap_or_else(|e| e.into_inner());
@@ -304,7 +305,7 @@ impl EmbeddingProvider for LazyFastembedProvider {
         }
 
         // Ensure model is loaded (includes idle eviction check)
-        self.ensure_model().map_err(|e| anyhow::anyhow!("{e}"))?;
+        self.ensure_model().map_err(KernelError::Embedding)?;
 
         // Embed
         let result = {
@@ -312,7 +313,7 @@ impl EmbeddingProvider for LazyFastembedProvider {
             guard.last_used = Some(Instant::now());
             match &guard.provider {
                 Some(p) => p.embed(text),
-                None => Err(anyhow::anyhow!("provider not available")),
+                None => Err(KernelError::Embedding("provider not available".into())),
             }
         }?;
 
@@ -325,7 +326,7 @@ impl EmbeddingProvider for LazyFastembedProvider {
         Ok(result)
     }
 
-    fn embed_batch(&self, texts: &[&str]) -> anyhow::Result<Vec<EmbeddingResult>> {
+    fn embed_batch(&self, texts: &[&str]) -> Result<Vec<EmbeddingResult>> {
         if texts.is_empty() {
             return Ok(vec![]);
         }
@@ -360,7 +361,7 @@ impl EmbeddingProvider for LazyFastembedProvider {
         }
 
         // Phase 3: ensure model is loaded
-        self.ensure_model().map_err(|e| anyhow::anyhow!("{e}"))?;
+        self.ensure_model().map_err(KernelError::Embedding)?;
 
         // Phase 4: batch embed the misses through the inner provider
         let batch_results = {
@@ -368,9 +369,20 @@ impl EmbeddingProvider for LazyFastembedProvider {
             guard.last_used = Some(Instant::now());
             match &guard.provider {
                 Some(p) => p.embed_batch(&miss_texts),
-                None => Err(anyhow::anyhow!("provider not available")),
+                None => Err(KernelError::Embedding("provider not available".into())),
             }
         }?;
+
+        // A well-behaved provider returns exactly one vector per input. Guard
+        // against a truncated/malformed response so the merge below indexes
+        // `batch_results` safely instead of panicking on an out-of-bounds slot.
+        if batch_results.len() != miss_texts.len() {
+            return Err(KernelError::Embedding(format!(
+                "provider returned {} embeddings for {} inputs",
+                batch_results.len(),
+                miss_texts.len()
+            )));
+        }
 
         // Phase 5: merge results and insert new entries into cache
         {
@@ -382,15 +394,19 @@ impl EmbeddingProvider for LazyFastembedProvider {
             }
         }
 
-        // Phase 6: assemble final results in original order
-        Ok(results
+        // Phase 6: assemble final results in original order. Every slot is now
+        // populated (all cache-hit or filled in Phase 5), so unwrap is safe.
+        results
             .into_iter()
             .zip(texts.iter())
-            .map(|(opt, text)| EmbeddingResult {
-                vector: opt.unwrap(),
-                text_preview: text_preview(text),
+            .map(|(opt, text)| {
+                opt.map(|vector| EmbeddingResult {
+                    vector,
+                    text_preview: text_preview(text),
+                })
+                .ok_or_else(|| KernelError::Embedding("internal: unfilled embedding slot".into()))
             })
-            .collect())
+            .collect()
     }
 }
 

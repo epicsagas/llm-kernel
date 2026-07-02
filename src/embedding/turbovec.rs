@@ -2,9 +2,8 @@
 
 use std::path::Path;
 
-use anyhow::{Result, anyhow, ensure};
-
 use super::vector_index::{SearchHit, VectorIndex};
+use crate::error::{KernelError, Result};
 
 /// Compressed vector index backed by TurboQuant.
 ///
@@ -34,12 +33,13 @@ impl TurbovecIndex {
     /// - **2-bit**: 16x compression, lower recall at low k
     /// - **4-bit**: 8x compression, higher recall (recommended default)
     pub fn new(dim: usize, bit_width: u8) -> Result<Self> {
-        ensure!(
-            bit_width == 2 || bit_width == 4,
-            "bit_width must be 2 or 4, got {bit_width}"
-        );
+        if bit_width != 2 && bit_width != 4 {
+            return Err(KernelError::Embedding(format!(
+                "bit_width must be 2 or 4, got {bit_width}"
+            )));
+        }
         let inner = turbovec::IdMapIndex::new(dim, bit_width as usize)
-            .map_err(|e| anyhow!("failed to create index: {e}"))?;
+            .map_err(|e| KernelError::Embedding(format!("failed to create index: {e}")))?;
         Ok(Self {
             inner,
             dim,
@@ -59,35 +59,37 @@ impl TurbovecIndex {
     /// `TurbovecIndex::load(path)`.
     pub fn load(path: &Path) -> Result<Self> {
         let inner = turbovec::IdMapIndex::load(path)
-            .map_err(|e| anyhow!("failed to load vector index: {e}"))?;
+            .map_err(|e| KernelError::Embedding(format!("failed to load vector index: {e}")))?;
         let meta_path = path.with_extension("meta.json");
-        let meta: IndexMeta = serde_json::from_str(&std::fs::read_to_string(&meta_path)?)?;
-        ensure!(
-            meta.bit_width == 2 || meta.bit_width == 4,
-            "corrupted index meta: bit_width must be 2 or 4, got {}",
-            meta.bit_width,
-        );
-        ensure!(
-            meta.dim > 0,
-            "corrupted index meta: dim must be positive, got {}",
-            meta.dim,
-        );
+        let meta: IndexMeta = serde_json::from_str(&std::fs::read_to_string(&meta_path)?)
+            .map_err(KernelError::embedding)?;
+        if meta.bit_width != 2 && meta.bit_width != 4 {
+            return Err(KernelError::Embedding(format!(
+                "corrupted index meta: bit_width must be 2 or 4, got {}",
+                meta.bit_width
+            )));
+        }
+        if meta.dim == 0 {
+            return Err(KernelError::Embedding(
+                "corrupted index meta: dim must be positive, got 0".into(),
+            ));
+        }
 
         // Cross-validate: loaded index vs sidecar metadata.
         let inner_dim = inner.dim();
-        ensure!(
-            inner_dim == 0 || inner_dim == meta.dim,
-            "index-meta mismatch: index dim={}, meta dim={}",
-            inner_dim,
-            meta.dim,
-        );
+        if inner_dim != 0 && inner_dim != meta.dim {
+            return Err(KernelError::Embedding(format!(
+                "index-meta mismatch: index dim={inner_dim}, meta dim={}",
+                meta.dim
+            )));
+        }
         let inner_bw = inner.bit_width();
-        ensure!(
-            inner_bw == meta.bit_width as usize,
-            "index-meta mismatch: index bit_width={}, meta bit_width={}",
-            inner_bw,
-            meta.bit_width,
-        );
+        if inner_bw != meta.bit_width as usize {
+            return Err(KernelError::Embedding(format!(
+                "index-meta mismatch: index bit_width={inner_bw}, meta bit_width={}",
+                meta.bit_width
+            )));
+        }
 
         Ok(Self {
             inner,
@@ -97,12 +99,13 @@ impl TurbovecIndex {
     }
 
     fn validate_dim(&self, v: &[f32]) -> Result<()> {
-        ensure!(
-            v.len() == self.dim,
-            "vector dimension mismatch: expected {}, got {}",
-            self.dim,
-            v.len(),
-        );
+        if v.len() != self.dim {
+            return Err(KernelError::Embedding(format!(
+                "vector dimension mismatch: expected {}, got {}",
+                self.dim,
+                v.len()
+            )));
+        }
         Ok(())
     }
 
@@ -126,22 +129,23 @@ impl VectorIndex for TurbovecIndex {
         let flat: Vec<f32> = vectors.iter().flat_map(|v| v.iter().copied()).collect();
         self.inner
             .add_with_ids_2d(&flat, self.dim, &ids)
-            .map_err(|e| anyhow!("add failed: {e}"))?;
+            .map_err(|e| KernelError::Embedding(format!("add failed: {e}")))?;
         Ok(())
     }
 
     fn add_with_ids(&mut self, vectors: &[Vec<f32>], ids: &[u64]) -> Result<()> {
-        ensure!(
-            vectors.len() == ids.len(),
-            "vectors ({} entries) and ids ({} entries) must have the same length",
-            vectors.len(),
-            ids.len(),
-        );
+        if vectors.len() != ids.len() {
+            return Err(KernelError::Embedding(format!(
+                "vectors ({} entries) and ids ({} entries) must have the same length",
+                vectors.len(),
+                ids.len()
+            )));
+        }
         self.validate_dims(vectors)?;
         let flat: Vec<f32> = vectors.iter().flat_map(|v| v.iter().copied()).collect();
         self.inner
             .add_with_ids_2d(&flat, self.dim, ids)
-            .map_err(|e| anyhow!("add failed: {e}"))?;
+            .map_err(|e| KernelError::Embedding(format!("add failed: {e}")))?;
         Ok(())
     }
 
@@ -202,13 +206,13 @@ impl VectorIndex for TurbovecIndex {
 
         self.inner
             .write(&tmp_index)
-            .map_err(|e| anyhow!("failed to write vector index: {e}"))?;
+            .map_err(|e| KernelError::Embedding(format!("failed to write vector index: {e}")))?;
 
         let meta = IndexMeta {
             dim: self.dim,
             bit_width: self.bit_width,
         };
-        let json = serde_json::to_string_pretty(&meta)?;
+        let json = serde_json::to_string_pretty(&meta).map_err(KernelError::embedding)?;
         std::fs::write(&tmp_meta, &json)?;
 
         // Fsync temp files to ensure data is on disk.

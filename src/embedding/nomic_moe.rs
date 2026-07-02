@@ -15,6 +15,7 @@
 //! ```
 
 use crate::embedding::types::{EmbeddingProvider, EmbeddingResult};
+use crate::error::{KernelError, Result};
 
 /// Nomic V2 MoE embedding provider backed by candle-nn.
 ///
@@ -37,7 +38,7 @@ impl NomicMoeProvider {
     /// Create a new provider using CPU with F32 precision.
     ///
     /// Downloads the model from HuggingFace on first call (cached locally).
-    pub fn new() -> anyhow::Result<Self> {
+    pub fn new() -> Result<Self> {
         Self::with_options(
             NOMIC_EMBED_TEXT_V2_MOE,
             candle_core::Device::Cpu,
@@ -52,8 +53,9 @@ impl NomicMoeProvider {
         device: candle_core::Device,
         dtype: candle_core::DType,
         max_length: usize,
-    ) -> anyhow::Result<Self> {
-        let te = fastembed::NomicV2MoeTextEmbedding::from_hf(model_id, &device, dtype, max_length)?;
+    ) -> Result<Self> {
+        let te = fastembed::NomicV2MoeTextEmbedding::from_hf(model_id, &device, dtype, max_length)
+            .map_err(KernelError::embedding)?;
         let dim = te.config().hidden_size;
         Ok(Self {
             inner: te,
@@ -77,12 +79,12 @@ impl EmbeddingProvider for NomicMoeProvider {
         &self.model_id
     }
 
-    fn embed(&self, text: &str) -> anyhow::Result<EmbeddingResult> {
-        let embeddings = self.inner.embed(&[text])?;
+    fn embed(&self, text: &str) -> Result<EmbeddingResult> {
+        let embeddings = self.inner.embed(&[text]).map_err(KernelError::embedding)?;
         let vector = embeddings
             .into_iter()
             .next()
-            .ok_or_else(|| anyhow::anyhow!("empty embedding output"))?;
+            .ok_or_else(|| KernelError::Embedding("empty embedding output".into()))?;
 
         let preview = if text.len() > 64 {
             format!("{}…", &text[..64])
@@ -95,11 +97,11 @@ impl EmbeddingProvider for NomicMoeProvider {
         })
     }
 
-    fn embed_batch(&self, texts: &[&str]) -> anyhow::Result<Vec<EmbeddingResult>> {
+    fn embed_batch(&self, texts: &[&str]) -> Result<Vec<EmbeddingResult>> {
         if texts.is_empty() {
             return Ok(vec![]);
         }
-        let embeddings = self.inner.embed(texts)?;
+        let embeddings = self.inner.embed(texts).map_err(KernelError::embedding)?;
         Ok(embeddings
             .into_iter()
             .zip(texts.iter())

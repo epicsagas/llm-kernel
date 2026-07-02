@@ -40,7 +40,7 @@
 
 use std::time::Duration;
 
-use anyhow::{Result, anyhow};
+use crate::error::{KernelError, Result};
 use reqwest::header::CONTENT_TYPE;
 use serde::Deserialize;
 
@@ -76,7 +76,7 @@ impl ElasticsearchVectorIndex {
             .connect_timeout(Duration::from_secs(5))
             .timeout(Duration::from_secs(30))
             .build()
-            .map_err(|e| anyhow!(redact_credentials(&e.to_string())))?;
+            .map_err(|e| KernelError::Embedding(redact_credentials(&e.to_string())))?;
         let idx = Self {
             client,
             base_url: url.trim_end_matches('/').to_string(),
@@ -105,7 +105,7 @@ impl ElasticsearchVectorIndex {
             .head(format!("{}/{}", &self.base_url, &self.index))
             .send()
             .await
-            .map_err(|e| anyhow!(redact_credentials(&e.to_string())))?;
+            .map_err(|e| KernelError::Embedding(redact_credentials(&e.to_string())))?;
         if head.status().as_u16() == 200 {
             return Ok(());
         }
@@ -147,7 +147,7 @@ impl ElasticsearchVectorIndex {
             .json(&body)
             .send()
             .await
-            .map_err(|e| anyhow!(redact_credentials(&e.to_string())))
+            .map_err(|e| KernelError::Embedding(redact_credentials(&e.to_string())))
     }
 
     async fn delete(&self, path: &str) -> Result<reqwest::Response> {
@@ -155,7 +155,7 @@ impl ElasticsearchVectorIndex {
             .delete(format!("{}{}", &self.base_url, path))
             .send()
             .await
-            .map_err(|e| anyhow!(redact_credentials(&e.to_string())))
+            .map_err(|e| KernelError::Embedding(redact_credentials(&e.to_string())))
     }
 
     async fn ndjson(&self, path: &str, body: String) -> Result<reqwest::Response> {
@@ -165,21 +165,20 @@ impl ElasticsearchVectorIndex {
             .body(body)
             .send()
             .await
-            .map_err(|e| anyhow!(redact_credentials(&e.to_string())))
+            .map_err(|e| KernelError::Embedding(redact_credentials(&e.to_string())))
     }
 
-    async fn status_err(&self, resp: reqwest::Response) -> anyhow::Error {
+    async fn status_err(&self, resp: reqwest::Response) -> KernelError {
         let status = resp.status();
         let body = resp.text().await.unwrap_or_default();
         // Redact FIRST (strip any embedded credentials), then cap the body so a
         // huge ES error response cannot bloat logs/errors. The order matters:
         // a credential past the cap is already masked before truncation runs.
         let body = truncate_error_body(&redact_credentials(&body));
-        anyhow!(
+        KernelError::Embedding(format!(
             "elasticsearch returned status {status} for index `{}` [url redacted]: {}",
-            &self.index,
-            body
-        )
+            &self.index, body
+        ))
     }
 }
 
@@ -187,11 +186,11 @@ impl ElasticsearchVectorIndex {
 impl AsyncVectorIndex for ElasticsearchVectorIndex {
     async fn add(&self, vectors: &[Vec<f32>], ids: &[u64]) -> Result<()> {
         if vectors.len() != ids.len() {
-            return Err(anyhow!(
+            return Err(KernelError::Embedding(format!(
                 "vectors.len() ({}) must equal ids.len() ({})",
                 vectors.len(),
                 ids.len()
-            ));
+            )));
         }
         if vectors.is_empty() {
             return Ok(());
@@ -202,7 +201,7 @@ impl AsyncVectorIndex for ElasticsearchVectorIndex {
                 &serde_json::to_string(&serde_json::json!({
                     "index": { "_index": &self.index, "_id": id.to_string() }
                 }))
-                .map_err(|e| anyhow!("bulk encode: {e}"))?,
+                .map_err(|e| KernelError::Embedding(format!("bulk encode: {e}")))?,
             );
             body.push('\n');
             body.push_str(
@@ -210,7 +209,7 @@ impl AsyncVectorIndex for ElasticsearchVectorIndex {
                     "ext_id": id,
                     "vector": v
                 }))
-                .map_err(|e| anyhow!("bulk encode: {e}"))?,
+                .map_err(|e| KernelError::Embedding(format!("bulk encode: {e}")))?,
             );
             body.push('\n');
         }
@@ -223,10 +222,10 @@ impl AsyncVectorIndex for ElasticsearchVectorIndex {
         }
         let parsed: BulkResponse = decode(resp).await?;
         if parsed.errors {
-            return Err(anyhow!(
+            return Err(KernelError::Embedding(format!(
                 "elasticsearch bulk upsert reported per-item errors [url redacted]: {}",
                 first_failing_bulk_item(&parsed.items)
-            ));
+            )));
         }
         Ok(())
     }
@@ -241,7 +240,7 @@ impl AsyncVectorIndex for ElasticsearchVectorIndex {
                 &serde_json::to_string(&serde_json::json!({
                     "delete": { "_index": &self.index, "_id": id.to_string() }
                 }))
-                .map_err(|e| anyhow!("bulk encode: {e}"))?,
+                .map_err(|e| KernelError::Embedding(format!("bulk encode: {e}")))?,
             );
             body.push('\n');
         }
@@ -253,10 +252,10 @@ impl AsyncVectorIndex for ElasticsearchVectorIndex {
         // mirrors Qdrant's "silently ignore missing ids" contract.
         let parsed: BulkResponse = decode(resp).await?;
         if parsed.errors {
-            return Err(anyhow!(
+            return Err(KernelError::Embedding(format!(
                 "elasticsearch bulk delete reported per-item errors [url redacted]: {}",
                 first_failing_bulk_item(&parsed.items)
-            ));
+            )));
         }
         Ok(())
     }
@@ -282,7 +281,7 @@ impl AsyncVectorIndex for ElasticsearchVectorIndex {
             .json(&body)
             .send()
             .await
-            .map_err(|e| anyhow!(redact_credentials(&e.to_string())))?;
+            .map_err(|e| KernelError::Embedding(redact_credentials(&e.to_string())))?;
         if !resp.status().is_success() {
             return Err(self.status_err(resp).await);
         }
@@ -331,7 +330,7 @@ impl AsyncVectorIndex for ElasticsearchVectorIndex {
             .json(&body)
             .send()
             .await
-            .map_err(|e| anyhow!(redact_credentials(&e.to_string())))?;
+            .map_err(|e| KernelError::Embedding(redact_credentials(&e.to_string())))?;
         if !resp.status().is_success() {
             return Err(self.status_err(resp).await);
         }
@@ -356,7 +355,7 @@ impl AsyncVectorIndex for ElasticsearchVectorIndex {
             .json(&serde_json::json!({}))
             .send()
             .await
-            .map_err(|e| anyhow!(redact_credentials(&e.to_string())))?;
+            .map_err(|e| KernelError::Embedding(redact_credentials(&e.to_string())))?;
         if !resp.status().is_success() {
             return Err(self.status_err(resp).await);
         }
@@ -432,8 +431,8 @@ fn knn_num_candidates(k: usize) -> usize {
     base.min(MAX_KNN_CANDIDATES).max(k)
 }
 
-/// Maximum number of characters of an ES error response body to embed in an
-/// [`anyhow::Error`]. A huge ES error body (e.g. a verbose
+/// Maximum number of characters of an ES error response body to embed in a
+/// [`KernelError`](crate::error::KernelError). A huge ES error body (e.g. a verbose
 /// `mapper_parsing_exception`) could otherwise bloat logs and error chains;
 /// the cap keeps the diagnostic surface bounded while the `... [truncated]`
 /// marker signals that more is available on the ES side.
@@ -470,39 +469,41 @@ fn truncate_error_body(s: &str) -> String {
 /// call. Pure — unit-testable offline.
 fn validate_index_name(index: &str) -> Result<()> {
     if index.is_empty() {
-        return Err(anyhow!("elasticsearch index name must not be empty"));
+        return Err(KernelError::Embedding(
+            "elasticsearch index name must not be empty".into(),
+        ));
     }
     // ES hard-rejects the literal names "." and ".." (reserved), distinct from
     // the leading-dot allowance for hidden/system indices like `.myindex`.
     if index == "." || index == ".." {
-        return Err(anyhow!(
+        return Err(KernelError::Embedding(format!(
             "elasticsearch index name must not be `.` or `..` (reserved): `{}`",
             index
-        ));
+        )));
     }
     if index.len() > 255 {
-        return Err(anyhow!(
+        return Err(KernelError::Embedding(format!(
             "elasticsearch index name exceeds 255 bytes ({} bytes)",
             index.len()
-        ));
+        )));
     }
     match index.as_bytes()[0] {
         b'_' | b'-' | b'+' => {
-            return Err(anyhow!(
+            return Err(KernelError::Embedding(format!(
                 "elasticsearch index name must not start with `_`, `-`, or `+`: `{}`",
                 index
-            ));
+            )));
         }
         _ => {}
     }
     if let Some(bad) = index.bytes().find(|&c| {
         !(c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, b'_' | b'-' | b'.'))
     }) {
-        return Err(anyhow!(
+        return Err(KernelError::Embedding(format!(
             "elasticsearch index name contains an illegal byte 0x{bad:02x} (`{}`): \
              only lowercase a-z, 0-9, `_`, `-`, `.` are allowed",
             index
-        ));
+        )));
     }
     Ok(())
 }
@@ -530,7 +531,7 @@ fn first_failing_bulk_item(items: &[serde_json::Value]) -> String {
 async fn decode<T: serde::de::DeserializeOwned>(resp: reqwest::Response) -> Result<T> {
     resp.json::<T>()
         .await
-        .map_err(|e| anyhow!(redact_credentials(&e.to_string())))
+        .map_err(|e| KernelError::Embedding(redact_credentials(&e.to_string())))
 }
 
 #[derive(Deserialize)]
@@ -810,10 +811,10 @@ mod tests {
     /// letting the caller clean up the throwaway index on every exit path.
     async fn run_live_conformance(idx: &ElasticsearchVectorIndex) -> Result<()> {
         if idx.dim() != DIM {
-            return Err(anyhow!("dim mismatch"));
+            return Err(KernelError::Embedding("dim mismatch".into()));
         }
         if !idx.is_empty().await? {
-            return Err(anyhow!("not empty at start"));
+            return Err(KernelError::Embedding("not empty at start".into()));
         }
         idx.add(
             &[vec![1.0, 0.0, 0.0, 0.0], vec![0.0, 1.0, 0.0, 0.0]],
@@ -821,32 +822,34 @@ mod tests {
         )
         .await?;
         if idx.len().await? != 2 {
-            return Err(anyhow!("len != 2 after add"));
+            return Err(KernelError::Embedding("len != 2 after add".into()));
         }
 
         let hits = idx.search(&[1.0, 0.0, 0.0, 0.0], 1).await?;
         if hits.len() != 1 || hits[0].id != 1 {
-            return Err(anyhow!("nearest neighbor != id 1"));
+            return Err(KernelError::Embedding("nearest neighbor != id 1".into()));
         }
 
         let filtered = idx.search_filtered(&[1.0, 0.0, 0.0, 0.0], 2, &[2]).await?;
         if filtered.len() != 1 || filtered[0].id != 2 {
-            return Err(anyhow!("filtered search != id 2"));
+            return Err(KernelError::Embedding("filtered search != id 2".into()));
         }
 
         // Re-upsert id 1 with a different vector; count stays 2 (replace).
         idx.add(&[vec![0.9, 0.1, 0.0, 0.0]], &[1]).await?;
         if idx.len().await? != 2 {
-            return Err(anyhow!("len != 2 after re-add"));
+            return Err(KernelError::Embedding("len != 2 after re-add".into()));
         }
 
         idx.remove(&[1]).await?;
         if idx.len().await? != 1 {
-            return Err(anyhow!("len != 1 after remove"));
+            return Err(KernelError::Embedding("len != 1 after remove".into()));
         }
         let after = idx.search(&[1.0, 0.0, 0.0, 0.0], 5).await?;
         if after.iter().any(|h| h.id == 1) {
-            return Err(anyhow!("id 1 still present after remove"));
+            return Err(KernelError::Embedding(
+                "id 1 still present after remove".into(),
+            ));
         }
         Ok(())
     }

@@ -13,7 +13,7 @@
 
 use std::path::Path;
 
-use anyhow::Result;
+use crate::error::Result;
 
 /// A single search hit from vector index lookup.
 ///
