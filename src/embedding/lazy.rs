@@ -30,6 +30,7 @@ use super::catalog::EmbeddingModel;
 use super::fastembed::FastembedProvider;
 use super::types::text_preview;
 use super::types::{EmbeddingProvider, EmbeddingResult};
+use crate::error::{KernelError, Result};
 
 // ---------------------------------------------------------------------------
 // Load hook (panic-safe model instantiation)
@@ -41,7 +42,7 @@ use super::types::{EmbeddingProvider, EmbeddingResult};
 /// `Inner` lock and invoked without holding the mutex across the
 /// (potentially minutes-long) model download/init.
 pub(crate) type LoadFn =
-    Arc<dyn Fn(EmbeddingModel, PathBuf) -> anyhow::Result<FastembedProvider> + Send + Sync>;
+    Arc<dyn Fn(EmbeddingModel, PathBuf) -> Result<FastembedProvider> + Send + Sync>;
 
 /// Default loader: instantiate [`FastembedProvider`] directly.
 ///
@@ -49,7 +50,7 @@ pub(crate) type LoadFn =
 /// it for an injectable panicking/failing loader via
 /// [`LazyFastembedProvider::new_with_loader`] without needing real ONNX weights
 /// on disk.
-fn default_load(model: EmbeddingModel, cache_dir: PathBuf) -> anyhow::Result<FastembedProvider> {
+fn default_load(model: EmbeddingModel, cache_dir: PathBuf) -> Result<FastembedProvider> {
     FastembedProvider::new(model, Some(cache_dir))
 }
 
@@ -73,13 +74,18 @@ fn load_catching_panics(
     load: &LoadFn,
     model: EmbeddingModel,
     cache_dir: PathBuf,
-) -> (anyhow::Result<FastembedProvider>, bool) {
+) -> (Result<FastembedProvider>, bool) {
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| load(model, cache_dir)));
     match result {
         Ok(inner) => (inner, false),
         Err(payload) => {
             let msg = panic_message(&payload);
-            (Err(anyhow::anyhow!("model init panicked: {msg}")), true)
+            (
+                Err(KernelError::Embedding(format!(
+                    "model init panicked: {msg}"
+                ))),
+                true,
+            )
         }
     }
 }
@@ -329,7 +335,7 @@ impl LazyFastembedProvider {
     /// yet loaded, this triggers download and initialisation on the calling
     /// thread. Concurrent callers wait on a `Condvar` for up to
     /// `load_timeout_secs`.
-    pub fn ensure_model(&self) -> Result<(), String> {
+    pub fn ensure_model(&self) -> std::result::Result<(), String> {
         let mut guard = self.inner.lock().unwrap_or_else(|e| e.into_inner());
 
         // Idle eviction: drop ONNX session if quiet for too long.
@@ -428,7 +434,7 @@ impl EmbeddingProvider for LazyFastembedProvider {
         guard.model.as_str()
     }
 
-    fn embed(&self, text: &str) -> anyhow::Result<EmbeddingResult> {
+    fn embed(&self, text: &str) -> Result<EmbeddingResult> {
         // Check query cache
         {
             let mut cache = self.query_cache.lock().unwrap_or_else(|e| e.into_inner());
@@ -441,7 +447,7 @@ impl EmbeddingProvider for LazyFastembedProvider {
         }
 
         // Ensure model is loaded (includes idle eviction check)
-        self.ensure_model().map_err(|e| anyhow::anyhow!("{e}"))?;
+        self.ensure_model().map_err(KernelError::Embedding)?;
 
         // Embed
         let result = {
@@ -449,7 +455,7 @@ impl EmbeddingProvider for LazyFastembedProvider {
             guard.last_used = Some(Instant::now());
             match &guard.provider {
                 Some(p) => p.embed(text),
-                None => Err(anyhow::anyhow!("provider not available")),
+                None => Err(KernelError::Embedding("provider not available".into())),
             }
         }?;
 
@@ -462,7 +468,7 @@ impl EmbeddingProvider for LazyFastembedProvider {
         Ok(result)
     }
 
-    fn embed_batch(&self, texts: &[&str]) -> anyhow::Result<Vec<EmbeddingResult>> {
+    fn embed_batch(&self, texts: &[&str]) -> Result<Vec<EmbeddingResult>> {
         if texts.is_empty() {
             return Ok(vec![]);
         }
@@ -497,7 +503,7 @@ impl EmbeddingProvider for LazyFastembedProvider {
         }
 
         // Phase 3: ensure model is loaded
-        self.ensure_model().map_err(|e| anyhow::anyhow!("{e}"))?;
+        self.ensure_model().map_err(KernelError::Embedding)?;
 
         // Phase 4: batch embed the misses through the inner provider
         let batch_results = {
@@ -505,9 +511,20 @@ impl EmbeddingProvider for LazyFastembedProvider {
             guard.last_used = Some(Instant::now());
             match &guard.provider {
                 Some(p) => p.embed_batch(&miss_texts),
-                None => Err(anyhow::anyhow!("provider not available")),
+                None => Err(KernelError::Embedding("provider not available".into())),
             }
         }?;
+
+        // A well-behaved provider returns exactly one vector per input. Guard
+        // against a truncated/malformed response so the merge below indexes
+        // `batch_results` safely instead of panicking on an out-of-bounds slot.
+        if batch_results.len() != miss_texts.len() {
+            return Err(KernelError::Embedding(format!(
+                "provider returned {} embeddings for {} inputs",
+                batch_results.len(),
+                miss_texts.len()
+            )));
+        }
 
         // Phase 5: merge results and insert new entries into cache
         {
@@ -519,15 +536,19 @@ impl EmbeddingProvider for LazyFastembedProvider {
             }
         }
 
-        // Phase 6: assemble final results in original order
-        Ok(results
+        // Phase 6: assemble final results in original order. Every slot is now
+        // populated (all cache-hit or filled in Phase 5), so unwrap is safe.
+        results
             .into_iter()
             .zip(texts.iter())
-            .map(|(opt, text)| EmbeddingResult {
-                vector: opt.unwrap(),
-                text_preview: text_preview(text),
+            .map(|(opt, text)| {
+                opt.map(|vector| EmbeddingResult {
+                    vector,
+                    text_preview: text_preview(text),
+                })
+                .ok_or_else(|| KernelError::Embedding("internal: unfilled embedding slot".into()))
             })
-            .collect())
+            .collect()
     }
 }
 
@@ -669,7 +690,7 @@ mod tests {
 
     fn panicking_loader() -> LoadFn {
         Arc::new(
-            |_model: EmbeddingModel, _cache: PathBuf| -> anyhow::Result<FastembedProvider> {
+            |_model: EmbeddingModel, _cache: PathBuf| -> Result<FastembedProvider> {
                 panic!("simulated ort init failure (missing libonnxruntime.so)")
             },
         )
@@ -678,8 +699,8 @@ mod tests {
     fn failing_loader(msg: &str) -> LoadFn {
         let msg = msg.to_string();
         Arc::new(
-            move |_model: EmbeddingModel, _cache: PathBuf| -> anyhow::Result<FastembedProvider> {
-                Err(anyhow::anyhow!("{msg}"))
+            move |_model: EmbeddingModel, _cache: PathBuf| -> Result<FastembedProvider> {
+                Err(KernelError::Embedding(msg.clone()))
             },
         )
     }
@@ -743,7 +764,7 @@ mod tests {
         let attempts_clone = Arc::clone(&attempts);
         let loader: LoadFn = Arc::new(move |_m, _c| {
             attempts_clone.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-            Err(anyhow::anyhow!("transient failure"))
+            Err(KernelError::Embedding("transient failure".into()))
         });
         let provider = LazyFastembedProvider::new_with_loader(
             EmbeddingModel::BGESmallENV15,

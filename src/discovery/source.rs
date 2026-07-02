@@ -9,13 +9,15 @@ mod inner {
     use async_trait::async_trait;
     use std::time::Duration;
 
+    use crate::error::{KernelError, Result};
+
     /// Async source of discoverable models.
     #[async_trait]
     pub trait DiscoverySource: Send + Sync {
         /// Human-readable source name.
         fn name(&self) -> &'static str;
         /// Discover available models from this source.
-        async fn discover(&self) -> anyhow::Result<Vec<crate::discovery::ModelEntry>>;
+        async fn discover(&self) -> Result<Vec<crate::discovery::ModelEntry>>;
     }
 
     /// Async [`DiscoverySource`] backed by a models.dev-style catalog API.
@@ -62,18 +64,25 @@ mod inner {
             "models.dev"
         }
 
-        async fn discover(&self) -> anyhow::Result<Vec<crate::discovery::ModelEntry>> {
+        async fn discover(&self) -> Result<Vec<crate::discovery::ModelEntry>> {
             let client = reqwest::Client::builder()
                 .timeout(Duration::from_secs(10))
                 // Do not follow redirects: the base URL is a trusted catalog
                 // endpoint, and a 3xx should surface as an error rather than be
                 // silently chased to an unexpected host.
                 .redirect(reqwest::redirect::Policy::none())
-                .build()?;
+                .build()
+                .map_err(KernelError::discovery)?;
             let url = format!("{}/api.json", self.base_url.trim_end_matches('/'));
             // Surface non-success HTTP as a clear error before any body is
             // read, so a 4xx/5xx error page is not misread as malformed JSON.
-            let mut response = client.get(&url).send().await?.error_for_status()?;
+            let mut response = client
+                .get(&url)
+                .send()
+                .await
+                .map_err(KernelError::discovery)?
+                .error_for_status()
+                .map_err(KernelError::discovery)?;
             // Bound the response so a malformed or hostile endpoint cannot
             // drive unbounded memory allocation. Two layers:
             //   1. Fast-reject via Content-Length when the server advertises it.
@@ -83,7 +92,9 @@ mod inner {
             if let Some(len) = response.content_length()
                 && (len as usize) > MAX_BYTES
             {
-                anyhow::bail!("discovery response advertised {len} bytes (cap {MAX_BYTES})");
+                return Err(KernelError::Discovery(format!(
+                    "discovery response advertised {len} bytes (cap {MAX_BYTES})"
+                )));
             }
             let body = read_capped_body(&mut response, MAX_BYTES).await?;
             let payload: crate::discovery::ModelsDevPayload = serde_json::from_slice(&body)?;
@@ -101,11 +112,13 @@ mod inner {
     async fn read_capped_body(
         response: &mut reqwest::Response,
         max_bytes: usize,
-    ) -> anyhow::Result<Vec<u8>> {
+    ) -> Result<Vec<u8>> {
         let mut buf: Vec<u8> = Vec::new();
-        while let Some(chunk) = response.chunk().await? {
+        while let Some(chunk) = response.chunk().await.map_err(KernelError::discovery)? {
             if buf.len() + chunk.len() > max_bytes {
-                anyhow::bail!("discovery response exceeded {max_bytes} bytes while streaming");
+                return Err(KernelError::Discovery(format!(
+                    "discovery response exceeded {max_bytes} bytes while streaming"
+                )));
             }
             buf.extend_from_slice(&chunk);
         }
@@ -130,7 +143,7 @@ mod tests {
             "static"
         }
 
-        async fn discover(&self) -> anyhow::Result<Vec<ModelEntry>> {
+        async fn discover(&self) -> crate::error::Result<Vec<ModelEntry>> {
             Ok(self.0.clone())
         }
     }
