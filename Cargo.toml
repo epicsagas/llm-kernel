@@ -108,8 +108,15 @@ federation = ["search", "embedding", "dep:tokio", "dep:futures-util"]
 # OpenAI text-embedding provider (requires ureq for sync HTTP)
 embedding-openai = ["embedding", "dep:ureq", "dep:serde_json"]
 
-# Local ONNX embedding via fastembed-rs (downloads models from HuggingFace)
-embedding-fastembed = ["embedding", "dep:fastembed", "dep:indexmap"]
+# Local ONNX embedding via fastembed-rs (downloads models from HuggingFace).
+# Statically links ONNX Runtime via `fastembed/ort-download-binaries-rustls-tls`:
+# ort-sys downloads + links a prebuilt static archive at build time, producing a
+# self-contained binary with no runtime dylib resolution. CAVEAT (#55): ort's
+# prebuilt static archive requires glibc 2.38+ (`__isoc23_strtol` etc.) on Linux
+# and a current MSVC CRT on Windows; older baselines (ubuntu 22.04, glibc 2.35)
+# fail at the *release link step* (`cargo check` stays green because it does
+# not link). For those, use `embedding-fastembed-dynamic-linking` instead.
+embedding-fastembed = ["embedding", "dep:fastembed", "dep:indexmap", "fastembed/hf-hub-rustls-tls", "fastembed/ort-download-binaries-rustls-tls"]
 
 # Qwen3 embedding via fastembed-rs candle backend
 embedding-fastembed-qwen3 = ["embedding-fastembed", "fastembed/qwen3", "dep:candle-core"]
@@ -123,17 +130,20 @@ embedding-fastembed-directml = ["embedding-fastembed", "dep:ort"]
 # Opt-in dynamic ONNX Runtime linking (loads libonnxruntime.{so,dylib,dll} at
 # runtime instead of statically linking a prebuilt archive at build time).
 #
-# Only use this if your deployment target cannot satisfy the static build's
+# Use this when your build/release target cannot satisfy the static archive's
 # requirements — e.g. a glibc <2.38 Linux host (ort's prebuilt static archive
-# needs glibc 2.38+; see #50) — and you can guarantee `libonnxruntime.*` is
-# present on the runtime host. Do NOT combine this feature with a build that
-# also depends on plain `embedding-fastembed` elsewhere in the same binary's
-# feature graph: Cargo feature unification merges both `ort-load-dynamic` and
-# `ort-download-binaries-*` into the shared `fastembed`/`ort-sys` crate,
-# which silently turns the static path into a no-op again (the original #50
-# failure mode). Enable this feature alone, or ensure nothing else in your
-# build enables `embedding-fastembed`/`full` at the same time.
-embedding-fastembed-dynamic-linking = ["embedding-fastembed", "fastembed/ort-load-dynamic"]
+# needs glibc 2.38+ and fails at the release link step on ubuntu 22.04; see
+# #50, #55) — and you can guarantee `libonnxruntime.*` is present on the
+# runtime host.
+#
+# This feature is MUTUALLY EXCLUSIVE with `embedding-fastembed` (and with any
+# feature that implies it: `embedding-fastembed-qwen3`, `-nomic-moe`,
+# `-directml`, or `full`). Cargo feature unification merges both
+# `ort-load-dynamic` and `ort-download-binaries-*` into the shared
+# `fastembed`/`ort-sys` crate, silently turning the static path into a no-op
+# (the original #50 failure mode); a `compile_error!` in `src/lib.rs` makes
+# the conflict a hard build error instead. Enable exactly one of the two modes.
+embedding-fastembed-dynamic-linking = ["embedding", "dep:fastembed", "dep:indexmap", "fastembed/hf-hub-rustls-tls", "fastembed/ort-load-dynamic"]
 
 # Knowledge graph with async wrappers (requires tokio)
 graph-async = ["graph", "dep:tokio"]
@@ -183,7 +193,11 @@ futures-core = { version = "0.3", optional = true }
 futures-util = { version = "0.3", optional = true }
 async-trait = { version = "0.1", optional = true }
 regex       = { version = "1", optional = true }
-fastembed   = { version = "5", default-features = false, features = ["hf-hub-rustls-tls", "ort-download-binaries-rustls-tls"], optional = true }
+# NOTE: fastembed's ort features (static download vs dynamic load) are selected
+# by the `embedding-fastembed` / `embedding-fastembed-dynamic-linking` features
+# below, NOT in this dependency declaration, so the two linking modes stay
+# mutually exclusive at the feature level (see #55).
+fastembed   = { version = "5", default-features = false, optional = true }
 # Pinned to the newest ort release-candidate: ort 2.0.0 stable is not yet
 # published (2.0.0-rc.12 is the latest on crates.io as of 2026-06), and
 # fastembed 5 targets this same RC, so the pin must move in lockstep with a
@@ -248,25 +262,3 @@ codegen-units = 4
 [profile.dist]
 inherits = "release"
 lto = "thin"
-
-# Statically link ONNX Runtime by default via `ort-download-binaries-rustls-tls`:
-# ort-sys downloads + links a prebuilt static archive at build time, producing a
-# self-contained binary with no runtime dylib resolution.
-#
-# We do NOT enable `ort-load-dynamic` by default: that feature forwards to
-# `ort-sys/disable-linking`, which makes ort-sys's build script early-return and
-# SKIP the download step entirely — so `ort-download-binaries-*` becomes a silent
-# no-op and the resulting binary expects `libonnxruntime.{so,dll}` to be supplied
-# externally at runtime (which llm-kernel never ships). On Linux this previously
-# manifested as a silent deadlock rather than a clean missing-library error
-# (see #50).
-#
-# CAVEAT — static linking does not fully replace ort-load-dynamic: ort's
-# prebuilt static archive requires glibc 2.38+ (`__isoc23_strtol` etc.), which
-# is resolved against the *executing* host's libc at runtime, not the build
-# host's. Linux hosts on glibc <2.38 (e.g. Ubuntu 22.04, Debian 12) will fail
-# to load the statically-linked binary at first ONNX Runtime init. Such
-# deployments should enable the `embedding-fastembed-dynamic-linking` feature
-# instead (see above) and ensure `libonnxruntime.so` is present on the host.
-[target.'cfg(any(target_os = "windows", target_os = "linux"))'.dependencies]
-fastembed   = { version = "5", default-features = false, features = ["hf-hub-rustls-tls", "ort-download-binaries-rustls-tls"], optional = true }

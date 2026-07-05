@@ -24,8 +24,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Install system deps (OpenBLAS for turbovec)
         run: sudo apt-get install -y libopenblas-dev
-      - name: Clippy (all features)
-        run: cargo clippy --all-features -- -D warnings
+      - name: Clippy (full)
+        run: cargo clippy --features full -- -D warnings
       - name: Format
         run: cargo fmt --all -- --check
 
@@ -34,7 +34,7 @@ jobs:
     strategy:
       matrix:
         features:
-          - "--all-features"
+          - "--features full"
           - "--no-default-features"
           - "--no-default-features --features provider"
           - "--no-default-features --features discovery"
@@ -82,7 +82,7 @@ jobs:
       - name: Install system deps (OpenBLAS for turbovec)
         run: sudo apt-get install -y libopenblas-dev
       - name: Build docs
-        run: cargo doc --all-features --no-deps
+        run: cargo doc --features full --no-deps
         env:
           RUSTDOCFLAGS: -D warnings
 
@@ -121,6 +121,37 @@ jobs:
       - name: Clippy DirectML feature (Windows native)
         run: cargo clippy --features embedding-fastembed-directml -- -D warnings
 
+  # Release-link regression guard for the statically-linked ONNX Runtime path
+  # (#55). ort-sys downloads + links a prebuilt static archive at build time, so
+  # any static-link regression surfaces here at the link step — not at consumer
+  # release time. macOS already links reliably; this covers the Linux/Windows
+  # release matrix. The static archive requires glibc 2.38+ / a current MSVC
+  # CRT, so ubuntu-22.04 (glibc 2.35) cannot link the static path — instead it
+  # verifies the `embedding-fastembed-dynamic-linking` escape hatch compiles on
+  # exactly the baseline alcove was forced to roll back from.
+  release-link-check:
+    name: Release link (${{ matrix.os }} / ${{ matrix.mode }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            mode: static
+            features: embedding-fastembed
+          - os: windows-latest
+            mode: static
+            features: embedding-fastembed
+          - os: ubuntu-22.04
+            mode: dynamic
+            features: embedding-fastembed-dynamic-linking
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Release build (${{ matrix.mode }})
+        run: cargo build --release --no-default-features --features ${{ matrix.features }}
+
   macos-check:
     runs-on: macos-latest
     steps:
@@ -128,9 +159,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Check (macOS)
-        run: cargo check --all-features
+        run: cargo check --features full
       - name: Test (macOS)
-        run: cargo test --all-features
+        run: cargo test --features full
 
   secrets:
     runs-on: ubuntu-latest

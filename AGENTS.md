@@ -8,11 +8,11 @@
 
 | Command | Description |
 |---------|-------------|
-| `cargo test --all-features` | Run all tests (602 passed, 13 ignored) |
-| `cargo clippy --all-features -- -D warnings` | Lint |
+| `cargo test --features full` | Run all tests (602 passed, 13 ignored) |
+| `cargo clippy --features full -- -D warnings` | Lint |
 | `cargo fmt --all -- --check` | Format check |
 | `cargo bench` | Run criterion benchmarks |
-| `cargo doc --all-features --no-deps` | Build docs |
+| `cargo doc --features full --no-deps` | Build docs |
 | `cargo run --bin llm-kernel-eval --features eval -- all` | Quality eval (tokens, safety, injection, embedding, search) |
 | `cargo run --bin llm-kernel-eval --features eval-full -- --baseline eval/baseline.json all` | Regression check vs baseline |
 | `cargo run --bin llm-kernel-sync-catalog --features catalog-sync -- --check` | Detect catalog drift vs models.dev (no write) |
@@ -36,7 +36,7 @@ src/
   tokens/      — Unicode token estimation, budgeting, sentence-aware chunking  (feature: tokens)
   install/     — AI tool config wizard  (feature: install)
   search/      — SearchProvider trait, RRF + weighted-sum + CombMNZ fusion; cross-engine FederatedSearch  (features: search, federation)
-  embedding/   — provider trait + OpenAI client, ElasticsearchVectorIndex  (features: embedding, embedding-openai, elastic)
+  embedding/   — provider trait + OpenAI client, ElasticsearchVectorIndex  (features: embedding, embedding-openai, elastic) — `embedding-fastembed` (static ONNX, default) needs glibc ≥2.38 / current MSVC; older baselines use the mutually-exclusive `embedding-fastembed-dynamic-linking` escape hatch (see #55)
   telemetry/   — enum-gated events  (feature: telemetry)
   safety/      — secret masking, error classification, prompt-injection detection  (feature: safety)
 ```
@@ -81,7 +81,7 @@ Two benchmark suites under `benches/`:
 | 1. Update version | Edit `Cargo.toml` version |
 | 2. Update CHANGELOG | Add entry with date |
 | 3. Regenerate lockfile | `cargo generate-lockfile` |
-| 4. Verify | `cargo test --all-features && cargo clippy --all-features -- -D warnings` |
+| 4. Verify | `cargo test --features full && cargo clippy --features full -- -D warnings` |
 | 5. Commit | `git add Cargo.toml Cargo.lock CHANGELOG.md && git commit -m "chore: bump v{version}"` |
 | 6. Tag | `git tag v{version}` |
 | 7. Push | `git push && git push --tags` |

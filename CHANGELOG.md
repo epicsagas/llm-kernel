@@ -5,6 +5,43 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- **embedding** (#55): `embedding-fastembed-dynamic-linking` no longer pulls in
+  `embedding-fastembed` (static ONNX download). Previously the dynamic feature
+  was a superset of the static one, so Cargo feature unification silently
+  activated both `ort-load-dynamic` and `ort-download-binaries-*` on the shared
+  `fastembed`/`ort-sys` crate, turning the static path into a no-op (the #50
+  failure mode) — the escape hatch never actually worked on its own. The two
+  features are now mutually exclusive; `fastembed`'s ort features are selected
+  by the consuming feature (`embedding-fastembed` → static archive,
+  `embedding-fastembed-dynamic-linking` → runtime dylib load), and a
+  `compile_error!` in `src/lib.rs` makes any conflict a hard build error
+  instead of a silent dead link.
+
+### Added
+- **ci** (#55): `release-link-check` job builds `cargo build --release
+  --features embedding-fastembed` on `ubuntu-latest` + `windows-latest` to
+  catch static ONNX Runtime link regressions at PR time — the failure mode
+  downstream consumers (e.g. alcove) previously discovered only at release /
+  `cargo-dist` time. It also builds `--features embedding-fastembed-dynamic-linking`
+  on `ubuntu-22.04` (glibc 2.35) to prove the escape hatch compiles on exactly
+  the baseline alcove had to roll back from.
+
+### Changed
+- **ci**: `cargo {test,clippy,doc,check} --all-features` replaced with
+  `--features full` throughout CI and `AGENTS.md`. `embedding-fastembed` and
+  `embedding-fastembed-dynamic-linking` are now mutually exclusive, so
+  `--all-features` (which activates both) no longer builds; `full` enables every
+  feature except the dynamic escape hatch.
+- **docs** (#55): README + AGENTS.md document that the static ONNX archive
+  requires glibc ≥2.38 (ubuntu 24.04+) / a current MSVC CRT, and that older
+  baselines (ubuntu 22.04, glibc 2.35) must use
+  `embedding-fastembed-dynamic-linking` plus a shipped
+  `libonnxruntime.{so,dll}` — `cargo check` stays green because it does not
+  link, so the failure surfaces only at `cargo build --release`.
+
 ## [0.14.0] - 2026-07-03
 
 A forward-compatibility release: stops the per-minor breakage caused by adding
