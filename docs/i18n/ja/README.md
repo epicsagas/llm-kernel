@@ -67,7 +67,7 @@ llm-kernelは、RustでLLM搭載ツール、エージェント、サーバーを
 | `embedding-fastembed` | fastembed-rsによるローカルONNXエンベディング（44モデル） | |
 | `embedding-fastembed-qwen3` | candleバックエンドによるQwen3エンベディング | |
 | `embedding-fastembed-nomic-moe` | candleバックエンドによるNomic V2 MoEエンベディング | |
-| `embedding-fastembed-dynamic-linking` | 動的ONNX Runtimeリンク（オプトイン、glibc <2.38のLinuxホスト向け、#50参照） | |
+| `embedding-fastembed-dynamic-linking` | Dynamic ONNX Runtime linking (opt-in; **mutually exclusive with `embedding-fastembed`** — for hosts where the static archive fails at release link: glibc <2.38 / older MSVC; see #50 #55) | |
 | `vector-index` | TurboQuant圧縮ベクトルインデックス — 2ビット/4ビット、SIMD ANN検索 | |
 | `qdrant` | リモートベクトル検索向け Qdrant AsyncVectorIndex（QdrantVectorIndex） | |
 | `elastic` | ハンドロール reqwest クライアント上の Elasticsearch AsyncVectorIndex（ElasticsearchVectorIndex） | |
@@ -419,6 +419,17 @@ let merged = FederatedSearch::new()
 #### ローカルONNXエンベディング（fastembed-rs）
 
 ONNX Runtime経由で44モデルを利用可能 — APIキー不要、初回ダウンロード後はネットワーク不要。
+
+> **Release-link caveat (#55).** `embedding-fastembed` statically links a
+> prebuilt ONNX Runtime archive that requires **glibc ≥2.38** on Linux
+> (ubuntu 24.04+) and a current MSVC CRT on Windows. Older baselines
+> (ubuntu 22.04 / glibc 2.35) fail at the *release link step* — `cargo check`
+> stays green because it does not link, so the failure only surfaces at
+> `cargo build --release` / `cargo-dist`. For those targets, enable
+> `embedding-fastembed-dynamic-linking` instead and ship
+> `libonnxruntime.{so,dll}` alongside your binary. The two features are
+> mutually exclusive (Cargo feature unification would otherwise silently
+> disable the static path — #50/#55); a `compile_error!` enforces this.
 
 ```rust
 use llm_kernel::embedding::{EmbeddingModel, FastembedProvider, EmbeddingProvider};
