@@ -158,6 +158,22 @@ jobs:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+      # ort's static archive links against libclang_rt.osx.a, which the Xcode
+      # 16+ macOS runner image no longer puts on the default linker search path
+      # (#55: "separately broken by a compiler-rt path regression"). Add the
+      # rustc self-contained darwin lib dir so `ld` can resolve it. Note: this
+      # regression was previously masked because --all-features enabled the
+      # broken dynamic-linking feature, which skipped the static link entirely.
+      - name: Configure macOS clang_rt link path
+        run: |
+          set -e
+          HOST=$(rustc -vV | sed -n 's/^host: //p')
+          CLANG_RT_DIR="$(rustc --print sysroot)/lib/rustlib/$HOST/lib"
+          if [ ! -f "$CLANG_RT_DIR/libclang_rt.osx.a" ]; then
+            CLANG_RT_DIR=$(dirname "$(find "$(rustc --print sysroot)" -name 'libclang_rt.osx.a' -print -quit)")
+          fi
+          echo "Resolved clang_rt dir: $CLANG_RT_DIR"
+          echo "RUSTFLAGS=-L$CLANG_RT_DIR" >> "$GITHUB_ENV"
       - name: Check (macOS)
         run: cargo check --features full
       - name: Test (macOS)

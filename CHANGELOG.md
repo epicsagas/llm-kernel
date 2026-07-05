@@ -34,7 +34,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `--features full` throughout CI and `AGENTS.md`. `embedding-fastembed` and
   `embedding-fastembed-dynamic-linking` are now mutually exclusive, so
   `--all-features` (which activates both) no longer builds; `full` enables every
-  feature except the dynamic escape hatch.
+  feature except the dynamic escape hatch. This change unmasked a pre-existing
+  macOS regression: previously `--all-features` enabled the broken
+  dynamic-linking feature, which skipped the static ort link, so `macos-check`
+  passed without ever linking the ONNX archive. With `--features full` the
+  static link is real, so `macos-check` now injects the `libclang_rt.osx.a` link
+  path (`RUSTFLAGS=-L…/rustlib/<host>/lib`) that the Xcode 16+ runner image no
+  longer puts on the default search path (#55 "compiler-rt path regression").
 - **docs** (#55): README + AGENTS.md document that the static ONNX archive
   requires glibc ≥2.38 (ubuntu 24.04+) / a current MSVC CRT, and that older
   baselines (ubuntu 22.04, glibc 2.35) must use
