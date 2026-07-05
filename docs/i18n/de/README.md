@@ -67,7 +67,7 @@ Jedes Modul wird durch ein Feature-Flag gesteuert, sodass Sie nur bezahlen, was 
 | `embedding-fastembed` | Lokales ONNX-Embedding über fastembed-rs (44 Modelle) | |
 | `embedding-fastembed-qwen3` | Qwen3-Embedding über Candle-Backend | |
 | `embedding-fastembed-nomic-moe` | Nomic V2 MoE-Embedding über Candle-Backend | |
-| `embedding-fastembed-dynamic-linking` | Dynamisches ONNX-Runtime-Linking (optional; für Linux-Hosts mit glibc <2.38, siehe #50) | |
+| `embedding-fastembed-dynamic-linking` | Dynamic ONNX Runtime linking (opt-in; **mutually exclusive with `embedding-fastembed`** — for hosts where the static archive fails at release link: glibc <2.38 / older MSVC; see #50 #55) | |
 | `vector-index` | TurboQuant-komprimierter Vektorindex — 2-Bit/4-Bit, SIMD-ANN-Suche | |
 | `qdrant` | Qdrant-AsyncVectorIndex (QdrantVectorIndex) für entfernte Vektorsuche | |
 | `elastic` | Elasticsearch-AsyncVectorIndex (ElasticsearchVectorIndex) über einen handgeschriebenen reqwest-Client | |
@@ -424,6 +424,17 @@ Ein synchroner `TurbovecIndex` nimmt über den reinen `federate_results`-Merge t
 #### Lokales ONNX-Embedding (fastembed-rs)
 
 44 Modelle über ONNX Runtime — kein API-Schlüssel, kein Netzwerk nach dem ersten Download.
+
+> **Release-link caveat (#55).** `embedding-fastembed` statically links a
+> prebuilt ONNX Runtime archive that requires **glibc ≥2.38** on Linux
+> (ubuntu 24.04+) and a current MSVC CRT on Windows. Older baselines
+> (ubuntu 22.04 / glibc 2.35) fail at the *release link step* — `cargo check`
+> stays green because it does not link, so the failure only surfaces at
+> `cargo build --release` / `cargo-dist`. For those targets, enable
+> `embedding-fastembed-dynamic-linking` instead and ship
+> `libonnxruntime.{so,dll}` alongside your binary. The two features are
+> mutually exclusive (Cargo feature unification would otherwise silently
+> disable the static path — #50/#55); a `compile_error!` enforces this.
 
 ```rust
 use llm_kernel::embedding::{EmbeddingModel, FastembedProvider, EmbeddingProvider};

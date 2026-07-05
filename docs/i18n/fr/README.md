@@ -67,7 +67,7 @@ Chaque module est derriere un indicateur de fonctionnalite afin que vous ne payi
 | `embedding-fastembed` | Embedding ONNX local via fastembed-rs (44 modeles) | |
 | `embedding-fastembed-qwen3` | Embedding Qwen3 via le backend candle | |
 | `embedding-fastembed-nomic-moe` | Embedding Nomic V2 MoE via le backend candle | |
-| `embedding-fastembed-dynamic-linking` | Édition dynamique de l'exécution ONNX (optionnel ; pour hôtes Linux glibc <2.38, voir #50) | |
+| `embedding-fastembed-dynamic-linking` | Dynamic ONNX Runtime linking (opt-in; **mutually exclusive with `embedding-fastembed`** — for hosts where the static archive fails at release link: glibc <2.38 / older MSVC; see #50 #55) | |
 | `vector-index` | Index vectoriel compresse TurboQuant -- 2 bits/4 bits, recherche ANN par SIMD | |
 | `qdrant` | AsyncVectorIndex Qdrant (QdrantVectorIndex) pour la recherche vectorielle distante | |
 | `elastic` | AsyncVectorIndex Elasticsearch (ElasticsearchVectorIndex) sur un client reqwest écrit à la main | |
@@ -425,6 +425,17 @@ Un `TurbovecIndex` synchrone participe via la fusion pure `federate_results` —
 #### Embedding ONNX local (fastembed-rs)
 
 44 modeles via ONNX Runtime -- aucune cle API, aucun reseau apres le premier telechargement.
+
+> **Release-link caveat (#55).** `embedding-fastembed` statically links a
+> prebuilt ONNX Runtime archive that requires **glibc ≥2.38** on Linux
+> (ubuntu 24.04+) and a current MSVC CRT on Windows. Older baselines
+> (ubuntu 22.04 / glibc 2.35) fail at the *release link step* — `cargo check`
+> stays green because it does not link, so the failure only surfaces at
+> `cargo build --release` / `cargo-dist`. For those targets, enable
+> `embedding-fastembed-dynamic-linking` instead and ship
+> `libonnxruntime.{so,dll}` alongside your binary. The two features are
+> mutually exclusive (Cargo feature unification would otherwise silently
+> disable the static path — #50/#55); a `compile_error!` enforces this.
 
 ```rust
 use llm_kernel::embedding::{EmbeddingModel, FastembedProvider, EmbeddingProvider};

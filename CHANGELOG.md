@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-07-06
+
 ### Fixed
 - **embedding** (#55): `embedding-fastembed-dynamic-linking` no longer pulls in
   `embedding-fastembed` (static ONNX download). Previously the dynamic feature
