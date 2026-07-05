@@ -157,7 +157,10 @@ jobs:
         run: cargo clippy --release --no-default-features --features ${{ matrix.features }} -- -D warnings
 
   macos-check:
-    runs-on: macos-latest
+    # macos-latest (Xcode 26.5 / clang 21) dropped libclang_rt.osx.a, which
+    # ort's static archive links against (#57). Pin macos-14 (Xcode 15.x)
+    # until the 26.5 image stabilizes; see #57.
+    runs-on: macos-14
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable

@@ -67,7 +67,7 @@ Ogni modulo è protetto da una flag di feature, così paghi solo per ciò che ut
 | `embedding-fastembed` | Embedding ONNX locale via fastembed-rs (44 modelli) | |
 | `embedding-fastembed-qwen3` | Embedding Qwen3 via backend candle | |
 | `embedding-fastembed-nomic-moe` | Embedding Nomic V2 MoE via backend candle | |
-| `embedding-fastembed-dynamic-linking` | Linking dinamico del runtime ONNX (opzionale; per host Linux con glibc <2.38, vedi #50) | |
+| `embedding-fastembed-dynamic-linking` | Dynamic ONNX Runtime linking (opt-in; **mutually exclusive with `embedding-fastembed`** — for hosts where the static archive fails at release link: glibc <2.38 / older MSVC; see #50 #55) | |
 | `vector-index` | Indice vettoriale compresso TurboQuant — 2 bit/4 bit, ricerca ANN con SIMD | |
 | `qdrant` | AsyncVectorIndex Qdrant (QdrantVectorIndex) per la ricerca vettoriale remota | |
 | `elastic` | AsyncVectorIndex Elasticsearch (ElasticsearchVectorIndex) su un client reqwest scritto a mano | |
@@ -422,6 +422,17 @@ Un `TurbovecIndex` sincrono partecipa tramite il merge puro `federate_results` �
 #### Embedding ONNX locale (fastembed-rs)
 
 44 modelli via ONNX Runtime — nessuna chiave API, nessuna connessione di rete dopo il primo download.
+
+> **Release-link caveat (#55).** `embedding-fastembed` statically links a
+> prebuilt ONNX Runtime archive that requires **glibc ≥2.38** on Linux
+> (ubuntu 24.04+) and a current MSVC CRT on Windows. Older baselines
+> (ubuntu 22.04 / glibc 2.35) fail at the *release link step* — `cargo check`
+> stays green because it does not link, so the failure only surfaces at
+> `cargo build --release` / `cargo-dist`. For those targets, enable
+> `embedding-fastembed-dynamic-linking` instead and ship
+> `libonnxruntime.{so,dll}` alongside your binary. The two features are
+> mutually exclusive (Cargo feature unification would otherwise silently
+> disable the static path — #50/#55); a `compile_error!` enforces this.
 
 ```rust
 use llm_kernel::embedding::{EmbeddingModel, FastembedProvider, EmbeddingProvider};

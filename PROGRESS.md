@@ -2,16 +2,16 @@
 
 > Auto-generated status snapshot. Last updated: 2026-07-03
 
-## Current Version: v0.13.0
+## Current Version: v0.15.0
 
 | Metric | Value |
 |--------|-------|
-| Version | `0.13.0` |
+| Version | `0.15.0` |
 | Edition | Rust 2024, MSRV 1.92 |
 | Lines of code | ~23,000 |
 | Total tests | `--features full`: 602 passed, 13 ignored, 0 failed |
 | Backend features | `graph-pg` (PostgreSQL), `qdrant` (vector search), `elastic` (Elasticsearch vector search) |
-| Last commit | `chore: bump v0.13.0` |
+| Last commit | `fix(embedding): ... (#55) (#56)` |
 
 ---
 
@@ -173,4 +173,4 @@ safety       → secret masking, error classification, prompt-injection detectio
 | Clippy clean | ✅ (verified before each release) |
 | CI passing | ✅ Linux + macOS dual runner |
 | Crate structure | ✅ Monolithic (subcrate removed) |
-| Roadmap on track | ✅ v0.13.0 complete, v1.0.0 next |
+| Roadmap on track | ✅ v0.15.0 complete, v1.0.0 next |
