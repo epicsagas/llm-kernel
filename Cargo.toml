@@ -204,7 +204,7 @@ fastembed   = { version = "5", default-features = false, optional = true }
 # fastembed release built against stable. Switch to a caret range (`2`) once
 # both conditions hold.
 ort         = { version = "=2.0.0-rc.12", default-features = false, optional = true }
-candle-core = { version = "0.10", optional = true }
+candle-core = { version = "0.11", optional = true }
 indexmap    = { version = "2", optional = true }
 clap        = { version = "4", features = ["derive"], optional = true }
 turbovec    = { version = "0.9", optional = true }
