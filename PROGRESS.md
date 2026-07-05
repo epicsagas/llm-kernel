@@ -9,7 +9,7 @@
 | Version | `0.13.0` |
 | Edition | Rust 2024, MSRV 1.92 |
 | Lines of code | ~23,000 |
-| Total tests | `--all-features`: 599 passed, 13 ignored, 0 failed |
+| Total tests | `--features full`: 602 passed, 13 ignored, 0 failed |
 | Backend features | `graph-pg` (PostgreSQL), `qdrant` (vector search), `elastic` (Elasticsearch vector search) |
 | Last commit | `chore: bump v0.13.0` |
 
@@ -169,7 +169,7 @@ safety       → secret masking, error classification, prompt-injection detectio
 
 | Check | Status |
 |-------|--------|
-| All tests pass | ✅ 593 passed, 13 ignored, 0 failed (`--all-features`) |
+| All tests pass | ✅ 602 passed, 13 ignored, 0 failed (`--features full`) |
 | Clippy clean | ✅ (verified before each release) |
 | CI passing | ✅ Linux + macOS dual runner |
 | Crate structure | ✅ Monolithic (subcrate removed) |

@@ -31,6 +31,24 @@
 //! use llm_kernel::prelude::*;
 //! ```
 
+// `embedding-fastembed` (static ONNX Runtime archive) and
+// `embedding-fastembed-dynamic-linking` (runtime `libonnxruntime.{so,dll,dylib}`
+// load) are mutually exclusive. Enabling both unifies `ort-download-binaries-*`
+// and `ort-load-dynamic` on the shared `fastembed`/`ort-sys` crate, which makes
+// ort-sys skip the static-archive download and silently expect a runtime dylib
+// llm-kernel never ships — the original #50/#55 failure mode. Force a hard
+// build error so the conflict can never be silent. See `Cargo.toml` feature
+// docs and #55.
+#[cfg(all(
+    feature = "embedding-fastembed",
+    feature = "embedding-fastembed-dynamic-linking"
+))]
+compile_error!(
+    "embedding-fastembed and embedding-fastembed-dynamic-linking are mutually exclusive \
+     (static vs dynamic ONNX Runtime linking). Enabling both triggers Cargo feature \
+     unification that silently disables the static link path (#50/#55). Enable exactly one."
+);
+
 /// Error types and result alias for llm-kernel.
 pub mod error;
 

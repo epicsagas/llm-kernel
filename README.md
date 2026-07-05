@@ -62,7 +62,7 @@ Each module is gated behind a feature flag so you only pay for what you use.
 | `embedding-fastembed` | Local ONNX embedding via fastembed-rs (44 models) | |
 | `embedding-fastembed-qwen3` | Qwen3 embedding via candle backend | |
 | `embedding-fastembed-nomic-moe` | Nomic V2 MoE embedding via candle backend | |
-| `embedding-fastembed-dynamic-linking` | Dynamic ONNX Runtime linking (opt-in; for glibc <2.38 Linux hosts, see #50) | |
+| `embedding-fastembed-dynamic-linking` | Dynamic ONNX Runtime linking (opt-in; **mutually exclusive with `embedding-fastembed`** — for hosts where the static archive fails at release link: glibc <2.38 / older MSVC; see #50 #55) | |
 | `vector-index` | TurboQuant compressed vector index — 2-bit/4-bit, SIMD ANN search | |
 | `qdrant` | Qdrant `AsyncVectorIndex` (`QdrantVectorIndex`) for remote vector search | |
 | `elastic` | Elasticsearch `AsyncVectorIndex` (`ElasticsearchVectorIndex`) over a hand-rolled reqwest client | |
@@ -440,6 +440,17 @@ A synchronous `TurbovecIndex` participates via the pure `federate_results` merge
 #### Local ONNX embedding (fastembed-rs)
 
 44 models via ONNX Runtime — no API key, no network after first download.
+
+> **Release-link caveat (#55).** `embedding-fastembed` statically links a
+> prebuilt ONNX Runtime archive that requires **glibc ≥2.38** on Linux
+> (ubuntu 24.04+) and a current MSVC CRT on Windows. Older baselines
+> (ubuntu 22.04 / glibc 2.35) fail at the *release link step* — `cargo check`
+> stays green because it does not link, so the failure only surfaces at
+> `cargo build --release` / `cargo-dist`. For those targets, enable
+> `embedding-fastembed-dynamic-linking` instead and ship
+> `libonnxruntime.{so,dll}` alongside your binary. The two features are
+> mutually exclusive (Cargo feature unification would otherwise silently
+> disable the static path — #50/#55); a `compile_error!` enforces this.
 
 ```rust
 use llm_kernel::embedding::{EmbeddingModel, FastembedProvider, EmbeddingProvider};

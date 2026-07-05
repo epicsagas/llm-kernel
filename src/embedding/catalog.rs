@@ -617,8 +617,12 @@ impl EmbeddingModel {
 
     /// Map to `fastembed::EmbeddingModel`.
     ///
-    /// Only available when the `embedding-fastembed` feature is enabled.
-    #[cfg(feature = "embedding-fastembed")]
+    /// Only available when an ONNX embedding feature is enabled
+    /// (`embedding-fastembed` or `embedding-fastembed-dynamic-linking`).
+    #[cfg(any(
+        feature = "embedding-fastembed",
+        feature = "embedding-fastembed-dynamic-linking"
+    ))]
     pub fn as_fastembed(self) -> fastembed::EmbeddingModel {
         match self {
             Self::BGESmallENV15 => fastembed::EmbeddingModel::BGESmallENV15,
