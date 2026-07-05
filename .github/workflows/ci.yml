@@ -124,33 +124,37 @@ jobs:
   # Release-link regression guard for the statically-linked ONNX Runtime path
   # (#55). ort-sys downloads + links a prebuilt static archive at build time, so
   # any static-link regression surfaces here at the link step — not at consumer
-  # release time. macOS already links reliably; this covers the Linux/Windows
-  # release matrix. The static archive requires glibc 2.38+ / a current MSVC
-  # CRT, so ubuntu-22.04 (glibc 2.35) cannot link the static path — instead it
-  # verifies the `embedding-fastembed-dynamic-linking` escape hatch compiles on
-  # exactly the baseline alcove was forced to roll back from.
+  # release time. macOS static linking is covered by `macos-check` below (which
+  # injects the clang_rt link path the Xcode 16+ image drops); this matrix
+  # covers the Linux/Windows release link. The static archive requires glibc
+  # 2.38+ / a current MSVC CRT, so ubuntu-22.04 (glibc 2.35) instead verifies
+  # the `embedding-fastembed-dynamic-linking` escape hatch — plus a clippy pass,
+  # since the dynamic path is excluded from `full` — on exactly the baseline
+  # alcove rolled back from.
   release-link-check:
-    name: Release link (${{ matrix.os }} / ${{ matrix.mode }})
+    name: Release link (${{ matrix.os }} / ${{ matrix.features }})
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
-            mode: static
             features: embedding-fastembed
           - os: windows-latest
-            mode: static
             features: embedding-fastembed
           - os: ubuntu-22.04
-            mode: dynamic
             features: embedding-fastembed-dynamic-linking
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
       - uses: Swatinem/rust-cache@v2
-      - name: Release build (${{ matrix.mode }})
+      - name: Release build
         run: cargo build --release --no-default-features --features ${{ matrix.features }}
+      - name: Clippy (escape-hatch path)
+        if: matrix.features == 'embedding-fastembed-dynamic-linking'
+        run: cargo clippy --release --no-default-features --features ${{ matrix.features }} -- -D warnings
 
   macos-check:
     runs-on: macos-latest

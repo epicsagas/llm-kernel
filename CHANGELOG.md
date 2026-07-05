@@ -19,6 +19,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `embedding-fastembed-dynamic-linking` → runtime dylib load), and a
   `compile_error!` in `src/lib.rs` makes any conflict a hard build error
   instead of a silent dead link.
+- **embedding** (#55, review fix): `FastembedProvider`, `LazyFastembedProvider`,
+  `EmbeddingCache`, `is_model_cached`, and `EmbeddingModel::as_fastembed` were
+  gated only on `feature = "embedding-fastembed"`, so the restructure above left
+  `embedding-fastembed-dynamic-linking` compiling the bare `fastembed` crate with
+  **no llm-kernel embedding API** — `unresolved import FastembedProvider`. Those
+  gates now also fire under `embedding-fastembed-dynamic-linking`, so the dynamic
+  escape hatch exposes the same API as the static path.
 
 ### Added
 - **ci** (#55): `release-link-check` job builds `cargo build --release
@@ -47,6 +54,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `embedding-fastembed-dynamic-linking` plus a shipped
   `libonnxruntime.{so,dll}` — `cargo check` stays green because it does not
   link, so the failure surfaces only at `cargo build --release`.
+- **docs**: added `[package.metadata.docs.rs] features = ["full"]` so docs.rs
+  (which defaults to `--all-features`) doesn't trip the new mutually-exclusive
+  `compile_error!`. Trade-off: `--features full` activates the static ort
+  archive download on every clippy/test/doc/check run (the previous
+  `--all-features` skipped it via the now-removed no-op dynamic feature) —
+  accepted as the cost of accurate static-link coverage.
 
 ## [0.14.0] - 2026-07-03
 

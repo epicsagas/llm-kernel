@@ -112,7 +112,7 @@ embedding-openai = ["embedding", "dep:ureq", "dep:serde_json"]
 # Statically links ONNX Runtime via `fastembed/ort-download-binaries-rustls-tls`:
 # ort-sys downloads + links a prebuilt static archive at build time, producing a
 # self-contained binary with no runtime dylib resolution. CAVEAT (#55): ort's
-# prebuilt static archive requires glibc 2.38+ (`__isoc23_strtol` etc.) on Linux
+# prebuilt static archive requires glibc ≥2.38 (`__isoc23_strtol` etc.) on Linux
 # and a current MSVC CRT on Windows; older baselines (ubuntu 22.04, glibc 2.35)
 # fail at the *release link step* (`cargo check` stays green because it does
 # not link). For those, use `embedding-fastembed-dynamic-linking` instead.
@@ -132,7 +132,7 @@ embedding-fastembed-directml = ["embedding-fastembed", "dep:ort"]
 #
 # Use this when your build/release target cannot satisfy the static archive's
 # requirements — e.g. a glibc <2.38 Linux host (ort's prebuilt static archive
-# needs glibc 2.38+ and fails at the release link step on ubuntu 22.04; see
+# needs glibc ≥2.38 and fails at the release link step on ubuntu 22.04; see
 # #50, #55) — and you can guarantee `libonnxruntime.*` is present on the
 # runtime host.
 #
@@ -262,3 +262,9 @@ codegen-units = 4
 [profile.dist]
 inherits = "release"
 lto = "thin"
+
+[package.metadata.docs.rs]
+# docs.rs defaults to `--all-features`, which would activate the
+# mutually-exclusive `embedding-fastembed` + `embedding-fastembed-dynamic-linking`
+# and trip the `compile_error!` in src/lib.rs. Build docs with `full` instead (#55).
+features = ["full"]
