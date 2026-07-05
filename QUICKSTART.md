@@ -135,8 +135,8 @@ let sim = cosine_similarity(&result.vector, &[0.1; 384]);
 ## Verify
 
 ```bash
-cargo test --all-features
-cargo clippy --all-features -- -D warnings
+cargo test --features full
+cargo clippy --features full -- -D warnings
 ```
 
 ## Next Steps

@@ -13,10 +13,16 @@ pub mod types;
 #[cfg(feature = "embedding-openai")]
 pub mod openai;
 
-#[cfg(feature = "embedding-fastembed")]
+#[cfg(any(
+    feature = "embedding-fastembed",
+    feature = "embedding-fastembed-dynamic-linking"
+))]
 pub mod fastembed;
 
-#[cfg(feature = "embedding-fastembed")]
+#[cfg(any(
+    feature = "embedding-fastembed",
+    feature = "embedding-fastembed-dynamic-linking"
+))]
 pub mod lazy;
 
 #[cfg(feature = "embedding-fastembed-qwen3")]
@@ -48,10 +54,16 @@ pub use types::{EmbeddingProvider, EmbeddingResult, chunk_batch, cosine_similari
 #[cfg(feature = "embedding-openai")]
 pub use openai::OpenAIEmbeddingClient;
 
-#[cfg(feature = "embedding-fastembed")]
+#[cfg(any(
+    feature = "embedding-fastembed",
+    feature = "embedding-fastembed-dynamic-linking"
+))]
 pub use fastembed::FastembedProvider;
 
-#[cfg(feature = "embedding-fastembed")]
+#[cfg(any(
+    feature = "embedding-fastembed",
+    feature = "embedding-fastembed-dynamic-linking"
+))]
 pub use lazy::{EmbeddingCache, LazyFastembedProvider, LazyOpts, ModelState, is_model_cached};
 
 #[cfg(feature = "embedding-fastembed-qwen3")]

@@ -43,7 +43,7 @@ No public API changes. No new types that break existing signatures.
 | 6 | `extract_xml_tag(text, tag)` utility for Claude-style output | additive | `src/llm/json_extract.rs` |
 | 7 | Expand `CapabilityProfile` with default trait methods (tool_calling, vision, streaming, context_limit) | additive | `src/provider/capability.rs` |
 
-**Patch release criteria:** All existing tests pass, no API breakage, `cargo doc --all-features` warning-free after v0.3.4.
+**Patch release criteria:** All existing tests pass, no API breakage, `cargo doc --features full` warning-free after v0.3.4.
 
 ---
 
