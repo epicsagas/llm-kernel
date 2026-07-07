@@ -63,6 +63,7 @@ jobs:
           - "--no-default-features --features install"
           - "--no-default-features --features qdrant"
           - "--no-default-features --features elastic"
+          - "--no-default-features --features pgvector"
           - "--no-default-features --features full"
     steps:
       - uses: actions/checkout@v7
