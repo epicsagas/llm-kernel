@@ -73,6 +73,27 @@ impl FastembedProvider {
         })
     }
 
+    /// Create with CoreML GPU/ANE execution on macOS (feature `embedding-fastembed-coreml`).
+    ///
+    /// Accelerates ONNX inference via the CoreML execution provider — Neural Engine
+    /// / GPU on Apple Silicon. The CoreML runtime is bundled with macOS; no extra
+    /// dylib needed (unlike DirectML on Windows).
+    #[cfg(all(feature = "embedding-fastembed-coreml", target_os = "macos"))]
+    pub fn new_with_coreml(model: EmbeddingModel, cache_dir: Option<PathBuf>) -> Result<Self> {
+        use ort::execution_providers::CoreMLExecutionProvider;
+        let mut options = fastembed::TextInitOptions::new(model.as_fastembed())
+            .with_show_download_progress(false)
+            .with_execution_providers(vec![CoreMLExecutionProvider::default().build()]);
+        if let Some(dir) = cache_dir {
+            options = options.with_cache_dir(dir);
+        }
+        let te = fastembed::TextEmbedding::try_new(options).map_err(KernelError::embedding)?;
+        Ok(Self {
+            inner: Mutex::new(te),
+            model,
+        })
+    }
+
     /// Create with a custom maximum sequence length.
     pub fn with_max_length(
         model: EmbeddingModel,
