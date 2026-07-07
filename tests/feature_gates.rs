@@ -79,3 +79,12 @@ fn test_qdrant_feature() {
     fn _assert_impl<T: AsyncVectorIndex>() {}
     _assert_impl::<QdrantVectorIndex>();
 }
+
+/// Compile-time check that `PgVectorIndex` implements `AsyncVectorIndex`.
+#[cfg(feature = "pgvector")]
+#[test]
+fn test_pgvector_feature() {
+    use llm_kernel::embedding::{AsyncVectorIndex, PgVectorIndex};
+    fn _assert_impl<T: AsyncVectorIndex>() {}
+    _assert_impl::<PgVectorIndex>();
+}

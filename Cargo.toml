@@ -100,7 +100,7 @@ elastic = ["embedding", "dep:reqwest", "dep:serde_json"]
 
 # pgvector AsyncVectorIndex (PgVectorIndex) over `sqlx` + the pgvector
 # extension. Mirrors `qdrant`/`elastic` — an async remote vector backend.
-pgvector = ["embedding", "dep:sqlx", "dep:pgvector", "dep:async-trait"]
+pgvector = ["embedding", "dep:sqlx", "dep:pgvector"]
 
 # Cross-engine search federation — concurrent query over multiple
 # `AsyncVectorIndex` backends with a per-backend timeout and RRF / weighted-sum

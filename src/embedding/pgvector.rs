@@ -9,6 +9,7 @@
 use async_trait::async_trait;
 use pgvector::Vector;
 use sqlx::PgPool;
+use sqlx::QueryBuilder;
 use sqlx::postgres::PgPoolOptions;
 
 use crate::embedding::vector_index::SearchHit;
@@ -28,9 +29,10 @@ impl PgVectorIndex {
     /// Connect to `url` (libpq connstring / `postgresql://…`), create the
     /// vector table + HNSW cosine index if missing, and return a ready index.
     ///
-    /// `dim` is informational (the `vector` column is unbounded; pgvector
-    /// validates per-row on insert).
+    /// `dim` is enforced by the fixed `vector(dim)` column; vectors whose
+    /// length differs from `dim` are rejected by pgvector on insert.
     pub async fn new(url: &str, table: &str, dim: usize) -> Result<Self> {
+        validate_table_name(table)?;
         let pool = PgPoolOptions::new()
             .max_connections(8)
             .connect(url)
@@ -48,8 +50,9 @@ impl PgVectorIndex {
     /// `CREATE TABLE IF NOT EXISTS {table} (id BIGINT PK, vec vector)` + HNSW
     /// cosine index. Idempotent.
     async fn init_schema(&self) -> Result<()> {
-        // Identifier is caller-controlled (not user input at runtime) — format!
-        // is acceptable here. Callers pass a fixed table name.
+        // Identifier is caller-controlled (not user input at runtime) and
+        // validated in `new`, so `format!` is acceptable here. PG cannot bind
+        // identifiers. Callers pass a fixed, validated table name.
         sqlx::query(&format!(
             "CREATE TABLE IF NOT EXISTS {} (id BIGINT PRIMARY KEY, vec vector({}) NOT NULL)",
             self.table, self.dim
@@ -78,18 +81,24 @@ impl crate::embedding::AsyncVectorIndex for PgVectorIndex {
                 ids.len()
             )));
         }
-        for (v, &id) in vectors.iter().zip(ids.iter()) {
-            let vec = Vector::from(v.clone());
-            sqlx::query(&format!(
-                "INSERT INTO {} (id, vec) VALUES ($1, $2) ON CONFLICT (id) DO UPDATE SET vec = $2",
-                self.table
-            ))
-            .bind(id as i64)
-            .bind(vec)
+        if vectors.is_empty() {
+            return Ok(());
+        }
+        // Map u64 → i64 up front: pgvector stores BIGINT (i64), so values
+        // above i64::MAX cannot be represented and must be rejected rather
+        // than silently wrapped. Single batched INSERT → one round trip.
+        let pg_ids: Vec<i64> = ids.iter().map(|&id| to_pg_id(id)).collect::<Result<_>>()?;
+        let mut q = QueryBuilder::new("INSERT INTO ");
+        q.push(self.table.as_str());
+        q.push(" (id, vec) ");
+        q.push_values(vectors.iter().zip(pg_ids.iter()), |mut b, (v, &id)| {
+            b.push_bind(id).push_bind(Vector::from(v.clone()));
+        });
+        q.push(" ON CONFLICT (id) DO UPDATE SET vec = EXCLUDED.vec");
+        q.build()
             .execute(&self.pool)
             .await
             .map_err(|e| KernelError::Embedding(format!("pgvector add: {e}")))?;
-        }
         Ok(())
     }
 
@@ -97,7 +106,7 @@ impl crate::embedding::AsyncVectorIndex for PgVectorIndex {
         if ids.is_empty() {
             return Ok(());
         }
-        let ids: Vec<i64> = ids.iter().map(|&i| i as i64).collect();
+        let ids: Vec<i64> = ids.iter().map(|&i| to_pg_id(i)).collect::<Result<_>>()?;
         sqlx::query(&format!("DELETE FROM {} WHERE id = ANY($1)", self.table))
             .bind(&ids)
             .execute(&self.pool)
@@ -137,7 +146,10 @@ impl crate::embedding::AsyncVectorIndex for PgVectorIndex {
             return Ok(Vec::new());
         }
         let q = Vector::from(query.to_vec());
-        let allow: Vec<i64> = allowlist.iter().map(|&i| i as i64).collect();
+        let allow: Vec<i64> = allowlist
+            .iter()
+            .map(|&i| to_pg_id(i))
+            .collect::<Result<_>>()?;
         let rows: Vec<(i64, f64)> = sqlx::query_as(&format!(
             "SELECT id, 1 - (vec <=> $1::vector) FROM {} WHERE id = ANY($2) \
              ORDER BY vec <=> $1::vector LIMIT $3",
@@ -169,6 +181,28 @@ impl crate::embedding::AsyncVectorIndex for PgVectorIndex {
     fn dim(&self) -> usize {
         self.dim
     }
+}
+
+/// `u64` external ID → PG `BIGINT` (`i64`). IDs exceeding `i64::MAX` cannot
+/// be stored in a BIGINT column — reject rather than silently wrap.
+fn to_pg_id(id: u64) -> Result<i64> {
+    i64::try_from(id).map_err(|_| KernelError::Embedding(format!("id {id} exceeds BIGINT range")))
+}
+
+/// Validate that `table` is a plain, safe SQL identifier (ASCII alphanumeric +
+/// `_`, starting with a letter or `_`). It is interpolated into DDL/DML via
+/// `format!` (PG cannot bind identifiers), so reject anything that could break
+/// out of the identifier context.
+fn validate_table_name(table: &str) -> Result<()> {
+    let mut chars = table.chars();
+    let first_ok = matches!(chars.next(), Some(c) if c.is_ascii_alphabetic() || c == '_');
+    let valid = first_ok && chars.all(|c| c.is_ascii_alphanumeric() || c == '_');
+    if !valid {
+        return Err(KernelError::Embedding(format!(
+            "invalid table identifier: {table:?}"
+        )));
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -223,5 +257,27 @@ mod tests {
             .execute(&idx.pool)
             .await
             .ok();
+    }
+
+    #[test]
+    fn rejects_invalid_table_name() {
+        // valid identifiers accepted
+        assert!(validate_table_name("lk_test_1").is_ok());
+        assert!(validate_table_name("_vec").is_ok());
+        // rejected — would break out of identifier context
+        assert!(validate_table_name("").is_err());
+        assert!(validate_table_name("1bad").is_err());
+        assert!(validate_table_name("rm; DROP").is_err());
+        assert!(validate_table_name("weird\"name").is_err());
+        assert!(validate_table_name("sch.tbl").is_err());
+    }
+
+    #[test]
+    fn rejects_overflowing_id() {
+        assert_eq!(to_pg_id(0).unwrap(), 0);
+        assert_eq!(to_pg_id(42).unwrap(), 42);
+        assert_eq!(to_pg_id(i64::MAX as u64).unwrap(), i64::MAX);
+        assert!(to_pg_id((i64::MAX as u64) + 1).is_err());
+        assert!(to_pg_id(u64::MAX).is_err());
     }
 }
