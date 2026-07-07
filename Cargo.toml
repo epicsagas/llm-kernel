@@ -98,6 +98,10 @@ qdrant = ["embedding", "dep:qdrant-client", "dep:serde_json"]
 # `qdrant` feature, reusing the reqwest already behind `client-async`.
 elastic = ["embedding", "dep:reqwest", "dep:serde_json"]
 
+# pgvector AsyncVectorIndex (PgVectorIndex) over `sqlx` + the pgvector
+# extension. Mirrors `qdrant`/`elastic` — an async remote vector backend.
+pgvector = ["embedding", "dep:sqlx", "dep:pgvector", "dep:async-trait"]
+
 # Cross-engine search federation — concurrent query over multiple
 # `AsyncVectorIndex` backends with a per-backend timeout and RRF / weighted-sum
 # fusion (`FederatedSearch`). Owns the `tokio` + `futures-util` deps so `search`
@@ -168,7 +172,7 @@ eval-full = ["eval", "graph"]
 #   - embedding-fastembed-dynamic-linking: opt-in dynamic ONNX linking (see #50).
 #   - eval / eval-full: developer CLI tooling (the `llm-kernel-eval` binary),
 #     not part of the library surface. Enable explicitly to run the eval suite.
-full = ["provider", "discovery", "discovery-async", "client-async", "cache", "secrets", "store", "config", "graph", "graph-async", "graph-pool", "graph-cjk", "graph-pg", "graph-pg-tls", "mcp", "mcp-http", "tokens", "install", "search", "embedding", "embedding-openai", "embedding-fastembed", "embedding-fastembed-qwen3", "embedding-fastembed-nomic-moe", "vector-index", "qdrant", "elastic", "federation", "telemetry", "safety", "catalog-sync"]
+full = ["provider", "discovery", "discovery-async", "client-async", "cache", "secrets", "store", "config", "graph", "graph-async", "graph-pool", "graph-cjk", "graph-pg", "graph-pg-tls", "mcp", "mcp-http", "tokens", "install", "search", "embedding", "embedding-openai", "embedding-fastembed", "embedding-fastembed-qwen3", "embedding-fastembed-nomic-moe", "vector-index", "qdrant", "elastic", "pgvector", "federation", "telemetry", "safety", "catalog-sync"]
 
 [dependencies]
 # Always required
@@ -213,6 +217,8 @@ postgres    = { version = "0.19", optional = true }
 postgres-native-tls = { version = "0.5", optional = true }
 native-tls  = { version = "0.2", optional = true }
 qdrant-client = { version = "1", optional = true }
+sqlx         = { version = "0.8", default-features = false, features = ["postgres", "runtime-tokio-rustls", "macros"], optional = true }
+pgvector     = { version = "0.4", default-features = false, features = ["sqlx"], optional = true }
 
 [dev-dependencies]
 tempfile = "3"
