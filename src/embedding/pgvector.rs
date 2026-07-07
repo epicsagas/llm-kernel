@@ -15,6 +15,13 @@ use sqlx::postgres::PgPoolOptions;
 use crate::embedding::vector_index::SearchHit;
 use crate::error::{KernelError, Result};
 
+/// 검색 결과 행(id + cosine 유사도) — 튜플 대신 구조체로 sqlx `FromRow` 안정 매핑.
+#[derive(sqlx::FromRow)]
+struct ScoreRow {
+    id: i64,
+    score: f64,
+}
+
 /// PostgreSQL vector index backed by the `pgvector` extension.
 ///
 /// All operations are async over a shared `PgPool` (MVCC, connection-pooled).
@@ -118,8 +125,8 @@ impl crate::embedding::AsyncVectorIndex for PgVectorIndex {
     async fn search(&self, query: &[f32], k: usize) -> Result<Vec<SearchHit>> {
         let q = Vector::from(query.to_vec());
         // cosine distance <=> : 0 (동일) .. 2 (반대). score = 1 - distance.
-        let rows: Vec<(i64, f64)> = sqlx::query_as(&format!(
-            "SELECT id, 1 - (vec <=> $1::vector) FROM {} ORDER BY vec <=> $1::vector LIMIT $2",
+        let rows: Vec<ScoreRow> = sqlx::query_as(&format!(
+            "SELECT id, 1 - (vec <=> $1::vector) AS score FROM {} ORDER BY vec <=> $1::vector LIMIT $2",
             self.table
         ))
         .bind(q)
@@ -129,9 +136,9 @@ impl crate::embedding::AsyncVectorIndex for PgVectorIndex {
         .map_err(|e| KernelError::Embedding(format!("pgvector search: {e}")))?;
         Ok(rows
             .into_iter()
-            .map(|(id, score)| SearchHit {
-                id: id as u64,
-                score: score as f32,
+            .map(|r| SearchHit {
+                id: r.id as u64,
+                score: r.score as f32,
             })
             .collect())
     }
@@ -150,8 +157,8 @@ impl crate::embedding::AsyncVectorIndex for PgVectorIndex {
             .iter()
             .map(|&i| to_pg_id(i))
             .collect::<Result<_>>()?;
-        let rows: Vec<(i64, f64)> = sqlx::query_as(&format!(
-            "SELECT id, 1 - (vec <=> $1::vector) FROM {} WHERE id = ANY($2) \
+        let rows: Vec<ScoreRow> = sqlx::query_as(&format!(
+            "SELECT id, 1 - (vec <=> $1::vector) AS score FROM {} WHERE id = ANY($2) \
              ORDER BY vec <=> $1::vector LIMIT $3",
             self.table
         ))
@@ -163,9 +170,9 @@ impl crate::embedding::AsyncVectorIndex for PgVectorIndex {
         .map_err(|e| KernelError::Embedding(format!("pgvector search_filtered: {e}")))?;
         Ok(rows
             .into_iter()
-            .map(|(id, score)| SearchHit {
-                id: id as u64,
-                score: score as f32,
+            .map(|r| SearchHit {
+                id: r.id as u64,
+                score: r.score as f32,
             })
             .collect())
     }
