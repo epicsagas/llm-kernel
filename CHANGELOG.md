@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-07-08
+
+### Added
+- **embedding** (#59): `pgvector` `AsyncVectorIndex` (`PgVectorIndex`) — PostgreSQL + the `pgvector` extension as a third async remote vector backend (cosine `<=>`, HNSW index), alongside qdrant/elastic.
+- **llm** (#60): `RouterClient` — cost-aware routing (`Fallback` / `LowestCost`) with cross-provider fallback. Fall-through is error-class aware: transient errors (5xx, rate-limit `429`, timeout `408`) move on, permanent 4xx short-circuits. Composes with `RetryClient` / `MiddlewareClient` / `CacheClient`.
+
+### Changed
+- **deps** (#61): `rusqlite` 0.40 → 0.37 (MSRV/build stability; drops the `rsqlite-vfs` transitive dependency).
+
 ## [0.15.0] - 2026-07-06
 
 ### Fixed
