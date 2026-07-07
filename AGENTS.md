@@ -31,7 +31,7 @@ src/
   secrets/     — dotenv vault, atomic writes  (feature: secrets)
   store/       — SQLite init helpers, KvStore  (feature: store)
   config/      — TOML loader  (feature: config)
-  graph/       — GraphBackend trait, FTS5, smart recall, BFS, CJK search, migrations  (features: graph, graph-async, graph-pool, graph-cjk)
+  graph/       — AI agent *memory* graph (not general-purpose; niche comparable to Zep/Mem0/Letta): GraphBackend trait, FTS5, smart recall, BFS, CJK search, CSR recall boost, migrations  (features: graph, graph-async, graph-pool, graph-cjk)
   mcp/         — JSON-RPC 2.0 server, stdio + HTTP/SSE transport, async handlers  (features: mcp, mcp-http)
   tokens/      — Unicode token estimation, budgeting, sentence-aware chunking  (feature: tokens)
   install/     — AI tool config wizard  (feature: install)
