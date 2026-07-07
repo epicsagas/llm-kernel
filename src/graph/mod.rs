@@ -1,4 +1,15 @@
-//! Knowledge graph with SQLite persistence, FTS5 search, and smart recall.
+//! AI agent memory graph — SQLite-backed long-term memory with FTS5 search,
+//! smart recall, and graph-structured relevance boosting.
+//!
+//! This is **not** a general-purpose graph library. It is an agent *memory*
+//! layer: nodes carry importance and decaying recency/access signals, and are
+//! recalled by composite scoring (recency + importance + access + FTS + graph
+//! boost), with CSR algorithms ([`algo`]) surfacing structurally central
+//! memories. The niche is comparable to **Zep / Mem0 / Letta**, but local-first
+//! and vault-based rather than a hosted service.
+//!
+//! For pure topology with no memory semantics, `petgraph` or a graph database
+//! is a better fit; this module optimizes for *recall* of accumulated context.
 //!
 //! Provides a complete knowledge graph layer on top of SQLite:
 //!
