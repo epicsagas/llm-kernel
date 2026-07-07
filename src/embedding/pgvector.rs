@@ -7,7 +7,6 @@
 //! (the table + HNSW index are created automatically by [`PgVectorIndex::new`]).
 
 use async_trait::async_trait;
-use pgvector::Vector;
 use sqlx::PgPool;
 use sqlx::QueryBuilder;
 use sqlx::postgres::PgPoolOptions;
@@ -20,6 +19,20 @@ use crate::error::{KernelError, Result};
 struct ScoreRow {
     id: i64,
     score: f64,
+}
+
+/// f32 슬라이스 → pgvector 문자열 리터럴 `[1,2,3]` (text → vector 입력 캐스트).
+/// `pgvector::Vector`의 sqlx `Type` 바인드가 의존 환경에 따라 충돌해 문자열로 회피.
+fn vec_literal(v: &[f32]) -> String {
+    let mut s = String::from("[");
+    for (i, f) in v.iter().enumerate() {
+        if i > 0 {
+            s.push(',');
+        }
+        s.push_str(&f.to_string());
+    }
+    s.push(']');
+    s
 }
 
 /// PostgreSQL vector index backed by the `pgvector` extension.
@@ -99,7 +112,7 @@ impl crate::embedding::AsyncVectorIndex for PgVectorIndex {
         q.push(self.table.as_str());
         q.push(" (id, vec) ");
         q.push_values(vectors.iter().zip(pg_ids.iter()), |mut b, (v, &id)| {
-            b.push_bind(id).push_bind(Vector::from(v.clone()));
+            b.push_bind(id).push_bind(vec_literal(v));
         });
         q.push(" ON CONFLICT (id) DO UPDATE SET vec = EXCLUDED.vec");
         q.build()
@@ -123,7 +136,7 @@ impl crate::embedding::AsyncVectorIndex for PgVectorIndex {
     }
 
     async fn search(&self, query: &[f32], k: usize) -> Result<Vec<SearchHit>> {
-        let q = Vector::from(query.to_vec());
+        let q = vec_literal(query);
         // cosine distance <=> : 0 (동일) .. 2 (반대). score = 1 - distance.
         let rows: Vec<ScoreRow> = sqlx::query_as(&format!(
             "SELECT id, 1 - (vec <=> $1::vector) AS score FROM {} ORDER BY vec <=> $1::vector LIMIT $2",
@@ -152,7 +165,7 @@ impl crate::embedding::AsyncVectorIndex for PgVectorIndex {
         if allowlist.is_empty() {
             return Ok(Vec::new());
         }
-        let q = Vector::from(query.to_vec());
+        let q = vec_literal(query);
         let allow: Vec<i64> = allowlist
             .iter()
             .map(|&i| to_pg_id(i))
