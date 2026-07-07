@@ -45,6 +45,10 @@ pub mod qdrant;
 #[cfg(feature = "elastic")]
 pub mod elastic;
 
+/// pgvector `AsyncVectorIndex` (feature `pgvector`) — PostgreSQL + pgvector ext.
+#[cfg(feature = "pgvector")]
+pub mod pgvector;
+
 #[cfg(feature = "vector-index")]
 pub mod turbovec;
 
@@ -89,6 +93,9 @@ pub use qdrant::QdrantVectorIndex;
 
 #[cfg(feature = "elastic")]
 pub use elastic::ElasticsearchVectorIndex;
+
+#[cfg(feature = "pgvector")]
+pub use pgvector::PgVectorIndex;
 
 #[cfg(feature = "vector-index")]
 pub use turbovec::TurbovecIndex;
