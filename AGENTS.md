@@ -8,7 +8,7 @@
 
 | Command | Description |
 |---------|-------------|
-| `cargo test --features full` | Run all tests (602 passed, 13 ignored) |
+| `cargo test --features full` | Run all tests (627 passed, 14 ignored) |
 | `cargo clippy --features full -- -D warnings` | Lint |
 | `cargo fmt --all -- --check` | Format check |
 | `cargo bench` | Run criterion benchmarks |
@@ -55,8 +55,9 @@ Optional backend features (drivers compiled only when enabled; included in `full
   graph-pg-tls — TLS PgGraph connections (connect_native_tls/connect_tls)  src/graph/pg.rs (driver: postgres-native-tls)
   qdrant       — Qdrant AsyncVectorIndex (QdrantVectorIndex)  src/embedding/qdrant.rs (driver: qdrant-client)
   elastic      — Elasticsearch AsyncVectorIndex (ElasticsearchVectorIndex)  src/embedding/elastic.rs (hand-rolled reqwest; official elasticsearch crate is alpha-only)
+  pgvector     — pgvector AsyncVectorIndex (PgVectorIndex)    src/embedding/pgvector.rs (driver: sqlx + pgvector; reuses LLMKERNEL_PG_URL)
 ```
-Live integration tests for all three gate on `LLMKERNEL_PG_URL` / `LLMKERNEL_QDRANT_URL` / `LLMKERNEL_ELASTIC_URL` and self-skip when unset.
+Live integration tests for all four gate on `LLMKERNEL_PG_URL` / `LLMKERNEL_QDRANT_URL` / `LLMKERNEL_ELASTIC_URL` and self-skip when unset.
 
 ## Key Conventions
 

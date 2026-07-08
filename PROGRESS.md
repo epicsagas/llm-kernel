@@ -1,21 +1,52 @@
 # Progress
 
-> Auto-generated status snapshot. Last updated: 2026-07-03
+> Auto-generated status snapshot. Last updated: 2026-07-08
 
-## Current Version: v0.15.0
+## Current Version: v0.17.0
 
 | Metric | Value |
 |--------|-------|
-| Version | `0.15.0` |
+| Version | `0.17.0` |
 | Edition | Rust 2024, MSRV 1.92 |
-| Lines of code | ~23,000 |
-| Total tests | `--features full`: 602 passed, 13 ignored, 0 failed |
-| Backend features | `graph-pg` (PostgreSQL), `qdrant` (vector search), `elastic` (Elasticsearch vector search) |
-| Last commit | `fix(embedding): ... (#55) (#56)` |
+| Lines of code | ~25,400 |
+| Total tests | `--features full`: 627 passed, 14 ignored, 0 failed |
+| Backend features | `graph-pg` (PostgreSQL), `graph-pg-tls` (TLS), `qdrant` (vector search), `elastic` (Elasticsearch vector search), `pgvector` (PostgreSQL vector search), `mcp-http` (remote MCP) |
+| Last commit | `feat(embedding): pgvector 트랜잭션 통합 + add 캐스트 수정 (v0.17.0)` |
 
 ---
 
 ## Recent Releases
+
+### v0.17.0 (2026-07-08)
+
+- **embedding** (`pgvector`): `add()` switched from `push_values` to manual `VALUES` assembly with the `::vector` cast (was missing → type mismatch); Rust `add` now actually inserts (previously a Python `COPY` bypass in `klr` masked the bug)
+- **embedding** (`pgvector`): `pool()` getter + `remove_in_tx(&mut PgConnection, ids)` for single-transaction atomicity (`klr` prune premise)
+
+### v0.16.2 (2026-07-08)
+
+- **embedding**: `embedding-fastembed-coreml` feature + `new_with_coreml()` constructor (mirrors DirectML pattern); adds the `coreml` execution-provider feature to `ort`, accelerating `bge-m3` on macOS GPU/ANE
+
+### v0.16.1 (2026-07-08)
+
+- **embedding** (`pgvector`): `pgvector::Vector` sqlx `Type` bind conflict (surfaced in `korean-law-rag`) — bind as a string literal (`[1,2,3]::vector`) instead of a typed `Vector`
+
+### v0.16.0 (2026-07-08)
+
+- **embedding** (#59): `pgvector` `AsyncVectorIndex` (`PgVectorIndex`) — PostgreSQL + the `pgvector` extension as a third async remote vector backend (cosine `<=>`, HNSW index), alongside qdrant/elastic
+- **llm** (#60): `RouterClient` — cost-aware routing (`Fallback` / `LowestCost`) with cross-provider fallback; transient errors (5xx, rate-limit `429`, timeout `408`) move on, permanent 4xx short-circuits. Composes with `RetryClient` / `MiddlewareClient` / `CacheClient`
+- **deps** (#61): `rusqlite` 0.40 → 0.37 (MSRV/build stability; drops the `rsqlite-vfs` transitive dependency)
+
+### v0.15.0 (2026-07-06)
+
+- **embedding** (#55): `embedding-fastembed-dynamic-linking` no longer pulls in `embedding-fastembed` (static ONNX download). The two features are now mutually exclusive; `fastembed`'s ort features are selected by the consuming feature, and a `compile_error!` in `src/lib.rs` makes any conflict a hard build error. The dynamic escape hatch now exposes the same API as the static path (`FastembedProvider`, `LazyFastembedProvider`, `EmbeddingCache`, `is_model_cached`, `as_fastembed`)
+
+### v0.14.0 (2026-07-03)
+
+A forward-compatibility release: stops the per-minor breakage caused by adding fields/variants to public types (**several changes are breaking**).
+- **stability**: `Default` derived on every growable public data struct (provider, graph, mcp result types) — downstream future-proofs with `..Default::default()`
+- **error** (breaking): `KernelError` is now `#[non_exhaustive]`; exhaustive `match`es need a `_ =>` arm. `KernelError::Serialization` available under any feature pulling `serde_json`
+- **catalog/graph/mcp** (breaking): read-mostly catalog/result types are `#[non_exhaustive]` (`ServiceDescriptor`, `ModelDescriptor`, `GraphStats`, …) — construct via `Default::default()` + field assignment, or read from the catalog/query APIs
+- **llm** (breaking): `OpenAIClient::from_key` / `AnthropicClient::from_key` now return `Result<Self>` (no silent timeout-less fallback) — append `?` at call sites
 
 ### v0.13.0 (2026-07-03)
 
@@ -139,6 +170,16 @@
 | **v0.7.0** — Transport & Backend | ✅ Complete | `GraphBackend` trait, migration framework, CJK search, `KvStore`, LLM cache, MCP HTTP/SSE, async handlers |
 | **v0.8.0** — Backend Expansion | ✅ Complete | PostgreSQL `GraphBackend`, Qdrant `AsyncVectorIndex`, DBMS migration CLI |
 | **v0.9.0** — Search Integrations | ✅ Complete | Elasticsearch `AsyncVectorIndex`, `FederatedSearch` (RRF default, per-backend timeout) |
+| **v0.10.0** — Graph Algorithms | ✅ Complete | CSR PageRank, community, Dijkstra, similarity; `smart_recall` PageRank boost |
+| **v0.11.0** — PostgreSQL TLS | ✅ Complete | `graph-pg-tls` — `connect_native_tls` / `connect_tls` / `connect_config_tls` (#48) |
+| **v0.12.0** — Embedding Robustness | ✅ Complete | Static ONNX linking, panic-safe load, `embedding-fastembed-dynamic-linking` (#50) |
+| **v0.13.0** — Consistency & Protocol | ✅ Complete | `KernelError` unification, tool forwarding, MCP 2025-06-18 |
+| **v0.14.0** — Forward Compatibility | ✅ Complete | `non_exhaustive`, `Default` derive, `from_key` → `Result` |
+| **v0.15.0** — Embedding Robustness II | ✅ Complete | Mutually-exclusive fastembed features, `compile_error!` guard (#55) |
+| **v0.16.0** — Vector Backend & Routing | ✅ Complete | pgvector `PgVectorIndex` (#59), `RouterClient` (#60), rusqlite 0.37 (#61) |
+| **v0.16.1** — pgvector Bind Fix | ✅ Complete | Vector bind → string-literal `::vector` cast (sqlx `Type` conflict) |
+| **v0.16.2** — CoreML EP | ✅ Complete | `embedding-fastembed-coreml` + `new_with_coreml()` (macOS GPU/ANE bge-m3) |
+| **v0.17.0** — pgvector Transaction Integration | ✅ Complete | `add()` cast fix, `pool()` + `remove_in_tx` |
 
 ---
 
@@ -153,12 +194,12 @@ discovery    → models.dev, Ollama, OpenAI-compat; async DiscoverySource
 secrets      → dotenv vault, atomic writes
 store        → SQLite init helpers
 config       → TOML loader
-graph        → knowledge graph (FTS5, BFS, smart recall)
-mcp          → JSON-RPC 2.0 server, stdio transport
+graph        → knowledge graph (GraphBackend, FTS5/CJK search, BFS, CSR algorithms, smart recall)
+mcp          → JSON-RPC 2.0 server, stdio + HTTP/SSE transport
 tokens       → Unicode token estimation, budgeting, sentence-aware chunking
 install      → AI tool config wizard
 search       → SearchProvider trait, RRF + weighted-sum + CombMNZ fusion
-embedding    → provider trait + OpenAI + turbovec index
+embedding    → provider trait + OpenAI + turbovec + qdrant/elastic/pgvector backends + fastembed (CoreML EP)
 telemetry    → enum-gated events
 safety       → secret masking, error classification, prompt-injection detection
 ```
@@ -169,8 +210,8 @@ safety       → secret masking, error classification, prompt-injection detectio
 
 | Check | Status |
 |-------|--------|
-| All tests pass | ✅ 602 passed, 13 ignored, 0 failed (`--features full`) |
+| All tests pass | ✅ 627 passed, 14 ignored, 0 failed (`--features full`) |
 | Clippy clean | ✅ (verified before each release) |
 | CI passing | ✅ Linux + macOS dual runner |
 | Crate structure | ✅ Monolithic (subcrate removed) |
-| Roadmap on track | ✅ v0.15.0 complete, v1.0.0 next |
+| Roadmap on track | ✅ v0.17.0 complete, v1.0.0 next |
