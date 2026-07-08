@@ -8,7 +8,7 @@ llm-kernel development roadmap from v0.3.2 to v1.0.0.
 * **[Future Milestones Feasibility Study](docs/research/future_roadmap_evaluation.md)**
 * **[Graph Performance Maximization Strategy](docs/research/graph_performance_strategy.md)**
 
-> **Current phase: v0.13.0 complete ✅ — Next: v1.0.0 Production Readiness**
+> **Current phase: v0.17.0 complete ✅ — Next: v1.0.0 Production Readiness**
 
 Each phase has a clear theme, concrete deliverables, and exit criteria.
 The library's core philosophy — zero-mandatory-dep composability with feature gates — is preserved throughout.
@@ -229,6 +229,75 @@ Unify the public error surface and bring the LLM client and MCP server up to spe
 
 ---
 
+### v0.14.0 — Forward Compatibility ✅
+
+Stop the per-minor breakage caused by adding fields/variants to public types. Several changes are breaking (see migration notes); this is the structural groundwork that lets the library add fields in any future minor without forcing downstream rewrites.
+
+| # | Deliverable | Scope | Key Files |
+|---|-------------|-------|-----------|
+| 1 | `Default` derived on every growable public data struct (provider, graph, mcp result types) | M | `src/provider/*`, `src/graph/*`, `src/mcp/*` |
+| 2 | `KernelError` marked `#[non_exhaustive]` — new variants may arrive in any minor | S | `src/error.rs` |
+| 3 | Read-mostly catalog/result types `#[non_exhaustive]` (`ServiceDescriptor`, `ModelDescriptor`, `GraphStats`, …) | M | `src/provider/*`, `src/graph/*` |
+| 4 | `KernelError::Serialization` available under any feature pulling `serde_json` (not just `provider`) | S | `src/error.rs` |
+| 5 | `OpenAIClient::from_key` / `AnthropicClient::from_key` now return `Result<Self>` (no silent timeout-less fallback) | S | `src/llm/client.rs` |
+
+**Exit criteria:** downstream can future-proof with `..Default::default()`, exhaustive `match`es on `KernelError` carry a `_ =>` arm, `from_key` call sites append `?`.
+
+---
+
+### v0.15.0 — Embedding Robustness (Dynamic Linking Escape Hatch) ✅
+
+Fix the `embedding-fastembed-dynamic-linking` escape hatch that never actually worked: the dynamic feature was a superset of the static one, so Cargo feature unification silently activated both `ort-load-dynamic` and `ort-download-binaries-*` on the shared `fastembed`/`ort-sys` crate, turning the static path into a no-op (#50 failure mode).
+
+| # | Deliverable | Scope | Key Files |
+|---|-------------|-------|-----------|
+| 1 | Make `embedding-fastembed` and `embedding-fastembed-dynamic-linking` mutually exclusive via `compile_error!` | S | `src/lib.rs` |
+| 2 | `fastembed`'s ort features selected by the consuming feature (static archive vs runtime dylib) | M | `Cargo.toml` |
+| 3 | Gate `FastembedProvider`/`LazyFastembedProvider`/`EmbeddingCache`/`is_model_cached`/`as_fastembed` under both features | S | `src/embedding/*` |
+
+**Exit criteria:** the dynamic escape hatch exposes the same API as the static path; any feature conflict is a hard build error.
+
+---
+
+### v0.16.0 — Vector Backend Expansion & Routing ✅
+
+Third async remote vector backend, cost-aware client routing, and an MSRV/build-stability dep downgrade.
+
+| # | Deliverable | Scope | Key Files |
+|---|-------------|-------|-----------|
+| 1 | `pgvector` `AsyncVectorIndex` (`PgVectorIndex`) — PostgreSQL + pgvector extension (cosine `<=>`, HNSW index) (#59) | L | `src/embedding/pgvector.rs` (`pgvector` feature) |
+| 2 | `RouterClient` — cost-aware routing (`Fallback` / `LowestCost`) with cross-provider fallback; error-class aware (transient 5xx/429/408 moves on, permanent 4xx short-circuits) (#60) | M | `src/llm/router.rs` |
+| 3 | `rusqlite` 0.40 → 0.37 (MSRV/build stability; drops `rsqlite-vfs` transitive dep) (#61) | S | `Cargo.toml` |
+
+**Exit criteria:** pgvector passes VectorSearch conformance, `RouterClient` composes with `RetryClient`/`MiddlewareClient`/`CacheClient`, default build unchanged.
+
+---
+
+### v0.16.1 — pgvector Bind Fix ✅
+
+Patch: `pgvector::Vector` sqlx `Type` bind conflict (surfaced in the `klr` environment) — bind the vector as a string literal (`[1,2,3]::vector`) instead of a typed `Vector` to sidestep the sqlx `Type` mismatch.
+
+---
+
+### v0.16.2 — CoreML Execution Provider ✅
+
+`embedding-fastembed-coreml` feature + `new_with_coreml()` constructor (mirrors the DirectML pattern). Adds the `coreml` execution-provider feature to `ort`, accelerating `bge-m3` on macOS GPU/ANE. The static `embedding-fastembed` build now links CoreML alongside the default ONNX Runtime.
+
+---
+
+### v0.17.0 — pgvector Transaction Integration ✅
+
+Make the Rust `add()` path actually insert and enable transactional integration.
+
+| # | Deliverable | Scope | Key Files |
+|---|-------------|-------|-----------|
+| 1 | `add()` switched from `push_values` to manual `VALUES` assembly with the `::vector` cast (was missing → type mismatch) | S | `src/embedding/pgvector.rs` |
+| 2 | `pool()` getter + `remove_in_tx(&mut PgConnection, ids)` for single-transaction atomicity | M | `src/embedding/pgvector.rs` |
+
+**Exit criteria:** Rust `add()` inserts correctly (previously a Python `COPY` bypass in `klr` masked the bug); `klr` prune runs in a single atomic transaction.
+
+---
+
 ### v1.0.0 — Production Readiness
 
 API stability guarantee. Once shipped, all public types and signatures are locked under semver.
@@ -285,6 +354,24 @@ v0.3.2
   ├── v0.13.0 Consistency & Protocol Compliance ✅
   │            KernelError unification, tool forwarding, MCP 2025-06-18
   │
+  ├── v0.14.0 Forward Compatibility ✅
+  │            non_exhaustive, Default derive, from_key → Result
+  │
+  ├── v0.15.0 Embedding Robustness (dynamic-linking escape hatch) ✅
+  │            mutually-exclusive fastembed features, compile_error! guard
+  │
+  ├── v0.16.0 Vector Backend Expansion & Routing ✅
+  │            pgvector, RouterClient, rusqlite 0.37
+  │
+  ├── v0.16.1 pgvector Bind Fix ✅
+  │            Vector bind → string-literal ::vector cast
+  │
+  ├── v0.16.2 CoreML Execution Provider ✅
+  │            embedding-fastembed-coreml, macOS GPU/ANE bge-m3
+  │
+  ├── v0.17.0 pgvector Transaction Integration ✅
+  │            add() cast fix, pool() + remove_in_tx
+  │
   └── v1.0.0  Production Readiness
                API audit, semver lock, perf baselines, security audit
 ```
@@ -295,7 +382,7 @@ Key dependency chains:
 - `ToolDefinition` (v0.4.0) → `CapabilityProfile.supports_tool_calling()` (v0.3.4)
 - `GraphBackend` trait (v0.7.0) → PostgreSQL impl (v0.8.0)
 - `KvStore` trait (v0.7.0) → LLM cache (v0.7.0)
-- `AsyncVectorIndex` trait → Qdrant (v0.8.0) → Elasticsearch (v0.9.0)
+- `AsyncVectorIndex` trait → Qdrant (v0.8.0) → Elasticsearch (v0.9.0) → pgvector (v0.16.0)
 
 Within a phase, deliverables are independent and can be parallelized.
 

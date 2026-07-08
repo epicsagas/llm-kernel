@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-07-08
+
+### Added
+- **embedding** (`pgvector`): `pool()` getter and `remove_in_tx(&mut PgConnection, ids)` on `PgVectorIndex` — transaction integration so callers can prune/delete within a single atomic transaction alongside their own writes.
+
+### Fixed
+- **embedding** (`pgvector`): `add()` was missing the `::vector` cast on the vec-text literal (switched from `push_values` to manual `VALUES` assembly), causing a type mismatch. The Rust `add` path now actually inserts; previously a Python `COPY` bypass in `klr` masked the bug.
+
+## [0.16.2] - 2026-07-08
+
+### Added
+- **embedding**: `embedding-fastembed-coreml` feature + `new_with_coreml()` constructor (mirrors the DirectML pattern). Adds the `coreml` execution-provider feature to `ort`, accelerating `bge-m3` on macOS GPU/ANE. The static `embedding-fastembed` build now links CoreML alongside the default ONNX Runtime.
+
+## [0.16.1] - 2026-07-08
+
+### Fixed
+- **embedding** (`pgvector`): `pgvector::Vector` sqlx `Type` bind conflict in the `klr` environment — bind the vector as a string literal (`[1,2,3]::vector`) instead of a typed `Vector` to sidestep the sqlx `Type` mismatch.
+
 ## [0.16.0] - 2026-07-08
 
 ### Added
