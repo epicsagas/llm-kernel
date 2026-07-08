@@ -89,6 +89,37 @@ impl PgVectorIndex {
         .map_err(|e| KernelError::Embedding(format!("pgvector hnsw index: {e}")))?;
         Ok(())
     }
+
+    /// Underlying connection pool.
+    ///
+    /// Callers that need **cross-table transactional consistency** — e.g. pruning
+    /// a law's chunks plus their vectors atomically in one transaction — can
+    /// `pool().begin()` and run their own DML on the same pool the index uses.
+    /// This preserves the table-name encapsulation while letting the caller
+    /// coordinate a multi-statement transaction.
+    pub fn pool(&self) -> &PgPool {
+        &self.pool
+    }
+
+    /// Remove vectors by external IDs **within a caller-provided transaction**.
+    ///
+    /// Enables atomic cross-table deletes: begin a tx on [`pool`](Self::pool),
+    /// delete related rows in other relations (chunks, edges, …), call this with
+    /// the same `&mut PgConnection`, then `commit()`. A failure anywhere rolls
+    /// back the whole set — no orphaned vectors or chunks. The table name stays
+    /// encapsulated (`format!` over the validated identifier).
+    pub async fn remove_in_tx(&self, tx: &mut sqlx::PgConnection, ids: &[u64]) -> Result<()> {
+        if ids.is_empty() {
+            return Ok(());
+        }
+        let ids: Vec<i64> = ids.iter().map(|&i| to_pg_id(i)).collect::<Result<_>>()?;
+        sqlx::query(&format!("DELETE FROM {} WHERE id = ANY($1)", self.table))
+            .bind(&ids)
+            .execute(tx)
+            .await
+            .map_err(|e| KernelError::Embedding(format!("pgvector remove_in_tx: {e}")))?;
+        Ok(())
+    }
 }
 
 #[async_trait]
@@ -110,10 +141,20 @@ impl crate::embedding::AsyncVectorIndex for PgVectorIndex {
         let pg_ids: Vec<i64> = ids.iter().map(|&id| to_pg_id(id)).collect::<Result<_>>()?;
         let mut q = QueryBuilder::new("INSERT INTO ");
         q.push(self.table.as_str());
-        q.push(" (id, vec) ");
-        q.push_values(vectors.iter().zip(pg_ids.iter()), |mut b, (v, &id)| {
-            b.push_bind(id).push_bind(vec_literal(v));
-        });
+        q.push(" (id, vec) VALUES ");
+        // pgvector `vec` 컬럼은 text 리터럴 입력 시 `::vector` 캐스트가 필수다.
+        // `push_values` 는 값별 캐스트를 붙일 수 없어 수동으로 VALUES 튜플을 조립한다
+        // (캐스트 누락 시 "column vec is of type vector but expression is of type text").
+        for (i, (v, &id)) in vectors.iter().zip(pg_ids.iter()).enumerate() {
+            if i > 0 {
+                q.push(", ");
+            }
+            q.push("(");
+            q.push_bind(id);
+            q.push(", ");
+            q.push_bind(vec_literal(v));
+            q.push("::vector)");
+        }
         q.push(" ON CONFLICT (id) DO UPDATE SET vec = EXCLUDED.vec");
         q.build()
             .execute(&self.pool)
@@ -275,6 +316,44 @@ mod tests {
         // cleanup
         sqlx::query(&format!("DROP TABLE IF EXISTS {}", table))
             .execute(&idx.pool)
+            .await
+            .ok();
+    }
+
+    /// `remove_in_tx`: 같은 풀에서 시작한 트랜잭션 내 삭제가 원자 반영되는지 검증.
+    /// klr prune(chunks + vectors 단일 tx)의 전제 — 커밋 전 롤백 시 벡터 보존 확인.
+    #[tokio::test]
+    async fn remove_in_tx_atomic_delete() {
+        let Some(url) = pg_url() else {
+            eprintln!("skip pgvector test: LLMKERNEL_PG_URL unset");
+            return;
+        };
+        let table = format!("lk_txtx_{}", line!());
+        let idx = PgVectorIndex::new(&url, &table, 3).await.expect("new");
+        idx.add(&[vec![1.0, 0.0, 0.0], vec![0.0, 1.0, 0.0]], &[11, 12])
+            .await
+            .expect("add");
+        assert_eq!(idx.len().await.unwrap(), 2);
+
+        // 커밋 경로: tx 내 remove → commit → 삭제 반영
+        let mut tx = idx.pool().begin().await.expect("begin tx");
+        idx.remove_in_tx(&mut tx, &[11])
+            .await
+            .expect("remove_in_tx");
+        tx.commit().await.expect("commit");
+        assert_eq!(idx.len().await.unwrap(), 1);
+
+        // 롤백 경로: tx 내 remove → rollback → 벡터 보존(원자성)
+        let mut tx2 = idx.pool().begin().await.expect("begin tx2");
+        idx.remove_in_tx(&mut tx2, &[12])
+            .await
+            .expect("remove_in_tx2");
+        tx2.rollback().await.expect("rollback");
+        assert_eq!(idx.len().await.unwrap(), 1);
+
+        // cleanup
+        sqlx::query(&format!("DROP TABLE IF EXISTS {}", table))
+            .execute(idx.pool())
             .await
             .ok();
     }
