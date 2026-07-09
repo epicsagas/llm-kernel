@@ -1,4 +1,4 @@
-<!-- Translated from README.md @ commit edd4827 (2026-06-06) -->
+<!-- Translated from README.md @ v0.17.0 (2026-07-08) -->
 <!-- If English README has changed since then, this translation may be outdated -->
 
 [English](../../README.md) | [한국어](../ko/README.md) | [日本語](../ja/README.md) | [简体中文](../zh-Hans/README.md) | [繁體中文](../zh-Hant/README.md) | [Español](../es/README.md) | [Français](../fr/README.md) | **Deutsch** | [Português](../pt/README.md) | [Русский](../ru/README.md) | [Italiano](../it/README.md)
@@ -56,6 +56,7 @@ Jedes Modul wird durch ein Feature-Flag gesteuert, sodass Sie nur bezahlen, was 
 | `graph-pool` | Multi-Verbindungs-Async-Graph-Pool (`AsyncPoolGraph`, WAL-Konkurrenz) | |
 | `graph-cjk` | CJK-aware graph search via Rust-side segmentation (no schema change) | |
 | `graph-pg` | PostgreSQL-GraphBackend (PgGraph) + SQLite↔PostgreSQL-Migrations-CLI | |
+| `graph-pg-tls` | TLS-enabled `PgGraph` connections (`connect_native_tls` / `connect_tls` / `connect_config_tls`) | |
 | `mcp` | MCP-Server — JSON-RPC 2.0, Stdio-Transport, Bearer-Auth | |
 | `mcp-http` | MCP remote transport — HTTP/SSE (axum + tokio) | |
 | `cache` | LLM response cache — `CacheClient` over `KvStore` | |
@@ -67,10 +68,13 @@ Jedes Modul wird durch ein Feature-Flag gesteuert, sodass Sie nur bezahlen, was 
 | `embedding-fastembed` | Lokales ONNX-Embedding über fastembed-rs (44 Modelle) | |
 | `embedding-fastembed-qwen3` | Qwen3-Embedding über Candle-Backend | |
 | `embedding-fastembed-nomic-moe` | Nomic V2 MoE-Embedding über Candle-Backend | |
+| `embedding-fastembed-directml` | DirectML GPU execution provider for `FastembedProvider` (Windows only) | |
+| `embedding-fastembed-coreml` | CoreML GPU/ANE execution provider for `FastembedProvider` (macOS only) — `new_with_coreml()` accelerates bge-m3 | |
 | `embedding-fastembed-dynamic-linking` | Dynamic ONNX Runtime linking (opt-in; **mutually exclusive with `embedding-fastembed`** — for hosts where the static archive fails at release link: glibc <2.38 / older MSVC; see #50 #55) | |
 | `vector-index` | TurboQuant-komprimierter Vektorindex — 2-Bit/4-Bit, SIMD-ANN-Suche | |
 | `qdrant` | Qdrant-AsyncVectorIndex (QdrantVectorIndex) für entfernte Vektorsuche | |
 | `elastic` | Elasticsearch-AsyncVectorIndex (ElasticsearchVectorIndex) über einen handgeschriebenen reqwest-Client | |
+| `pgvector` | pgvector `AsyncVectorIndex` (`PgVectorIndex`) over PostgreSQL + the pgvector extension (cosine `<=>`, HNSW index) | |
 | `federation` | Übergreifende Föderation — gleichzeitige Abfrage mehrerer `AsyncVectorIndex`-Backends mit pro-Backend-Timeout (RRF-Standard) | |
 | `telemetry` | Enum-gesteuerte Telemetrie-Ereignisse, keine PII | |
 | `safety` | Geheimnismaskierung, Fehlerklassifizierung, Ausgabebereinigung, Prompt-Injection-Erkennung | |
@@ -85,28 +89,28 @@ Zu Ihrer `Cargo.toml` hinzufügen:
 
 ```toml
 [dependencies]
-llm-kernel = "0.13.0"
+llm-kernel = "0.17.0"
 ```
 
 Das `provider`-Feature ist standardmäßig aktiviert. Für den Async-Client:
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.13.0", features = ["client-async"] }
+llm-kernel = { version = "0.17.0", features = ["client-async"] }
 ```
 
 Für den Wissensgraphen mit Async-Wrappern:
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.13.0", features = ["graph", "graph-async"] }
+llm-kernel = { version = "0.17.0", features = ["graph", "graph-async"] }
 ```
 
 Für lokales Embedding (ONNX, kein API-Schlüssel):
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.13.0", features = ["embedding-fastembed"] }
+llm-kernel = { version = "0.17.0", features = ["embedding-fastembed"] }
 ```
 
 ## Verwendung

@@ -51,6 +51,7 @@ Each module is gated behind a feature flag so you only pay for what you use.
 | `graph-pool` | Multi-connection async graph pool (`AsyncPoolGraph`, WAL concurrency) | |
 | `graph-cjk` | CJK-aware graph search via Rust-side segmentation (no schema change) | |
 | `graph-pg` | PostgreSQL `GraphBackend` (`PgGraph`) + SQLite↔PostgreSQL migration CLI | |
+| `graph-pg-tls` | TLS-enabled `PgGraph` connections (`connect_native_tls` / `connect_tls` / `connect_config_tls`) | |
 | `mcp` | MCP server — JSON-RPC 2.0 (protocol 2025-06-18), stdio transport, tools/resources/prompts, `ping`, async handlers, Bearer auth | |
 | `mcp-http` | MCP remote transport — HTTP/SSE (axum + tokio) | |
 | `cache` | LLM response cache — `CacheClient` over `KvStore` | |
@@ -62,10 +63,13 @@ Each module is gated behind a feature flag so you only pay for what you use.
 | `embedding-fastembed` | Local ONNX embedding via fastembed-rs (44 models) | |
 | `embedding-fastembed-qwen3` | Qwen3 embedding via candle backend | |
 | `embedding-fastembed-nomic-moe` | Nomic V2 MoE embedding via candle backend | |
-| `embedding-fastembed-dynamic-linking` | Dynamic ONNX Runtime linking (opt-in; **mutually exclusive with `embedding-fastembed`** — for hosts where the static archive fails at release link: glibc <2.38 / older MSVC; see #50 #55) | |
+| `embedding-fastembed-directml` | DirectML GPU execution provider for `FastembedProvider` (Windows only) | |
+| `embedding-fastembed-coreml` | CoreML GPU/ANE execution provider for `FastembedProvider` (macOS only) — `new_with_coreml()` accelerates bge-m3 | |
+| `embedding-fastembed-dynamic-linking` | Dynamic ONNX Runtime linking (opt-in; **mutually exclusive with `embedding-fastembed`** and any feature implying it — for hosts where the static archive fails at release link: glibc <2.38 / older MSVC; see #50 #55) | |
 | `vector-index` | TurboQuant compressed vector index — 2-bit/4-bit, SIMD ANN search | |
 | `qdrant` | Qdrant `AsyncVectorIndex` (`QdrantVectorIndex`) for remote vector search | |
 | `elastic` | Elasticsearch `AsyncVectorIndex` (`ElasticsearchVectorIndex`) over a hand-rolled reqwest client | |
+| `pgvector` | pgvector `AsyncVectorIndex` (`PgVectorIndex`) over PostgreSQL + the pgvector extension (cosine `<=>`, HNSW index) | |
 | `federation` | Cross-engine federation — concurrent query over multiple `AsyncVectorIndex` backends with a per-backend timeout (RRF default) | |
 | `telemetry` | Enum-gated telemetry events, no PII | |
 | `safety` | Secret masking, error classification, output sanitization, prompt-injection detection | |
@@ -80,28 +84,28 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-llm-kernel = "0.15.0"
+llm-kernel = "0.17.0"
 ```
 
 The `provider` feature is enabled by default. For the async client:
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.15.0", features = ["client-async"] }
+llm-kernel = { version = "0.17.0", features = ["client-async"] }
 ```
 
 For the knowledge graph with async wrappers:
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.15.0", features = ["graph", "graph-async"] }
+llm-kernel = { version = "0.17.0", features = ["graph", "graph-async"] }
 ```
 
 For local embedding (ONNX, no API key):
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.15.0", features = ["embedding-fastembed"] }
+llm-kernel = { version = "0.17.0", features = ["embedding-fastembed"] }
 ```
 
 ## Usage

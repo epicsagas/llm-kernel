@@ -1,4 +1,4 @@
-<!-- Translated from README.md @ commit edd4827 (2026-06-06) -->
+<!-- Translated from README.md @ v0.17.0 (2026-07-08) -->
 <!-- If English README has changed since then, this translation may be outdated -->
 
 [English](../../README.md) | [한국어](../ko/README.md) | **日本語** | [简体中文](../zh-Hans/README.md) | [繁體中文](../zh-Hant/README.md) | [Español](../es/README.md) | [Français](../fr/README.md) | [Deutsch](../de/README.md) | [Português](../pt/README.md) | [Русский](../ru/README.md) | [Italiano](../it/README.md)
@@ -56,6 +56,7 @@ llm-kernelは、RustでLLM搭載ツール、エージェント、サーバーを
 | `graph-pool` | マルチ接続非同期グラフプール（`AsyncPoolGraph`、WAL同時実行） | |
 | `graph-cjk` | CJK-aware graph search via Rust-side segmentation (no schema change) | |
 | `graph-pg` | PostgreSQL GraphBackend（PgGraph）+ SQLite <-> PostgreSQL マイグレーションCLI | |
+| `graph-pg-tls` | TLS-enabled `PgGraph` connections (`connect_native_tls` / `connect_tls` / `connect_config_tls`) | |
 | `mcp` | MCPサーバー — JSON-RPC 2.0、stdioトランスポート、Bearer認証 | |
 | `mcp-http` | MCP remote transport — HTTP/SSE (axum + tokio) | |
 | `cache` | LLM response cache — `CacheClient` over `KvStore` | |
@@ -67,10 +68,13 @@ llm-kernelは、RustでLLM搭載ツール、エージェント、サーバーを
 | `embedding-fastembed` | fastembed-rsによるローカルONNXエンベディング（44モデル） | |
 | `embedding-fastembed-qwen3` | candleバックエンドによるQwen3エンベディング | |
 | `embedding-fastembed-nomic-moe` | candleバックエンドによるNomic V2 MoEエンベディング | |
+| `embedding-fastembed-directml` | DirectML GPU execution provider for `FastembedProvider` (Windows only) | |
+| `embedding-fastembed-coreml` | CoreML GPU/ANE execution provider for `FastembedProvider` (macOS only) — `new_with_coreml()` accelerates bge-m3 | |
 | `embedding-fastembed-dynamic-linking` | Dynamic ONNX Runtime linking (opt-in; **mutually exclusive with `embedding-fastembed`** — for hosts where the static archive fails at release link: glibc <2.38 / older MSVC; see #50 #55) | |
 | `vector-index` | TurboQuant圧縮ベクトルインデックス — 2ビット/4ビット、SIMD ANN検索 | |
 | `qdrant` | リモートベクトル検索向け Qdrant AsyncVectorIndex（QdrantVectorIndex） | |
 | `elastic` | ハンドロール reqwest クライアント上の Elasticsearch AsyncVectorIndex（ElasticsearchVectorIndex） | |
+| `pgvector` | pgvector `AsyncVectorIndex` (`PgVectorIndex`) over PostgreSQL + the pgvector extension (cosine `<=>`, HNSW index) | |
 | `federation` | クロスエンジン連携 — 複数の `AsyncVectorIndex` バックエンドを同時クエリ、バックエンド別タイムアウト付き（デフォルト RRF） | |
 | `telemetry` | enumゲート方式のテレメトリイベント、PIIなし | |
 | `safety` | シークレットマスキング、エラー分類、出力サニタイズ、プロンプトインジェクション検出 | |
@@ -85,28 +89,28 @@ llm-kernelは、RustでLLM搭載ツール、エージェント、サーバーを
 
 ```toml
 [dependencies]
-llm-kernel = "0.13.0"
+llm-kernel = "0.17.0"
 ```
 
 `provider`フィーチャーはデフォルトで有効です。非同期クライアントを使用する場合：
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.13.0", features = ["client-async"] }
+llm-kernel = { version = "0.17.0", features = ["client-async"] }
 ```
 
 非同期ラッパー付きナレッジグラフを使用する場合：
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.13.0", features = ["graph", "graph-async"] }
+llm-kernel = { version = "0.17.0", features = ["graph", "graph-async"] }
 ```
 
 ローカルエンベディング（ONNX、APIキー不要）を使用する場合：
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.13.0", features = ["embedding-fastembed"] }
+llm-kernel = { version = "0.17.0", features = ["embedding-fastembed"] }
 ```
 
 ## 使用方法
