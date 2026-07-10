@@ -63,6 +63,13 @@ cargo bench --bench concurrency_bench --features graph-pool,graph-async
 - The absolute latencies (hundreds of ms for 16 reads) reflect deliberate,
   heavy writer contention — the writer is in a tight upsert loop for the whole
   wave. The *ratio* is the signal, not the absolute time.
+- **Validity precondition:** the 1.8× ratio is meaningful only while the
+  background writer keeps making progress (no `SQLITE_BUSY` starvation). The
+  bench returns the writer's successful-upsert count per iteration as a
+  diagnostic; the WAL + `busy_timeout` fix is what keeps that count non-zero. If
+  a future change reintroduces writer starvation, this ratio stops being a valid
+  signal even though the `bench-smoke` gate (single-pass, panic-only) would
+  still pass.
 - This is the **measured proof** that Axis E's "implemented, unproven" concern
   is now resolved *after* the WAL fix — without the fix the pool would behave
   like DELETE-journal SQLite (readers blocked / `SQLITE_BUSY`), not like the

@@ -38,7 +38,13 @@ request `Authorization` header inside error bodies, so a caller that logs the
 - *Mitigated in this pass:* the four construction sites now route the body
   through `redact_http_body`, which applies `mask_secrets` (`src/safety/`)
   when the `safety` feature is enabled. With `safety` off the body passes
-  through unchanged (the masking regex is opt-in) — documented limitation.
+  through unchanged — the masking regex is owned by the `safety` feature, so
+  `client-async` alone does not redact. **Limitation:** a user who enables
+  `client-async` without `safety` can still leak the API key via error logs.
+- *Recommendation (non-blocking, future minor):* add a dependency-light default
+  redaction of `Authorization: Bearer …` / `sk-*` patterns in the LLM client so
+  the highest-risk patterns are masked regardless of feature combination; keep
+  the full `mask_secrets` regex under `safety`.
 
 ### Low / Informational
 
