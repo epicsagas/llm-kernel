@@ -144,7 +144,7 @@ pub fn read_edges(conn: &Connection, limit: usize) -> Result<Vec<GraphEdge>> {
 /// Used to build the candidate subgraph for PageRank boosting in
 /// [`smart_recall`](super::recall::smart_recall). `ids.len()` must stay under
 /// SQLite's bind-variable limit (999 by default); `smart_recall` caps at 100.
-pub fn edges_among(conn: &Connection, ids: &[&str]) -> Result<Vec<GraphEdge>> {
+pub(crate) fn edges_among(conn: &Connection, ids: &[&str]) -> Result<Vec<GraphEdge>> {
     if ids.is_empty() {
         return Ok(Vec::new());
     }
@@ -185,7 +185,7 @@ pub fn delete_edge(conn: &Connection, id: &str) -> Result<bool> {
 }
 
 /// Delete all edges connected to a node (source or target).
-pub fn remove_edges_for_node(conn: &Connection, node_id: &str) -> Result<()> {
+pub(crate) fn remove_edges_for_node(conn: &Connection, node_id: &str) -> Result<()> {
     conn.execute(
         "DELETE FROM edges WHERE source = ?1 OR target = ?1",
         params![node_id],
@@ -195,7 +195,7 @@ pub fn remove_edges_for_node(conn: &Connection, node_id: &str) -> Result<()> {
 }
 
 /// Read edges where the given node is source or target.
-pub fn edges_for_node(conn: &Connection, node_id: &str) -> Result<Vec<GraphEdge>> {
+pub(crate) fn edges_for_node(conn: &Connection, node_id: &str) -> Result<Vec<GraphEdge>> {
     let mut stmt = conn
         .prepare(
             "SELECT id, source, target, relation, weight, ts FROM edges WHERE source = ?1 OR target = ?1",

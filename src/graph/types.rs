@@ -8,22 +8,6 @@ pub fn default_importance() -> f64 {
     0.5
 }
 
-/// Importance score by node type. Used when creating nodes without explicit importance.
-pub fn importance_for_type(node_type: &str) -> f64 {
-    match node_type {
-        "decision" => 0.9,
-        "resolution" => 0.8,
-        "psychographic" => 0.8,
-        "instinct" => 0.7,
-        "concept" => 0.7,
-        "project" => 0.7,
-        "pattern" => 0.5,
-        "error" => 0.4,
-        "session" => 0.05,
-        _ => 0.5,
-    }
-}
-
 /// A node in the knowledge graph.
 ///
 /// Represents a discrete piece of knowledge — a decision, concept, pattern, etc.

@@ -16,6 +16,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - **bench** (`compute_bench`): UTF-8 char-boundary panic when slicing the Japanese fixture at byte 200 — caught immediately by the new `bench-smoke` gate. Slices replaced with `chars().take(200)`.
+- **llm** (security M2): HTTP error response bodies are now routed through `redact_http_body` before being stored in `KernelError::Http` — a proxy that echoes the `Authorization` header in an error body can no longer leak the API key through error logs. Full masking under the `safety` feature.
+
+### Changed
+- **api** (ROADMAP v1.0.0 #1): public-surface audit — 8 internal-only `pub` items reduced to `pub(crate)` (`write_atomic`, `redact_credentials`, `LLMRequest::into_openai_messages`/`into_anthropic_messages`, `edges_among`, `remove_edges_for_node`, `edges_for_node`) and dead code `importance_for_type` removed. `list_node_ids` / `read_nodes_limited` stay `pub` (consumed by the bundled `migrate` binary / cross-feature).
+
+### Docs
+- (ROADMAP v1.0.0 #2): `# Example` doctests on primary entry surface — `estimate_tokens`, `mask_secrets`, `LLMRequest::builder`, `OpenAIClient::from_key`.
+- (ROADMAP v1.0.0 #5): `docs/security-audit-2026-07.md` — full review (no High findings; M1 documented, M2 mitigated).
+- (ROADMAP v1.0.0 #6): `docs/features.md` — full feature catalog + platform compatibility matrix.
+- (ROADMAP v1.0.0 #3): `docs/benchmarks/compute.md` — measured token/RRF/cosine baselines.
 
 ## [0.17.0] - 2026-07-08
 

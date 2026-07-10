@@ -20,6 +20,14 @@ static SECRET_RE: LazyLock<Regex> = LazyLock::new(|| {
 /// AWS keys (`AKIA...`), GitHub tokens (`ghp_`/`gho_`/`ghs_`/`ghu_`), and
 /// `password=`, `token=`, `key=`, `secret=`, `api_key=`, `apikey=`,
 /// `access_token=`, `private_key=` values. All occurrences are masked.
+///
+/// # Example
+///
+/// ```
+/// use llm_kernel::safety::mask_secrets;
+/// let redacted = mask_secrets("Authorization: Bearer sk-test-123");
+/// assert!(!redacted.contains("sk-test-123"));
+/// ```
 pub fn mask_secrets(input: &str) -> String {
     SECRET_RE
         .replace_all(input, |caps: &regex::Captures| -> String {

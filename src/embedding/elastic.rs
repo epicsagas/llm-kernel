@@ -391,7 +391,7 @@ impl AsyncVectorIndex for ElasticsearchVectorIndex {
 /// Userinfo is everything before the **last** `@` within the URL authority
 /// (matching the WHATWG URL spec), so a password that itself contains `@`
 /// (`https://u:p@ss@host`) is fully redacted rather than leaking the tail.
-pub fn redact_credentials(s: &str) -> String {
+pub(crate) fn redact_credentials(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut rest = s;
     loop {

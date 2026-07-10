@@ -10,7 +10,7 @@ llm-kernel development roadmap from v0.3.2 to v1.0.0.
 
 > **Current phase: v0.17.0 complete ✅ — Next: v1.0.0 Production Readiness**
 >
-> v1.0.0 prerequisites in progress (issue #45): **axis D (Korean recall) ✅ measured**, **axis E (concurrency) ✅ measured + WAL fix**, **axis A (CI gates) — `--strict` + `bench-smoke` ✅, cargo-semver-checks ✅, perf baselines partial**. Remaining: axis A perf-baseline docs refresh, axis B scale characterization, external integration.
+> v1.0.0 prerequisites (issue #45): **#1 API audit ✅, #2 examples (primary surface) ✅, #3 perf baselines + CI gates ✅, #4 semver ✅, #5 security ✅, #6 feature/platform docs ✅**; axes **D ✅ measured, E ✅ measured + WAL fix, A ✅**. Remaining: axis B scale characterization (10K–1M), external integration (v1.0.0 exit criterion).
 
 Each phase has a clear theme, concrete deliverables, and exit criteria.
 The library's core philosophy — zero-mandatory-dep composability with feature gates — is preserved throughout.
@@ -306,12 +306,12 @@ API stability guarantee. Once shipped, all public types and signatures are locke
 
 | # | Deliverable | Scope | Key Files |
 |---|-------------|-------|-----------|
-| 1 | Audit public API surface; reduce `pub` → `pub(crate)` where appropriate | L | All modules |
-| 2 | `# Example` sections on every public item (`#![deny(missing_docs)]` already enforced since v0.3.4) | L | All modules |
-| 3 | Performance baseline + CI regression detection (`--perf-baseline`) — **`--strict` eval gate + `bench-smoke` CI job done; perf-baseline doc refresh partial** | M | `src/bin/eval.rs`, `benches/`, `docs/benchmarks/` |
+| 1 | Audit public API surface; reduce `pub` → `pub(crate)` where appropriate — **done (8 items → `pub(crate)`, dead code removed)** | L | All modules |
+| 2 | `# Example` sections on every public item (`#![deny(missing_docs)]` already enforced since v0.3.4) — **primary entry surface done; long tail deferred** | L | All modules |
+| 3 | Performance baseline + CI regression detection (`--perf-baseline`) — **`--strict` eval gate + `bench-smoke` done; baselines in `docs/benchmarks/` (graph/compute/korean/concurrency)** | M | `src/bin/eval.rs`, `benches/`, `docs/benchmarks/` |
 | 4 | `cargo-semver-checks` in CI as blocking job — **done (`.github/workflows/semver.yml`)** | M | `.github/workflows/semver.yml` |
-| 5 | Security audit (`SECURITY.md` already published; `cargo audit` + gitleaks already in CI) | M | `src/safety/`, `src/secrets/` |
-| 6 | Document `full` feature set and platform compatibility matrix | S | `README.md` |
+| 5 | Security audit (`SECURITY.md` already published; `cargo audit` + gitleaks already in CI) — **done (`docs/security-audit-2026-07.md`)** | M | `src/safety/`, `src/secrets/` |
+| 6 | Document `full` feature set and platform compatibility matrix — **done (`docs/features.md`)** | S | `docs/features.md` |
 
 **Exit criteria:** `cargo-semver-checks` passes, every public item documented with examples, perf baselines in CI, security review complete, at least one external project integrated successfully.
 
