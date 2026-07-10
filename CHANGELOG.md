@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **deps** (#63): `rusqlite` 0.37 → 0.40 — reverses the intentional 0.40 → 0.37 downgrade from #61 (which held rusqlite at 0.37 because 0.38+ raised build requirements). The intervening dependency updates let 0.40 build cleanly again: `cargo check` and `cargo build --release --features full` both pass on MSRV 1.92. Note: re-introduces the `rsqlite-vfs` transitive dependency #61 had dropped as a side effect.
+- **deps** (#62): `regex` 1.12 → 1.13.
+
 ## [0.18.0] - 2026-07-10
 
 ### Added
