@@ -49,7 +49,7 @@ platform constraints per feature — v1.0.0 ROADMAP #6.
 | `graph-cjk` | CJK (Korean/Japanese/Chinese) substring search path — see [korean-recall.md](benchmarks/korean-recall.md) |
 | `graph-async` | Tokio wrapper around the graph (batch/directional edge methods included) |
 | `graph-pool` | WAL multi-connection async pool — see [graph_concurrency.md](benchmarks/graph_concurrency.md) |
-| `graph-pg` | PostgreSQL `GraphBackend` (`PgGraph`); `from_client` adopts an external synchronous `postgres::Client` |
+| `graph-pg` | PostgreSQL `GraphBackend` (`PgGraph`); `from_client` adopts an external `postgres::Client`; optional table prefix (`connect_with_prefix`) for same-DB multi-graph coexistence |
 | `graph-pg-tls` | TLS for `PgGraph` connections |
 
 ### Embeddings & vector backends

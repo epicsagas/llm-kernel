@@ -17,6 +17,8 @@
 //! enabling `pg_trgm` out-of-band (`CREATE EXTENSION pg_trgm;
 //! CREATE INDEX nodes_trgm ON nodes USING gin ((title || ' ' || body || ' '
 //! || tags) gin_trgm_ops)`); the ILIKE queries then use it transparently.
+//! (With a non-empty [`PgGraph`] table prefix, substitute the prefixed table
+//! name in that out-of-band DDL.)
 //!
 //! # TLS (`graph-pg-tls` feature)
 //!
@@ -26,6 +28,18 @@
 //! (system trust store, one call) plus [`PgGraph::connect_tls`] /
 //! [`PgGraph::connect_config_tls`] for a caller-supplied
 //! `postgres::tls::MakeTlsConnect` implementor.
+//!
+//! # Table prefix
+//!
+//! Every constructor has a `*_with_prefix` variant that namespaces the backing
+//! `nodes` / `edges` / `_meta` tables — and every index name — under a
+//! caller-chosen prefix, so several graphs (or a graph and unrelated service
+//! tables) can coexist in one database. The default empty prefix preserves the
+//! original `nodes` / `edges` / `_meta` names exactly: existing databases and
+//! tests are unaffected. Because the prefix is interpolated into DDL/DML as a
+//! bare identifier (PostgreSQL does not accept bind parameters for
+//! identifiers), it is validated by [`is_identifier_safe`] before any SQL is
+//! emitted, keeping the interpolation injection-safe.
 
 use std::collections::HashSet;
 use std::sync::{Mutex, MutexGuard};
@@ -94,11 +108,44 @@ fn search_patterns(query: &str) -> Vec<String> {
         .collect()
 }
 
+/// Validate a PostgreSQL table-name prefix: empty (default, backward-compatible)
+/// or a non-empty run of ASCII alphanumeric / underscore characters. The prefix
+/// is interpolated into DDL/DML as a bare identifier (identifiers cannot be
+/// passed as bind parameters), so rejecting anything outside this charset is
+/// what keeps the interpolation injection-safe. A digit-leading prefix is also
+/// rejected because a PostgreSQL identifier may not start with a digit — this
+/// guards the combined `{prefix}nodes` / `{prefix}_meta` names against forming
+/// an invalid unquoted identifier at runtime.
+fn is_identifier_safe(prefix: &str) -> bool {
+    let mut chars = prefix.chars();
+    match chars.next() {
+        None => true,
+        Some(first) if first == '_' || first.is_ascii_alphabetic() => {
+            chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
+        }
+        Some(_) => false,
+    }
+}
+
 /// Create the graph schema if absent. Idempotent — safe on every connect.
-fn init_schema(client: &mut Client) -> Result<()> {
+/// `prefix` namespaces every table/index name (empty = original names).
+fn init_schema(client: &mut Client, prefix: &str) -> Result<()> {
+    let nodes = format!("{prefix}nodes");
+    let edges = format!("{prefix}edges");
+    let meta = format!("{prefix}_meta");
+    let idx_edges_source = format!("{prefix}idx_edges_source");
+    let idx_edges_target = format!("{prefix}idx_edges_target");
+    let idx_edges_src_tgt_rel = format!("{prefix}idx_edges_src_tgt_rel");
+    let idx_edges_src_rel = format!("{prefix}idx_edges_src_rel");
+    let idx_edges_tgt_rel = format!("{prefix}idx_edges_tgt_rel");
+    let idx_nodes_type = format!("{prefix}idx_nodes_type");
+    let idx_nodes_updated = format!("{prefix}idx_nodes_updated");
+    let idx_nodes_importance = format!("{prefix}idx_nodes_importance");
+    let idx_nodes_accessed = format!("{prefix}idx_nodes_accessed");
+    let idx_nodes_created = format!("{prefix}idx_nodes_created");
     client
-        .batch_execute(
-            "CREATE TABLE IF NOT EXISTS nodes (
+        .batch_execute(&format!(
+            "CREATE TABLE IF NOT EXISTS {nodes} (
                 id           TEXT PRIMARY KEY,
                 node_type    TEXT NOT NULL,
                 title        TEXT NOT NULL,
@@ -112,7 +159,7 @@ fn init_schema(client: &mut Client) -> Result<()> {
                 access_count BIGINT NOT NULL DEFAULT 0,
                 accessed_at  TEXT NOT NULL DEFAULT ''
             );
-            CREATE TABLE IF NOT EXISTS edges (
+            CREATE TABLE IF NOT EXISTS {edges} (
                 id       TEXT PRIMARY KEY,
                 source   TEXT NOT NULL,
                 target   TEXT NOT NULL,
@@ -120,29 +167,30 @@ fn init_schema(client: &mut Client) -> Result<()> {
                 weight   DOUBLE PRECISION NOT NULL DEFAULT 1.0,
                 ts       TEXT NOT NULL
             );
-            CREATE INDEX IF NOT EXISTS idx_edges_source  ON edges(source);
-            CREATE INDEX IF NOT EXISTS idx_edges_target  ON edges(target);
-            CREATE UNIQUE INDEX IF NOT EXISTS idx_edges_src_tgt_rel ON edges(source, target, relation);
-            CREATE INDEX IF NOT EXISTS idx_edges_src_rel ON edges(source, relation);
-            CREATE INDEX IF NOT EXISTS idx_edges_tgt_rel ON edges(target, relation);
-            CREATE INDEX IF NOT EXISTS idx_nodes_type       ON nodes(node_type);
-            CREATE INDEX IF NOT EXISTS idx_nodes_updated    ON nodes(updated DESC);
-            CREATE INDEX IF NOT EXISTS idx_nodes_importance ON nodes(importance DESC);
-            CREATE INDEX IF NOT EXISTS idx_nodes_accessed   ON nodes(accessed_at DESC);
-            CREATE INDEX IF NOT EXISTS idx_nodes_created    ON nodes(created);
-            CREATE TABLE IF NOT EXISTS _meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-            INSERT INTO _meta (key, value) VALUES ('graph_schema_version', '3')
+            CREATE INDEX IF NOT EXISTS {idx_edges_source}  ON {edges}(source);
+            CREATE INDEX IF NOT EXISTS {idx_edges_target}  ON {edges}(target);
+            CREATE UNIQUE INDEX IF NOT EXISTS {idx_edges_src_tgt_rel} ON {edges}(source, target, relation);
+            CREATE INDEX IF NOT EXISTS {idx_edges_src_rel} ON {edges}(source, relation);
+            CREATE INDEX IF NOT EXISTS {idx_edges_tgt_rel} ON {edges}(target, relation);
+            CREATE INDEX IF NOT EXISTS {idx_nodes_type}       ON {nodes}(node_type);
+            CREATE INDEX IF NOT EXISTS {idx_nodes_updated}    ON {nodes}(updated DESC);
+            CREATE INDEX IF NOT EXISTS {idx_nodes_importance} ON {nodes}(importance DESC);
+            CREATE INDEX IF NOT EXISTS {idx_nodes_accessed}   ON {nodes}(accessed_at DESC);
+            CREATE INDEX IF NOT EXISTS {idx_nodes_created}    ON {nodes}(created);
+            CREATE TABLE IF NOT EXISTS {meta} (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+            INSERT INTO {meta} (key, value) VALUES ('graph_schema_version', '3')
                 ON CONFLICT (key) DO NOTHING;",
-        )
+        ))
         .map_err(pg_err)?;
     Ok(())
 }
 
-/// Recorded graph schema version from `_meta`, or `0` if unset.
-fn schema_version(client: &mut Client) -> Result<u32> {
+/// Recorded graph schema version from `{prefix}_meta`, or `0` if unset.
+fn schema_version(client: &mut Client, prefix: &str) -> Result<u32> {
+    let meta = format!("{prefix}_meta");
     let row = client
         .query_opt(
-            "SELECT value FROM _meta WHERE key = 'graph_schema_version'",
+            &format!("SELECT value FROM {meta} WHERE key = 'graph_schema_version'"),
             &[],
         )
         .map_err(pg_err)?;
@@ -155,29 +203,37 @@ fn schema_version(client: &mut Client) -> Result<u32> {
 /// Apply pending migrations up to [`GRAPH_SCHEMA_VERSION`]. No-op when current.
 ///
 /// Runs in a single transaction with rollback on failure — matching the SQLite
-/// `migrate_graph` semantics.
-fn migrate(client: &mut Client, current: u32) -> Result<u32> {
+/// `migrate_graph` semantics. `prefix` namespaces every table/index name.
+fn migrate(client: &mut Client, current: u32, prefix: &str) -> Result<u32> {
     if current >= GRAPH_SCHEMA_VERSION {
         return Ok(current);
     }
+    let nodes = format!("{prefix}nodes");
+    let edges = format!("{prefix}edges");
+    let meta = format!("{prefix}_meta");
+    let idx_nodes_created = format!("{prefix}idx_nodes_created");
+    let idx_edges_src_rel = format!("{prefix}idx_edges_src_rel");
+    let idx_edges_tgt_rel = format!("{prefix}idx_edges_tgt_rel");
     let mut tx = client.transaction().map_err(pg_err)?;
     let mut v = current;
     if v < 2 {
-        tx.batch_execute("CREATE INDEX IF NOT EXISTS idx_nodes_created ON nodes(created);")
-            .map_err(pg_err)?;
+        tx.batch_execute(&format!(
+            "CREATE INDEX IF NOT EXISTS {idx_nodes_created} ON {nodes}(created);"
+        ))
+        .map_err(pg_err)?;
         v = 2;
     }
     // v2 -> v3: composite indexes for relation-filtered directed edge lookups.
     if v < 3 {
-        tx.batch_execute(
-            "CREATE INDEX IF NOT EXISTS idx_edges_src_rel ON edges(source, relation);
-             CREATE INDEX IF NOT EXISTS idx_edges_tgt_rel ON edges(target, relation);",
-        )
+        tx.batch_execute(&format!(
+            "CREATE INDEX IF NOT EXISTS {idx_edges_src_rel} ON {edges}(source, relation);
+             CREATE INDEX IF NOT EXISTS {idx_edges_tgt_rel} ON {edges}(target, relation);",
+        ))
         .map_err(pg_err)?;
         v = 3;
     }
     tx.execute(
-        "UPDATE _meta SET value = $1 WHERE key = 'graph_schema_version'",
+        &format!("UPDATE {meta} SET value = $1 WHERE key = 'graph_schema_version'"),
         &[&v.to_string()],
     )
     .map_err(pg_err)?;
@@ -188,29 +244,49 @@ fn migrate(client: &mut Client, current: u32) -> Result<u32> {
 /// PostgreSQL-backed `GraphBackend` over one mutex-guarded connection.
 ///
 /// Opening applies the schema and runs pending migrations, matching
-/// `SqliteGraph::open` in the main crate.
+/// `SqliteGraph::open` in the main crate. An optional `table_prefix`
+/// (empty by default) namespaces every backing table and index so multiple
+/// graphs can share one database — see the `*_with_prefix` constructors.
 pub struct PgGraph {
     client: Mutex<Client>,
+    table_prefix: String,
 }
 
 impl PgGraph {
     /// Connect to `url` (libpq connstring or `postgresql://` URL), apply schema
-    /// and migrations, and return a ready backend.
+    /// and migrations, and return a ready backend. Uses the default (empty)
+    /// table prefix.
     pub fn connect(url: &str) -> Result<Self> {
         Self::connect_config(&Self::parse_config(url)?)
     }
 
+    /// Like [`connect`](Self::connect), but every table/index is namespaced
+    /// under `prefix` (e.g. `"lk_"` → `lk_nodes` / `lk_edges` / `lk_meta`).
+    /// The prefix is validated by [`is_identifier_safe`] before any SQL runs.
+    pub fn connect_with_prefix(url: &str, prefix: &str) -> Result<Self> {
+        Self::connect_config_with_prefix(&Self::parse_config(url)?, prefix)
+    }
+
     /// Connect from a pre-built [`Config`] (useful for overriding `dbname`,
-    /// e.g. when targeting a throwaway test database).
+    /// e.g. when targeting a throwaway test database). Uses the default
+    /// (empty) table prefix.
     pub fn connect_config(config: &Config) -> Result<Self> {
         let client = config.connect(NoTls).map_err(pg_err)?;
         Self::from_client(client)
     }
 
+    /// Like [`connect_config`](Self::connect_config), but every table/index is
+    /// namespaced under `prefix`.
+    pub fn connect_config_with_prefix(config: &Config, prefix: &str) -> Result<Self> {
+        let client = config.connect(NoTls).map_err(pg_err)?;
+        Self::from_client_with_prefix(client, prefix)
+    }
+
     /// Connect to `url` using a caller-supplied TLS connector — for servers
     /// requiring `sslmode=require` or stricter (e.g. RDS with
     /// `rds.force_ssl`). See [`Self::connect_native_tls`] for the common case
-    /// of a system-trust-store `native-tls` connector.
+    /// of a system-trust-store `native-tls` connector. Uses the default
+    /// (empty) table prefix.
     #[cfg(feature = "graph-pg-tls")]
     pub fn connect_tls<T>(url: &str, connector: T) -> Result<Self>
     where
@@ -222,9 +298,22 @@ impl PgGraph {
         Self::connect_config_tls(&Self::parse_config(url)?, connector)
     }
 
+    /// TLS variant of [`connect_with_prefix`](Self::connect_with_prefix) with a
+    /// caller-supplied TLS connector.
+    #[cfg(feature = "graph-pg-tls")]
+    pub fn connect_tls_with_prefix<T>(url: &str, prefix: &str, connector: T) -> Result<Self>
+    where
+        T: postgres::tls::MakeTlsConnect<postgres::Socket> + Send + 'static,
+        T::TlsConnect: Send,
+        T::Stream: Send,
+        <T::TlsConnect as postgres::tls::TlsConnect<postgres::Socket>>::Future: Send,
+    {
+        Self::connect_config_tls_with_prefix(&Self::parse_config(url)?, prefix, connector)
+    }
+
     /// Connect from a pre-built [`Config`] using a caller-supplied TLS
     /// connector. Mirrors [`Self::connect_config`] but negotiates TLS instead
-    /// of `postgres::NoTls`.
+    /// of `postgres::NoTls`. Uses the default (empty) table prefix.
     #[cfg(feature = "graph-pg-tls")]
     pub fn connect_config_tls<T>(config: &Config, connector: T) -> Result<Self>
     where
@@ -237,18 +326,45 @@ impl PgGraph {
         Self::from_client(client)
     }
 
+    /// TLS variant of [`connect_config_with_prefix`](Self::connect_config_with_prefix)
+    /// with a caller-supplied TLS connector.
+    #[cfg(feature = "graph-pg-tls")]
+    pub fn connect_config_tls_with_prefix<T>(
+        config: &Config,
+        prefix: &str,
+        connector: T,
+    ) -> Result<Self>
+    where
+        T: postgres::tls::MakeTlsConnect<postgres::Socket> + Send + 'static,
+        T::TlsConnect: Send,
+        T::Stream: Send,
+        <T::TlsConnect as postgres::tls::TlsConnect<postgres::Socket>>::Future: Send,
+    {
+        let client = config.connect(connector).map_err(pg_err)?;
+        Self::from_client_with_prefix(client, prefix)
+    }
+
     /// Connect to `url` over TLS using `native-tls` with the system trust
     /// store (default settings — full certificate chain *and* hostname
     /// verification against the system trust store, not weakened) — covers
     /// the common case of a Postgres server with a publicly-trusted
     /// certificate (e.g. RDS `sslmode=require`). For custom CA bundles or
     /// client certificates, build a connector and call [`Self::connect_tls`]
-    /// directly.
+    /// directly. Uses the default (empty) table prefix.
     #[cfg(feature = "graph-pg-tls")]
     pub fn connect_native_tls(url: &str) -> Result<Self> {
         let tls = native_tls::TlsConnector::new()
             .map_err(|e| KernelError::Store(format!("native-tls connector: {e}")))?;
         Self::connect_tls(url, postgres_native_tls::MakeTlsConnector::new(tls))
+    }
+
+    /// TLS variant of [`connect_with_prefix`](Self::connect_with_prefix) using
+    /// `native-tls` with the system trust store.
+    #[cfg(feature = "graph-pg-tls")]
+    pub fn connect_native_tls_with_prefix(url: &str, prefix: &str) -> Result<Self> {
+        let tls = native_tls::TlsConnector::new()
+            .map_err(|e| KernelError::Store(format!("native-tls connector: {e}")))?;
+        Self::connect_tls_with_prefix(url, prefix, postgres_native_tls::MakeTlsConnector::new(tls))
     }
 
     /// Parse a libpq connstring or `postgresql://` URL into a [`Config`],
@@ -263,12 +379,27 @@ impl PgGraph {
     /// Public so a consumer that already owns a synchronous `postgres::Client`
     /// can adopt `PgGraph` without re-opening the connection. For an *async*
     /// pool (e.g. `sqlx::PgPool`), use the planned `SqlxPgGraph` backend instead.
-    pub fn from_client(mut client: Client) -> Result<Self> {
-        init_schema(&mut client)?;
-        let current = schema_version(&mut client)?;
-        migrate(&mut client, current)?;
+    /// Uses the default (empty) table prefix.
+    pub fn from_client(client: Client) -> Result<Self> {
+        Self::from_client_with_prefix(client, "")
+    }
+
+    /// Like [`from_client`](Self::from_client), but every table/index is
+    /// namespaced under `prefix`. The prefix is validated first; an unsafe
+    /// value (anything beyond ASCII alphanumeric / underscore, or a digit-led
+    /// name) returns [`KernelError::Store`] before any SQL is emitted.
+    pub fn from_client_with_prefix(mut client: Client, prefix: &str) -> Result<Self> {
+        if !is_identifier_safe(prefix) {
+            return Err(KernelError::Store(format!(
+                "invalid table prefix {prefix:?}: only ASCII letters, digits, and underscore are allowed (and the first character must not be a digit)"
+            )));
+        }
+        init_schema(&mut client, prefix)?;
+        let current = schema_version(&mut client, prefix)?;
+        migrate(&mut client, current, prefix)?;
         Ok(Self {
             client: Mutex::new(client),
+            table_prefix: prefix.to_string(),
         })
     }
 
@@ -276,22 +407,39 @@ impl PgGraph {
         self.client.lock().unwrap_or_else(|e| e.into_inner())
     }
 
+    /// Fully-qualified `nodes` table name for this backend's prefix.
+    fn nodes_tbl(&self) -> String {
+        format!("{}nodes", self.table_prefix)
+    }
+
+    /// Fully-qualified `edges` table name for this backend's prefix.
+    fn edges_tbl(&self) -> String {
+        format!("{}edges", self.table_prefix)
+    }
+
+    /// Fully-qualified `_meta` table name for this backend's prefix.
+    fn meta_tbl(&self) -> String {
+        format!("{}_meta", self.table_prefix)
+    }
+
     /// List up to `limit` nodes (uncapped — unlike `GraphBackend::query_nodes`,
     /// which is capped at 200). Used by the migration CLI to enumerate a source
     /// backend of arbitrary size.
     pub fn list_nodes(&self, limit: usize) -> Result<Vec<GraphNode>> {
+        let nodes = self.nodes_tbl();
         let mut c = self.lock();
-        let sql = format!("SELECT {NODE_COLUMNS} FROM nodes ORDER BY updated DESC LIMIT {limit}");
+        let sql = format!("SELECT {NODE_COLUMNS} FROM {nodes} ORDER BY updated DESC LIMIT {limit}");
         let rows = c.query(&sql, &[]).map_err(pg_err)?;
         Ok(rows.iter().map(row_to_node).collect())
     }
 
     /// List up to `limit` edges (uncapped).
     pub fn list_edges(&self, limit: usize) -> Result<Vec<GraphEdge>> {
+        let edges = self.edges_tbl();
         let mut c = self.lock();
         let rows = c
             .query(
-                "SELECT id, source, target, relation, weight, ts FROM edges LIMIT $1",
+                &format!("SELECT id, source, target, relation, weight, ts FROM {edges} LIMIT $1"),
                 &[&(limit as i64)],
             )
             .map_err(pg_err)?;
@@ -318,15 +466,18 @@ impl GraphBackend for PgGraph {
             &node.access_count,
             &node.accessed_at,
         ];
+        let nodes = self.nodes_tbl();
         let mut c = self.lock();
         c.execute(
-            "INSERT INTO nodes (id, node_type, title, tags, projects, agents, created, updated, body, importance, access_count, accessed_at)
+            &format!(
+                "INSERT INTO {nodes} (id, node_type, title, tags, projects, agents, created, updated, body, importance, access_count, accessed_at)
              VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
              ON CONFLICT (id) DO UPDATE SET
                node_type=EXCLUDED.node_type, title=EXCLUDED.title, tags=EXCLUDED.tags,
                projects=EXCLUDED.projects, agents=EXCLUDED.agents, created=EXCLUDED.created,
                updated=EXCLUDED.updated, body=EXCLUDED.body, importance=EXCLUDED.importance,
-               access_count=EXCLUDED.access_count, accessed_at=EXCLUDED.accessed_at",
+               access_count=EXCLUDED.access_count, accessed_at=EXCLUDED.accessed_at"
+            ),
             &params,
         )
         .map_err(pg_err)?;
@@ -334,17 +485,19 @@ impl GraphBackend for PgGraph {
     }
 
     fn read_node(&self, id: &str) -> Result<Option<GraphNode>> {
+        let nodes = self.nodes_tbl();
         let mut c = self.lock();
-        let sql = format!("SELECT {NODE_COLUMNS} FROM nodes WHERE id = $1");
+        let sql = format!("SELECT {NODE_COLUMNS} FROM {nodes} WHERE id = $1");
         let params: [&(dyn ToSql + Sync); 1] = [&id];
         let row = c.query_opt(&sql, &params).map_err(pg_err)?;
         Ok(row.as_ref().map(row_to_node))
     }
 
     fn delete_node(&self, id: &str) -> Result<bool> {
+        let nodes = self.nodes_tbl();
         let mut c = self.lock();
         let n = c
-            .execute("DELETE FROM nodes WHERE id = $1", &[&id])
+            .execute(&format!("DELETE FROM {nodes} WHERE id = $1"), &[&id])
             .map_err(pg_err)?;
         Ok(n > 0)
     }
@@ -364,8 +517,9 @@ impl GraphBackend for PgGraph {
             ));
         }
         let where_clause = conds.join(" AND ");
+        let nodes = self.nodes_tbl();
         let sql = format!(
-            "SELECT {NODE_COLUMNS} FROM nodes WHERE {where_clause} ORDER BY importance DESC, updated DESC LIMIT {limit}"
+            "SELECT {NODE_COLUMNS} FROM {nodes} WHERE {where_clause} ORDER BY importance DESC, updated DESC LIMIT {limit}"
         );
         let mut c = self.lock();
         let rows = c.query(&sql, &params).map_err(pg_err)?;
@@ -407,8 +561,9 @@ impl GraphBackend for PgGraph {
         };
         let params: Vec<&(dyn ToSql + Sync)> =
             owned.iter().map(|s| -> &(dyn ToSql + Sync) { s }).collect();
+        let nodes = self.nodes_tbl();
         let sql = format!(
-            "SELECT {NODE_COLUMNS} FROM nodes {where_clause} ORDER BY updated DESC LIMIT {limit}"
+            "SELECT {NODE_COLUMNS} FROM {nodes} {where_clause} ORDER BY updated DESC LIMIT {limit}"
         );
         let mut c = self.lock();
         let rows = c.query(&sql, &params).map_err(pg_err)?;
@@ -450,8 +605,10 @@ impl GraphBackend for PgGraph {
         let where_clause = conds.join(" AND ");
         let params: Vec<&(dyn ToSql + Sync)> =
             owned.iter().map(|s| -> &(dyn ToSql + Sync) { s }).collect();
+        let nodes = self.nodes_tbl();
+        let edges = self.edges_tbl();
         let sql = format!(
-            "SELECT {NODE_COLUMNS} FROM nodes WHERE {where_clause} ORDER BY importance DESC, updated DESC LIMIT {candidate_limit}"
+            "SELECT {NODE_COLUMNS} FROM {nodes} WHERE {where_clause} ORDER BY importance DESC, updated DESC LIMIT {candidate_limit}"
         );
         let mut c = self.lock();
         let rows = c.query(&sql, &params).map_err(pg_err)?;
@@ -499,7 +656,7 @@ impl GraphBackend for PgGraph {
                 .collect::<Vec<_>>()
                 .join(",");
             let sql = format!(
-                "SELECT id, source, target, relation, weight, ts FROM edges WHERE source IN ({l1}) AND target IN ({l2})"
+                "SELECT id, source, target, relation, weight, ts FROM {edges} WHERE source IN ({l1}) AND target IN ({l2})"
             );
             let mut bp: Vec<&(dyn ToSql + Sync)> = Vec::with_capacity(2 * n);
             for id in &candidate_ids {
@@ -556,7 +713,7 @@ impl GraphBackend for PgGraph {
                 params.push(id);
             }
             let sql = format!(
-                "UPDATE nodes SET access_count = access_count + 1, accessed_at = $1 WHERE id IN ({placeholders})"
+                "UPDATE {nodes} SET access_count = access_count + 1, accessed_at = $1 WHERE id IN ({placeholders})"
             );
             let _ = c.execute(&sql, &params);
         }
@@ -565,6 +722,7 @@ impl GraphBackend for PgGraph {
     }
 
     fn related_nodes(&self, start_id: &str, depth: usize) -> Result<Vec<String>> {
+        let edges = self.edges_tbl();
         let mut c = self.lock();
         let depth_v = depth as i32;
         let params: [&(dyn ToSql + Sync); 2] = [&start_id, &depth_v];
@@ -573,20 +731,22 @@ impl GraphBackend for PgGraph {
                 // PostgreSQL requires a single recursive term: the bidirectional
                 // seed is folded into a subquery, then one recursive step follows
                 // edges in either direction (CASE picks the opposite endpoint).
-                "WITH RECURSIVE bfs(node_id, lvl) AS (
+                &format!(
+                    "WITH RECURSIVE bfs(node_id, lvl) AS (
                     SELECT nb.node_id, 1 FROM (
-                        SELECT target AS node_id FROM edges WHERE source = $1
+                        SELECT target AS node_id FROM {edges} WHERE source = $1
                         UNION
-                        SELECT source AS node_id FROM edges WHERE target = $1
+                        SELECT source AS node_id FROM {edges} WHERE target = $1
                     ) nb
                     UNION
                     SELECT CASE WHEN e.source = bfs.node_id THEN e.target ELSE e.source END,
                            bfs.lvl + 1
                     FROM bfs
-                    JOIN edges e ON e.source = bfs.node_id OR e.target = bfs.node_id
+                    JOIN {edges} e ON e.source = bfs.node_id OR e.target = bfs.node_id
                     WHERE bfs.lvl < $2
                 )
-                SELECT DISTINCT node_id FROM bfs WHERE node_id <> $1 LIMIT 500",
+                SELECT DISTINCT node_id FROM bfs WHERE node_id <> $1 LIMIT 500"
+                ),
                 &params,
             )
             .map_err(pg_err)?;
@@ -602,10 +762,13 @@ impl GraphBackend for PgGraph {
             &edge.weight,
             &edge.ts,
         ];
+        let edges = self.edges_tbl();
         let mut c = self.lock();
         c.execute(
-            "INSERT INTO edges (id, source, target, relation, weight, ts)
-             VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING",
+            &format!(
+                "INSERT INTO {edges} (id, source, target, relation, weight, ts)
+             VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING"
+            ),
             &params,
         )
         .map_err(pg_err)?;
@@ -616,6 +779,7 @@ impl GraphBackend for PgGraph {
         if edges.is_empty() {
             return Ok(());
         }
+        let edges_tbl = self.edges_tbl();
         const CHUNK: usize = 5000;
         let mut c = self.lock();
         for chunk in edges.chunks(CHUNK) {
@@ -625,10 +789,10 @@ impl GraphBackend for PgGraph {
             let mut tx = c.transaction().map_err(pg_err)?;
             {
                 let stmt = tx
-                    .prepare(
-                        "INSERT INTO edges (id, source, target, relation, weight, ts)
-                         VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING",
-                    )
+                    .prepare(&format!(
+                        "INSERT INTO {edges_tbl} (id, source, target, relation, weight, ts)
+                         VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING"
+                    ))
                     .map_err(pg_err)?;
                 for e in chunk {
                     let params: [&(dyn ToSql + Sync); 6] =
@@ -647,6 +811,7 @@ impl GraphBackend for PgGraph {
         dir: EdgeDirection,
         relation: Option<&str>,
     ) -> Result<Vec<GraphEdge>> {
+        let edges = self.edges_tbl();
         let mut c = self.lock();
         let dir_clause = match dir {
             EdgeDirection::Out => "source = $1",
@@ -655,13 +820,13 @@ impl GraphBackend for PgGraph {
         };
         let rows = if let Some(r) = relation {
             let sql = format!(
-                "SELECT id, source, target, relation, weight, ts FROM edges \
+                "SELECT id, source, target, relation, weight, ts FROM {edges} \
                  WHERE {dir_clause} AND relation = $2 ORDER BY weight DESC"
             );
             c.query(&sql, &[&node_id, &r]).map_err(pg_err)?
         } else {
             let sql = format!(
-                "SELECT id, source, target, relation, weight, ts FROM edges \
+                "SELECT id, source, target, relation, weight, ts FROM {edges} \
                  WHERE {dir_clause} ORDER BY weight DESC"
             );
             c.query(&sql, &[&node_id]).map_err(pg_err)?
@@ -678,6 +843,7 @@ impl GraphBackend for PgGraph {
         if seed_ids.is_empty() {
             return Ok(vec![]);
         }
+        let edges = self.edges_tbl();
         const MAX_SEEDS: usize = 100;
         let seed_ids = if seed_ids.len() > MAX_SEEDS {
             &seed_ids[..MAX_SEEDS]
@@ -705,7 +871,7 @@ impl GraphBackend for PgGraph {
             };
             let rel_clause = relation.map(|_| " AND relation = $2").unwrap_or("");
             let sql = format!(
-                "SELECT {select_col} AS nb, SUM(weight) AS w FROM edges \
+                "SELECT {select_col} AS nb, SUM(weight) AS w FROM {edges} \
                  WHERE {follow} = ANY($1){rel_clause} GROUP BY {select_col}"
             );
             let rows = if let Some(r) = relation {
@@ -728,11 +894,14 @@ impl GraphBackend for PgGraph {
     }
 
     fn edges_for_node(&self, node_id: &str) -> Result<Vec<GraphEdge>> {
+        let edges = self.edges_tbl();
         let mut c = self.lock();
         let params: [&(dyn ToSql + Sync); 1] = [&node_id];
         let rows = c
             .query(
-                "SELECT id, source, target, relation, weight, ts FROM edges WHERE source = $1 OR target = $1",
+                &format!(
+                    "SELECT id, source, target, relation, weight, ts FROM {edges} WHERE source = $1 OR target = $1"
+                ),
                 &params,
             )
             .map_err(pg_err)?;
@@ -740,19 +909,21 @@ impl GraphBackend for PgGraph {
     }
 
     fn delete_edge(&self, id: &str) -> Result<bool> {
+        let edges = self.edges_tbl();
         let mut c = self.lock();
         let params: [&(dyn ToSql + Sync); 1] = [&id];
         let n = c
-            .execute("DELETE FROM edges WHERE id = $1", &params)
+            .execute(&format!("DELETE FROM {edges} WHERE id = $1"), &params)
             .map_err(pg_err)?;
         Ok(n > 0)
     }
 
     fn remove_edges_for_node(&self, node_id: &str) -> Result<()> {
+        let edges = self.edges_tbl();
         let mut c = self.lock();
         let params: [&(dyn ToSql + Sync); 1] = [&node_id];
         c.execute(
-            "DELETE FROM edges WHERE source = $1 OR target = $1",
+            &format!("DELETE FROM {edges} WHERE source = $1 OR target = $1"),
             &params,
         )
         .map_err(pg_err)?;
@@ -760,14 +931,24 @@ impl GraphBackend for PgGraph {
     }
 
     fn current_version(&self) -> Result<u32> {
+        let meta = self.meta_tbl();
         let mut c = self.lock();
-        schema_version(&mut c)
+        let row = c
+            .query_opt(
+                &format!("SELECT value FROM {meta} WHERE key = 'graph_schema_version'"),
+                &[],
+            )
+            .map_err(pg_err)?;
+        Ok(row
+            .map(|r| r.get::<_, String>(0))
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(0))
     }
 
     fn migrate(&self) -> Result<u32> {
         let mut c = self.lock();
-        let current = schema_version(&mut c)?;
-        migrate(&mut c, current)
+        let current = schema_version(&mut c, &self.table_prefix)?;
+        migrate(&mut c, current, &self.table_prefix)
     }
 }
 
@@ -834,6 +1015,29 @@ mod tests {
         );
     }
 
+    /// Offline (no server): the prefix validator accepts empty / ASCII
+    /// alphanumeric+underscore names (first char not a digit) and rejects
+    /// everything else — the guard that keeps prefix interpolation
+    /// injection-safe.
+    #[test]
+    fn is_identifier_safe_validation() {
+        // Accepted: empty (default), and ASCII letter/underscore-led names.
+        assert!(is_identifier_safe(""));
+        assert!(is_identifier_safe("lk_"));
+        assert!(is_identifier_safe("graph1"));
+        assert!(is_identifier_safe("_x"));
+        assert!(is_identifier_safe("ABC_123"));
+        // Rejected: a digit-led prefix would form an invalid unquoted identifier.
+        assert!(!is_identifier_safe("1lk"));
+        // Rejected: whitespace, punctuation, quotes, SQL metacharacters, CJK.
+        assert!(!is_identifier_safe("lk nodes"));
+        assert!(!is_identifier_safe("lk;"));
+        assert!(!is_identifier_safe("lk' OR 1=1--"));
+        assert!(!is_identifier_safe("lk-bad"));
+        assert!(!is_identifier_safe("lk.bad"));
+        assert!(!is_identifier_safe("데이터"));
+    }
+
     /// `connect_native_tls` against a live PostgreSQL configured for TLS
     /// (skips without `LLMKERNEL_PG_URL`). If the server does not offer TLS,
     /// `native-tls` negotiation fails and `connect_native_tls` surfaces that
@@ -851,7 +1055,7 @@ mod tests {
         };
         match PgGraph::connect_native_tls(&base) {
             Ok(g) => {
-                assert_eq!(g.current_version().unwrap(), 2);
+                assert_eq!(g.current_version().unwrap(), GRAPH_SCHEMA_VERSION);
             }
             Err(e) => {
                 eprintln!("connect_native_tls returned Err as expected on a non-TLS server: {e}");
@@ -868,8 +1072,8 @@ mod tests {
             return;
         }
         with_test_db(|g| {
-            assert_eq!(g.current_version().unwrap(), 2);
-            assert_eq!(g.migrate().unwrap(), 2);
+            assert_eq!(g.current_version().unwrap(), GRAPH_SCHEMA_VERSION);
+            assert_eq!(g.migrate().unwrap(), GRAPH_SCHEMA_VERSION);
 
             let dyn_g: &dyn GraphBackend = g;
             assert!(dyn_g.read_node("n1").unwrap().is_none());
@@ -966,6 +1170,64 @@ mod tests {
             assert!(recalled.iter().any(|s| s.node.id == "rust"));
             let after = g.read_node("rust").unwrap().unwrap();
             assert!(after.access_count >= 1, "access_count incremented");
+        });
+    }
+
+    /// Same database, two prefixes: writes under one prefix are invisible to
+    /// the other because they land in separate `nodes` / `edges` / `_meta`
+    /// table sets. Skips without `LLMKERNEL_PG_URL`.
+    #[test]
+    fn live_prefix_isolation() {
+        if std::env::var("LLMKERNEL_PG_URL").is_err() {
+            eprintln!("skipped: LLMKERNEL_PG_URL unset (no live PostgreSQL)");
+            return;
+        }
+        with_test_db(|g_default| {
+            // Default prefix ("") graph already has its schema; seed it.
+            g_default.upsert_node(&sample_node("default_only")).unwrap();
+            assert_eq!(
+                g_default.read_node("default_only").unwrap().unwrap().title,
+                "Node default_only"
+            );
+
+            // Open a SECOND backend on the SAME database with prefix "lk_".
+            let base = std::env::var("LLMKERNEL_PG_URL").unwrap();
+            let admin_cfg: Config = base.parse().expect("valid connstring");
+            let mut cfg = admin_cfg.clone();
+            cfg.dbname(TEST_DB);
+            let g_prefixed =
+                PgGraph::connect_config_with_prefix(&cfg, "lk_").expect("prefixed connect");
+
+            // Cross-prefix isolation: neither sees the other's nodes.
+            assert!(g_prefixed.read_node("default_only").unwrap().is_none());
+            g_prefixed.upsert_node(&sample_node("lk_only")).unwrap();
+            assert!(g_default.read_node("lk_only").unwrap().is_none());
+            assert_eq!(
+                g_prefixed.read_node("lk_only").unwrap().unwrap().title,
+                "Node lk_only"
+            );
+
+            // Edge isolation across prefixes.
+            g_prefixed.upsert_node(&sample_node("lk_peer")).unwrap();
+            g_prefixed
+                .append_edge(&GraphEdge {
+                    id: "lk_e1".into(),
+                    source: "lk_only".into(),
+                    target: "lk_peer".into(),
+                    relation: "related".into(),
+                    weight: 1.0,
+                    ts: "2026-01-01T00:00:00Z".into(),
+                })
+                .unwrap();
+            assert_eq!(g_prefixed.edges_for_node("lk_only").unwrap().len(), 1);
+            assert_eq!(g_default.edges_for_node("lk_only").unwrap().len(), 0);
+
+            // The prefixed graph tracks its own schema version in lk_meta.
+            assert!(g_prefixed.current_version().unwrap() >= 2);
+
+            // An invalid prefix is rejected at construction (never reaches SQL).
+            assert!(PgGraph::connect_config_with_prefix(&cfg, "lk; drop").is_err());
+            assert!(PgGraph::connect_config_with_prefix(&cfg, "1lk").is_err());
         });
     }
 

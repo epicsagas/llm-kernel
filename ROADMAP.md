@@ -329,8 +329,9 @@ Extends `GraphBackend` from an AI-memory-recall layer into a **general directed-
 | 3 | `related_nodes_filtered` — BFS with direction + relation filter | S | `src/graph/backend.rs` |
 | 4 | Schema v3 — `idx_edges_src_rel` / `idx_edges_tgt_rel` composite indexes for relation-filtered queries | S | `src/graph/schema.rs`, `src/graph/pg.rs` |
 | 5 | `PgGraph::from_client` public — external synchronous `postgres::Client` injection | S | `src/graph/pg.rs` |
+| 6 | `PgGraph` optional table prefix (`connect_with_prefix`) — default `""` keeps per-service-DB behavior; a prefix lets multiple graphs coexist in one DB | M | `src/graph/pg.rs` |
 
-**Exit criteria:** trait surface frozen pre-1.0; `SqliteGraph`/`PgGraph`/`AsyncGraph`/`AsyncPoolGraph` all covered; CI green (`semver-checks` confirms non-breaking). External integration lands in stages 2/3. Step F (`PgGraph` table prefix for same-DB coexistence) deferred to stage 2 (klr integration); the planned async `SqlxPgGraph` backend (for klr's `sqlx::PgPool`) is designed but unimplemented.
+**Exit criteria:** trait surface frozen pre-1.0; `SqliteGraph`/`PgGraph`/`AsyncGraph`/`AsyncPoolGraph` all covered; CI green (`semver-checks` confirms non-breaking). External integration lands in stages 2/3. The planned async `SqlxPgGraph` backend (for klr's `sqlx::PgPool`) is designed but unimplemented.
 
 ---
 

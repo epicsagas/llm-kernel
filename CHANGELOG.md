@@ -24,6 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **graph** (`graph-pg`): `PgGraph::from_client` is now public — a consumer that
   already owns a synchronous `postgres::Client` can adopt `PgGraph` without
   re-opening the connection.
+- **graph** (`graph-pg`): optional table prefix — `PgGraph::connect_with_prefix`
+  (and `from_client_with_prefix`) namespaces the `nodes`/`edges`/`_meta` tables
+  and indexes behind a caller-chosen prefix (default `""` keeps per-service-DB
+  behavior unchanged). Lets multiple graphs coexist in one database.
 - **graph**: schema v3 — composite `idx_edges_src_rel` / `idx_edges_tgt_rel`
   indexes serve relation-filtered directional edge queries (additive migration;
   no impact on existing graphs).
