@@ -1,4 +1,4 @@
-<!-- Translated from README.md @ v0.17.0 (2026-07-08) -->
+<!-- Translated from README.md @ v0.18.0 (2026-07-10) -->
 <!-- If English README has changed since then, this translation may be outdated -->
 
 [English](../../README.md) | [한국어](../ko/README.md) | **日本語** | [简体中文](../zh-Hans/README.md) | [繁體中文](../zh-Hant/README.md) | [Español](../es/README.md) | [Français](../fr/README.md) | [Deutsch](../de/README.md) | [Português](../pt/README.md) | [Русский](../ru/README.md) | [Italiano](../it/README.md)
@@ -89,28 +89,28 @@ llm-kernelは、RustでLLM搭載ツール、エージェント、サーバーを
 
 ```toml
 [dependencies]
-llm-kernel = "0.17.0"
+llm-kernel = "0.18.0"
 ```
 
 `provider`フィーチャーはデフォルトで有効です。非同期クライアントを使用する場合：
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.17.0", features = ["client-async"] }
+llm-kernel = { version = "0.18.0", features = ["client-async"] }
 ```
 
 非同期ラッパー付きナレッジグラフを使用する場合：
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.17.0", features = ["graph", "graph-async"] }
+llm-kernel = { version = "0.18.0", features = ["graph", "graph-async"] }
 ```
 
 ローカルエンベディング（ONNX、APIキー不要）を使用する場合：
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.17.0", features = ["embedding-fastembed"] }
+llm-kernel = { version = "0.18.0", features = ["embedding-fastembed"] }
 ```
 
 ## 使用方法
