@@ -5,7 +5,7 @@ use std::collections::HashSet;
 use rusqlite::{Connection, params};
 
 use super::store::{read_edges, read_nodes};
-use super::types::{Graph, GraphEdge, GraphNodeSummary};
+use super::types::{EdgeDirection, Graph, GraphEdge, GraphNodeSummary};
 
 /// Maximum edges in a graph snapshot (prevents unbounded memory).
 const MAX_GRAPH_EDGES: usize = 2000;
@@ -13,11 +13,35 @@ const MAX_GRAPH_EDGES: usize = 2000;
 /// Maximum seed IDs per neighbor query (keeps SQLite bind variables under limit).
 const MAX_SEED_IDS: usize = 100;
 
-/// Get 1-hop neighbors from seed IDs. Returns `(neighbor_id, total_weight)` sorted by weight DESC.
+/// Get 1-hop neighbors from seed IDs. Returns `(neighbor_id, total_weight)`
+/// sorted by weight DESC.
 ///
 /// Follows edges in both directions (source→target and target→source).
 /// Seed nodes are excluded from results.
+///
+/// This is a convenience alias for `neighbors_weighted` with
+/// [`EdgeDirection::Both`] and no relation filter, preserving the historical
+/// bidirectional behavior.
 pub fn graph_neighbors(conn: &Connection, seed_ids: &[String]) -> Vec<(String, f64)> {
+    neighbors_weighted(conn, seed_ids, EdgeDirection::Both, None)
+}
+
+/// 1-hop neighbors from seed IDs with direction and relation filtering.
+///
+/// Generalization of [`graph_neighbors`]: returns `(neighbor_id, total_weight)`
+/// sorted by weight DESC. `dir` controls which edges are followed
+/// ([`EdgeDirection::Out`] = out-edges only, [`EdgeDirection::In`] = in-edges
+/// only, [`EdgeDirection::Both`] = both); `relation` restricts the walk to a
+/// single relation type (e.g. `"cites"`). Seed nodes are excluded from results.
+///
+/// At most [`MAX_SEED_IDS`] seeds are considered (keeps SQLite bind variables
+/// under the 999 limit).
+pub(crate) fn neighbors_weighted(
+    conn: &Connection,
+    seed_ids: &[String],
+    dir: EdgeDirection,
+    relation: Option<&str>,
+) -> Vec<(String, f64)> {
     if seed_ids.is_empty() {
         return vec![];
     }
@@ -27,23 +51,44 @@ pub fn graph_neighbors(conn: &Connection, seed_ids: &[String]) -> Vec<(String, f
         seed_ids
     };
 
-    let ph: String = seed_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
-    let sql = format!(
-        "SELECT target AS nb, SUM(weight) AS w FROM edges WHERE source IN ({ph}) GROUP BY target \
-         UNION ALL \
-         SELECT source AS nb, SUM(weight) AS w FROM edges WHERE target IN ({ph}) GROUP BY source"
+    let ph = seed_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+    let rel_filter = relation.map(|_| " AND relation = ?").unwrap_or("");
+
+    let out_half = format!(
+        "SELECT target AS nb, SUM(weight) AS w FROM edges WHERE source IN ({ph}){rel_filter} GROUP BY target"
     );
+    let in_half = format!(
+        "SELECT source AS nb, SUM(weight) AS w FROM edges WHERE target IN ({ph}){rel_filter} GROUP BY source"
+    );
+    let sql = match dir {
+        EdgeDirection::Out => out_half,
+        EdgeDirection::In => in_half,
+        EdgeDirection::Both => format!("{out_half} UNION ALL {in_half}"),
+    };
 
     let mut stmt = match conn.prepare(&sql) {
         Ok(s) => s,
         Err(_) => return vec![],
     };
 
+    // Bind: `halves` (1 for Out/In, 2 for Both) repetitions of (seeds [+ relation]).
+    let halves = if matches!(dir, EdgeDirection::Both) {
+        2
+    } else {
+        1
+    };
+    let mut binds: Vec<&str> = Vec::with_capacity(halves * (seed_ids.len() + 1));
+    for _ in 0..halves {
+        binds.extend(seed_ids.iter().map(String::as_str));
+        if let Some(r) = relation {
+            binds.push(r);
+        }
+    }
+
     let rows: Vec<(String, f64)> = stmt
-        .query_map(
-            rusqlite::params_from_iter(seed_ids.iter().chain(seed_ids.iter())),
-            |row| Ok((row.get::<_, String>(0)?, row.get::<_, f64>(1)?)),
-        )
+        .query_map(rusqlite::params_from_iter(binds.iter()), |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, f64>(1)?))
+        })
         .map(|rows| rows.flatten().collect())
         .unwrap_or_default();
 
@@ -202,5 +247,53 @@ mod tests {
         let result = graph_neighbors(&conn, &["A".to_string(), "B".to_string()]);
         let c_weight = result.iter().find(|(id, _)| id == "C").map(|(_, w)| *w);
         assert_eq!(c_weight, Some(2.0));
+    }
+
+    #[test]
+    fn neighbors_weighted_out_direction_excludes_in_edges() {
+        let conn = mem_db();
+        insert_edge(&conn, "e1", "A", "B"); // A→B (out-edge of A)
+        insert_edge(&conn, "e2", "C", "A"); // C→A (in-edge of A)
+        let result = neighbors_weighted(&conn, &["A".to_string()], EdgeDirection::Out, None);
+        let ids: Vec<&str> = result.iter().map(|(id, _)| id.as_str()).collect();
+        assert!(ids.contains(&"B"));
+        assert!(!ids.contains(&"C"));
+    }
+
+    #[test]
+    fn neighbors_weighted_relation_filter_restricts_walk() {
+        let conn = mem_db();
+        append_edge(
+            &conn,
+            &GraphEdge {
+                id: "c1".into(),
+                source: "A".into(),
+                target: "B".into(),
+                relation: "cites".into(),
+                weight: 1.0,
+                ts: "t".into(),
+            },
+        )
+        .unwrap();
+        append_edge(
+            &conn,
+            &GraphEdge {
+                id: "s1".into(),
+                source: "A".into(),
+                target: "D".into(),
+                relation: "see_also".into(),
+                weight: 1.0,
+                ts: "t".into(),
+            },
+        )
+        .unwrap();
+        let only_cites = neighbors_weighted(
+            &conn,
+            &["A".to_string()],
+            EdgeDirection::Both,
+            Some("cites"),
+        );
+        let ids: Vec<&str> = only_cites.iter().map(|(id, _)| id.as_str()).collect();
+        assert_eq!(ids, vec!["B"]);
     }
 }

@@ -5,7 +5,7 @@ use rusqlite::{Connection, params};
 use crate::error::{KernelError, Result};
 
 /// Current graph schema version. Increment when adding migrations.
-pub const GRAPH_SCHEMA_VERSION: u32 = 2;
+pub const GRAPH_SCHEMA_VERSION: u32 = 3;
 
 /// Read the recorded graph schema version from `_meta`, or `0` if unset.
 pub fn schema_version(conn: &Connection) -> Result<u32> {
@@ -39,6 +39,16 @@ pub fn migrate_graph(conn: &Connection, current: u32) -> Result<u32> {
         tx.execute_batch("CREATE INDEX IF NOT EXISTS idx_nodes_created ON nodes(created);")
             .map_err(|e| KernelError::Store(format!("migration v1->v2 failed: {e}")))?;
         v = 2;
+    }
+    // v2 -> v3: composite indexes for relation-filtered directed edge lookups
+    // (powers edges_for_node_dir / neighbors_weighted with a relation filter).
+    if v < 3 {
+        tx.execute_batch(
+            "CREATE INDEX IF NOT EXISTS idx_edges_src_rel ON edges(source, relation);
+             CREATE INDEX IF NOT EXISTS idx_edges_tgt_rel ON edges(target, relation);",
+        )
+        .map_err(|e| KernelError::Store(format!("migration v2->v3 failed: {e}")))?;
+        v = 3;
     }
     tx.execute(
         "UPDATE _meta SET value = ?1 WHERE key = 'graph_schema_version'",
@@ -105,6 +115,8 @@ pub fn init_graph_schema(conn: &Connection) -> Result<()> {
         CREATE INDEX IF NOT EXISTS idx_edges_source  ON edges(source);
         CREATE INDEX IF NOT EXISTS idx_edges_target  ON edges(target);
         CREATE UNIQUE INDEX IF NOT EXISTS idx_edges_src_tgt_rel ON edges(source, target, relation);
+        CREATE INDEX IF NOT EXISTS idx_edges_src_rel ON edges(source, relation);
+        CREATE INDEX IF NOT EXISTS idx_edges_tgt_rel ON edges(target, relation);
         CREATE INDEX IF NOT EXISTS idx_nodes_type    ON nodes(type);
         CREATE INDEX IF NOT EXISTS idx_nodes_updated ON nodes(updated DESC);
         CREATE INDEX IF NOT EXISTS idx_nodes_title_updated ON nodes(title, updated DESC);
@@ -114,7 +126,7 @@ pub fn init_graph_schema(conn: &Connection) -> Result<()> {
 
         -- Schema version tracking
         CREATE TABLE IF NOT EXISTS _meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-        INSERT OR IGNORE INTO _meta (key, value) VALUES ('graph_schema_version', '2');
+        INSERT OR IGNORE INTO _meta (key, value) VALUES ('graph_schema_version', '3');
         ",
     )
     .map_err(|e| KernelError::Store(format!("Graph schema init failed: {}", e)))?;
@@ -218,6 +230,27 @@ mod tests {
         assert_eq!(new_version, GRAPH_SCHEMA_VERSION);
         assert_eq!(schema_version(&conn).unwrap(), GRAPH_SCHEMA_VERSION);
         assert!(has_index(&conn, "idx_nodes_created"));
+    }
+
+    /// AC5: a v2 database migrates up to v3, adding the relation-filter
+    /// composite indexes used by directed edge lookups.
+    #[test]
+    fn migrate_advances_v2_to_v3() {
+        let conn = mem_db();
+        // init_graph_schema already created the v3 indexes; drop them and
+        // rewind the version to simulate a v2 DB.
+        conn.execute_batch(
+            "DROP INDEX IF EXISTS idx_edges_src_rel; DROP INDEX IF EXISTS idx_edges_tgt_rel;",
+        )
+        .unwrap();
+        set_version(&conn, 2);
+        assert!(!has_index(&conn, "idx_edges_src_rel"));
+        assert!(!has_index(&conn, "idx_edges_tgt_rel"));
+
+        let new_version = migrate_graph(&conn, 2).unwrap();
+        assert_eq!(new_version, GRAPH_SCHEMA_VERSION);
+        assert!(has_index(&conn, "idx_edges_src_rel"));
+        assert!(has_index(&conn, "idx_edges_tgt_rel"));
     }
 
     /// AC5: migrating an already-current DB is a no-op.

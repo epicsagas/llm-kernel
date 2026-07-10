@@ -45,11 +45,11 @@ platform constraints per feature — v1.0.0 ROADMAP #6.
 ### Knowledge graph
 | Feature | What it enables |
 |---|---|
-| `graph` | SQLite memory graph: `GraphBackend` trait, FTS5 search, smart recall, BFS, CSR algorithms (PageRank, components, Dijkstra, similarity) |
+| `graph` | Memory graph + general directed-graph backend: `GraphBackend` trait (batch edges via `append_edges`, directional / relation-filtered lookups via `EdgeDirection`, filtered BFS), FTS5 search, smart recall, CSR algorithms (PageRank, components, Dijkstra, similarity) |
 | `graph-cjk` | CJK (Korean/Japanese/Chinese) substring search path — see [korean-recall.md](benchmarks/korean-recall.md) |
-| `graph-async` | Tokio wrapper around the graph |
+| `graph-async` | Tokio wrapper around the graph (batch/directional edge methods included) |
 | `graph-pool` | WAL multi-connection async pool — see [graph_concurrency.md](benchmarks/graph_concurrency.md) |
-| `graph-pg` | PostgreSQL `GraphBackend` (`PgGraph`) |
+| `graph-pg` | PostgreSQL `GraphBackend` (`PgGraph`); `from_client` adopts an external `postgres::Client`; optional table prefix (`connect_with_prefix`) for same-DB multi-graph coexistence |
 | `graph-pg-tls` | TLS for `PgGraph` connections |
 
 ### Embeddings & vector backends

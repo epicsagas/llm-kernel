@@ -68,6 +68,25 @@ pub struct GraphEdge {
     pub ts: String,
 }
 
+/// Direction filter for directed edge lookups.
+///
+/// Historical edge queries were bidirectional (`source = ? OR target = ?`).
+/// `EdgeDirection` restricts a lookup to outgoing or incoming edges only —
+/// required for inherently directed graphs such as legal citation networks
+/// (`A` cites `B`) or document wikilinks/backlinks.
+///
+/// [`Both`](Self::Both) is the default and preserves the historical behavior.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum EdgeDirection {
+    /// Out-edges only: the node is the edge `source`.
+    Out,
+    /// In-edges only: the node is the edge `target`.
+    In,
+    /// Both directions (default; preserves the historical bidirectional behavior).
+    #[default]
+    Both,
+}
+
 /// Summary of a node for serialization (web viewer, API responses).
 /// Omits body and metadata fields for compact payloads.
 #[non_exhaustive]
@@ -259,5 +278,10 @@ mod tests {
     #[test]
     fn validate_uuid_rejects_non_hex() {
         assert!(!validate_uuid("550g8400-e29b-41d4-a716-446655440000"));
+    }
+
+    #[test]
+    fn edge_direction_default_is_both() {
+        assert_eq!(EdgeDirection::default(), EdgeDirection::Both);
     }
 }

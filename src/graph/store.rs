@@ -4,7 +4,7 @@ use rusqlite::{Connection, params};
 
 use crate::error::{KernelError, Result};
 
-use super::types::{GraphEdge, GraphNode, NODE_COLUMNS, join_csv, row_to_node};
+use super::types::{EdgeDirection, GraphEdge, GraphNode, NODE_COLUMNS, join_csv, row_to_node};
 
 // ── Node CRUD ─────────────────────────────────────────
 
@@ -114,6 +114,91 @@ pub fn append_edge(conn: &Connection, edge: &GraphEdge) -> Result<()> {
     )
     .map_err(|e| KernelError::Store(e.to_string()))?;
     Ok(())
+}
+
+/// Append many edges in a single transaction (INSERT OR IGNORE — duplicates
+/// by ID *or* by the `(source, target, relation)` unique index are skipped).
+///
+/// Equivalent to calling [`append_edge`] per edge, but commits once and reuses
+/// one prepared statement, so it scales to hundreds of thousands of edges
+/// (e.g. building a citation graph during indexing).
+pub fn append_edges(conn: &Connection, edges: &[GraphEdge]) -> Result<()> {
+    if edges.is_empty() {
+        return Ok(());
+    }
+    let tx = conn
+        .unchecked_transaction()
+        .map_err(|e| KernelError::Store(e.to_string()))?;
+    {
+        let mut stmt = tx
+            .prepare(
+                "INSERT OR IGNORE INTO edges (id, source, target, relation, weight, ts)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            )
+            .map_err(|e| KernelError::Store(e.to_string()))?;
+        for edge in edges {
+            stmt.execute(params![
+                edge.id,
+                edge.source,
+                edge.target,
+                edge.relation,
+                edge.weight,
+                edge.ts
+            ])
+            .map_err(|e| KernelError::Store(e.to_string()))?;
+        }
+    }
+    tx.commit().map_err(|e| KernelError::Store(e.to_string()))?;
+    Ok(())
+}
+
+/// Read edges touching `node_id`, filtered by direction and optional relation.
+///
+/// - [`EdgeDirection::Both`] matches `source = node_id OR target = node_id`
+///   (the historical behavior).
+/// - [`EdgeDirection::Out`] matches `source = node_id` only (out-edges).
+/// - [`EdgeDirection::In`] matches `target = node_id` only (in-edges).
+///
+/// When `relation` is `Some(r)`, additionally filters `relation = r`, using the
+/// `idx_edges_src_rel` / `idx_edges_tgt_rel` v3 indexes for the directional cases.
+pub(crate) fn edges_for_node_dir(
+    conn: &Connection,
+    node_id: &str,
+    dir: EdgeDirection,
+    relation: Option<&str>,
+) -> Result<Vec<GraphEdge>> {
+    let mut sql = String::from("SELECT id, source, target, relation, weight, ts FROM edges WHERE ");
+    match dir {
+        EdgeDirection::Out => sql.push_str("source = ?1"),
+        EdgeDirection::In => sql.push_str("target = ?1"),
+        EdgeDirection::Both => sql.push_str("(source = ?1 OR target = ?1)"),
+    }
+    if relation.is_some() {
+        sql.push_str(" AND relation = ?2");
+    }
+    sql.push_str(" ORDER BY weight DESC");
+    let mut stmt = conn
+        .prepare(&sql)
+        .map_err(|e| KernelError::Store(e.to_string()))?;
+    let mapper = |row: &rusqlite::Row<'_>| {
+        Ok(GraphEdge {
+            id: row.get(0)?,
+            source: row.get(1)?,
+            target: row.get(2)?,
+            relation: row.get(3)?,
+            weight: row.get(4)?,
+            ts: row.get(5)?,
+        })
+    };
+    let edges: Vec<GraphEdge> = if let Some(r) = relation {
+        stmt.query_map(params![node_id, r], mapper)
+    } else {
+        stmt.query_map(params![node_id], mapper)
+    }
+    .map_err(|e| KernelError::Store(e.to_string()))?
+    .filter_map(|r| r.ok())
+    .collect();
+    Ok(edges)
 }
 
 /// Read edges, capped at `limit`.
@@ -346,5 +431,126 @@ mod tests {
         .unwrap();
         remove_edges_for_node(&conn, "a").unwrap();
         assert!(read_edges(&conn, 10).unwrap().is_empty());
+    }
+
+    #[test]
+    fn append_edges_inserts_batch() {
+        let conn = mem_db();
+        let edges = vec![
+            GraphEdge {
+                id: "e1".into(),
+                source: "a".into(),
+                target: "b".into(),
+                relation: "cites".into(),
+                weight: 1.0,
+                ts: "2026-01-01T00:00:00Z".into(),
+            },
+            GraphEdge {
+                id: "e2".into(),
+                source: "a".into(),
+                target: "c".into(),
+                relation: "cites".into(),
+                weight: 0.5,
+                ts: "2026-01-01T00:00:00Z".into(),
+            },
+        ];
+        append_edges(&conn, &edges).unwrap();
+        assert_eq!(read_edges(&conn, 10).unwrap().len(), 2);
+    }
+
+    #[test]
+    fn append_edges_empty_is_noop() {
+        let conn = mem_db();
+        append_edges(&conn, &[]).unwrap();
+        assert!(read_edges(&conn, 10).unwrap().is_empty());
+    }
+
+    #[test]
+    fn append_edges_ignores_duplicate_id_and_unique() {
+        let conn = mem_db();
+        let e = GraphEdge {
+            id: "e1".into(),
+            source: "a".into(),
+            target: "b".into(),
+            relation: "cites".into(),
+            weight: 1.0,
+            ts: "2026-01-01T00:00:00Z".into(),
+        };
+        append_edges(&conn, &[e.clone()]).unwrap();
+        // Same id (INSERT OR IGNORE) and same (source, target, relation) with a
+        // different id (unique index) are both skipped.
+        append_edges(
+            &conn,
+            &[
+                e,
+                GraphEdge {
+                    id: "e2".into(),
+                    source: "a".into(),
+                    target: "b".into(),
+                    relation: "cites".into(),
+                    weight: 1.0,
+                    ts: "2026-01-01T00:00:00Z".into(),
+                },
+            ],
+        )
+        .unwrap();
+        assert_eq!(read_edges(&conn, 10).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn edges_for_node_dir_filters_direction_and_relation() {
+        let conn = mem_db();
+        append_edges(
+            &conn,
+            &[
+                GraphEdge {
+                    id: "e1".into(),
+                    source: "a".into(),
+                    target: "b".into(),
+                    relation: "cites".into(),
+                    weight: 1.0,
+                    ts: "t".into(),
+                },
+                GraphEdge {
+                    id: "e2".into(),
+                    source: "c".into(),
+                    target: "a".into(),
+                    relation: "cites".into(),
+                    weight: 1.0,
+                    ts: "t".into(),
+                },
+                GraphEdge {
+                    id: "e3".into(),
+                    source: "a".into(),
+                    target: "d".into(),
+                    relation: "see_also".into(),
+                    weight: 1.0,
+                    ts: "t".into(),
+                },
+            ],
+        )
+        .unwrap();
+        // Out-edges of `a`: b (cites) and d (see_also).
+        assert_eq!(
+            edges_for_node_dir(&conn, "a", EdgeDirection::Out, None)
+                .unwrap()
+                .len(),
+            2
+        );
+        // Out-edges of `a` restricted to `cites`: only b.
+        let out_cites = edges_for_node_dir(&conn, "a", EdgeDirection::Out, Some("cites")).unwrap();
+        assert_eq!(out_cites.len(), 1);
+        assert_eq!(out_cites[0].target, "b");
+        // In-edges of `a`: c→a.
+        let inc = edges_for_node_dir(&conn, "a", EdgeDirection::In, None).unwrap();
+        assert_eq!(inc.len(), 1);
+        assert_eq!(inc[0].source, "c");
+        // Both directions: b, d, c → 3.
+        assert_eq!(
+            edges_for_node_dir(&conn, "a", EdgeDirection::Both, None)
+                .unwrap()
+                .len(),
+            3
+        );
     }
 }
