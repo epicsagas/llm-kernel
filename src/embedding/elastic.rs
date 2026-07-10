@@ -444,7 +444,7 @@ fn knn_num_candidates(k: usize) -> usize {
 }
 
 /// Maximum number of characters of an ES error response body to embed in a
-/// [`KernelError`](crate::error::KernelError). A huge ES error body (e.g. a verbose
+/// [`KernelError`]. A huge ES error body (e.g. a verbose
 /// `mapper_parsing_exception`) could otherwise bloat logs and error chains;
 /// the cap keeps the diagnostic surface bounded while the `... [truncated]`
 /// marker signals that more is available on the ES side.

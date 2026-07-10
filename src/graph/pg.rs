@@ -38,7 +38,7 @@
 //! original `nodes` / `edges` / `_meta` names exactly: existing databases and
 //! tests are unaffected. Because the prefix is interpolated into DDL/DML as a
 //! bare identifier (PostgreSQL does not accept bind parameters for
-//! identifiers), it is validated by [`is_identifier_safe`] before any SQL is
+//! identifiers), it is validated by `is_identifier_safe` before any SQL is
 //! emitted, keeping the interpolation injection-safe.
 
 use std::collections::HashSet;
@@ -262,7 +262,7 @@ impl PgGraph {
 
     /// Like [`connect`](Self::connect), but every table/index is namespaced
     /// under `prefix` (e.g. `"lk_"` → `lk_nodes` / `lk_edges` / `lk_meta`).
-    /// The prefix is validated by [`is_identifier_safe`] before any SQL runs.
+    /// The prefix is validated by `is_identifier_safe` before any SQL runs.
     pub fn connect_with_prefix(url: &str, prefix: &str) -> Result<Self> {
         Self::connect_config_with_prefix(&Self::parse_config(url)?, prefix)
     }
