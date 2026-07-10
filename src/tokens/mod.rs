@@ -48,6 +48,16 @@ const WS_WEIGHT: f32 = 0.25;
 /// Estimate the number of tokens in a string using Unicode-script heuristics.
 ///
 /// This is a rough estimate (±20%) suitable for budget management.
+///
+/// # Example
+///
+/// ```
+/// use llm_kernel::tokens::estimate_tokens;
+/// // ASCII is roughly 1 token per 4 characters; CJK carries more weight.
+/// assert!(estimate_tokens("hello world") > 0);
+/// assert!(estimate_tokens("知識グラフ") > 0);
+/// assert_eq!(estimate_tokens(""), 0);
+/// ```
 pub fn estimate_tokens(text: &str) -> usize {
     if text.is_empty() {
         return 0;

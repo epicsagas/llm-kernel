@@ -32,6 +32,11 @@ struct Cli {
     /// Baseline JSON to compare against (regression detection mode)
     #[arg(long, global = true)]
     baseline: Option<PathBuf>,
+
+    /// CI gate mode: exit non-zero if any module fails, errors, or disappears
+    /// vs the baseline (ROADMAP v1.0.0 #3). Default behaviour is unchanged.
+    #[arg(long, global = true)]
+    strict: bool,
 }
 
 #[derive(Subcommand)]
@@ -49,6 +54,9 @@ enum Commands {
     /// Graph query quality
     #[cfg(feature = "graph")]
     Graph,
+    /// Korean recall: graph-cjk vs FTS5 trigram (issue #45, axis D)
+    #[cfg(feature = "graph-cjk")]
+    GraphKorean,
     /// Run all available evaluations
     All,
 }
@@ -839,6 +847,180 @@ mod eval_graph {
     }
 }
 
+// ── Korean recall: graph-cjk vs FTS5 trigram (issue #45, axis D) ────────────
+
+/// Quantifies the gap the `graph-cjk` feature exists to close: FTS5's `trigram`
+/// tokenizer forms no trigram for <3-character tokens, so 2-syllable Korean
+/// nouns (검색, 토큰, …) and 2-syllable morphological stems retrieve *nothing*
+/// via `search_nodes`, while the CJK contiguous-substring path finds them. This
+/// scenario runs both paths against the same in-memory corpus and reports
+/// recall@k, precision@k, and false-positive rate for each, plus the delta.
+#[cfg(feature = "graph-cjk")]
+mod eval_graph_korean {
+    use super::*;
+    use llm_kernel::graph::cjk::search_nodes_cjk;
+    use llm_kernel::graph::schema::init_graph_schema;
+    use llm_kernel::graph::search::search_nodes;
+    use llm_kernel::graph::store::upsert_node;
+    use llm_kernel::graph::types::GraphNode;
+    use rusqlite::Connection;
+    use std::collections::HashSet;
+
+    #[derive(serde::Deserialize)]
+    struct KoDoc {
+        id: String,
+        node_type: String,
+        title: String,
+        body: String,
+        tags: Vec<String>,
+        projects: Vec<String>,
+        importance: f64,
+        created: String,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct KoQuery {
+        query: String,
+        #[allow(dead_code)]
+        category: String,
+        expected_ids: Vec<String>,
+    }
+
+    fn mem_db() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        init_graph_schema(&conn).unwrap();
+        conn
+    }
+
+    /// Wrap each whitespace token in double quotes so FTS5 parses it as a phrase
+    /// (AND across tokens), mirroring the CJK path's AND semantics and avoiding
+    /// operator interpretation of CJK punctuation. No library change.
+    fn fts_quote(query: &str) -> String {
+        query
+            .split_whitespace()
+            .map(|t| format!("\"{t}\""))
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+
+    /// Single-pass recall/precision/fp accumulator for one search path over all
+    /// queries at a given `k`. Returns (recall@k, precision@k, fp_rate).
+    fn measure<F>(queries: &[KoQuery], k: usize, search: F) -> (f64, f64, f64)
+    where
+        F: Fn(&str, usize) -> Vec<String>,
+    {
+        let mut tot_recall = 0.0;
+        let mut tot_prec = 0.0;
+        let mut tot_fp = 0.0;
+        for q in queries {
+            let found_ids = search(&q.query, k);
+            let found: HashSet<&str> = found_ids.iter().map(|s| s.as_str()).collect();
+            let relevant: HashSet<&str> = q.expected_ids.iter().map(|s| s.as_str()).collect();
+            let tp = relevant.intersection(&found).count() as f64;
+            let recall = if relevant.is_empty() {
+                1.0
+            } else {
+                tp / relevant.len() as f64
+            };
+            let precision = if found.is_empty() {
+                1.0
+            } else {
+                tp / found.len() as f64
+            };
+            // false-positive rate = non-relevant retrieved / max(retrieved, 1)
+            let fp = (found.len() - tp as usize) as f64 / found.len().max(1) as f64;
+            tot_recall += recall;
+            tot_prec += precision;
+            tot_fp += fp;
+        }
+        let n = queries.len() as f64;
+        (tot_recall / n, tot_prec / n, tot_fp / n)
+    }
+
+    pub fn run(datasets_dir: &Path) -> EvalReport {
+        let corpus: Vec<KoDoc> = match load_jsonl(&datasets_dir.join("graph_korean_corpus.jsonl")) {
+            Ok(d) => d,
+            Err(e) => {
+                return EvalReport {
+                    module: "graph_korean".into(),
+                    metrics: serde_json::json!({"error": format!("corpus load failed: {e}")}),
+                    passed: false,
+                };
+            }
+        };
+        let queries: Vec<KoQuery> =
+            match load_jsonl(&datasets_dir.join("graph_korean_queries.jsonl")) {
+                Ok(q) => q,
+                Err(e) => {
+                    return EvalReport {
+                        module: "graph_korean".into(),
+                        metrics: serde_json::json!({"error": format!("queries load failed: {e}")}),
+                        passed: false,
+                    };
+                }
+            };
+
+        let conn = mem_db();
+        for d in &corpus {
+            let node = GraphNode {
+                id: d.id.clone(),
+                node_type: d.node_type.clone(),
+                title: d.title.clone(),
+                body: d.body.clone(),
+                tags: d.tags.clone(),
+                projects: d.projects.clone(),
+                agents: vec![],
+                created: d.created.clone(),
+                updated: d.created.clone(),
+                importance: d.importance,
+                access_count: 0,
+                accessed_at: String::new(),
+            };
+            // Seed failure means the dataset is malformed — surface it loudly.
+            upsert_node(&conn, &node).unwrap();
+        }
+
+        let trigram_search = |q: &str, k: usize| -> Vec<String> {
+            search_nodes(&conn, &fts_quote(q), k)
+                .unwrap_or_default()
+                .into_iter()
+                .map(|n| n.id)
+                .collect()
+        };
+        let cjk_search = |q: &str, k: usize| -> Vec<String> {
+            search_nodes_cjk(&conn, q, k)
+                .unwrap_or_default()
+                .into_iter()
+                .map(|n| n.id)
+                .collect()
+        };
+
+        let (tri_r5, tri_p5, tri_fp) = measure(&queries, 5, trigram_search);
+        let (tri_r10, _, _) = measure(&queries, 10, trigram_search);
+        let (cjk_r5, cjk_p5, cjk_fp) = measure(&queries, 5, cjk_search);
+        let (cjk_r10, _, _) = measure(&queries, 10, cjk_search);
+
+        EvalReport {
+            module: "graph_korean".into(),
+            metrics: serde_json::json!({
+                "docs": corpus.len(),
+                "queries": queries.len(),
+                "trigram_recall_at_5": tri_r5,
+                "trigram_recall_at_10": tri_r10,
+                "trigram_precision_at_5": tri_p5,
+                "trigram_fp_rate": tri_fp,
+                "cjk_recall_at_5": cjk_r5,
+                "cjk_recall_at_10": cjk_r10,
+                "cjk_precision_at_5": cjk_p5,
+                "cjk_fp_rate": cjk_fp,
+                "recall_gain_at_5": cjk_r5 - tri_r5,
+                "fp_reduction": tri_fp - cjk_fp,
+            }),
+            passed: cjk_r5 >= 0.85 && cjk_r5 > tri_r5,
+        }
+    }
+}
+
 // ── Main ─────────────────────────────────────────────────────────────────────
 
 /// Metrics where higher is better. Absent keys are treated as neutral.
@@ -863,6 +1045,15 @@ const HIGHER_IS_BETTER: &[&str] = &[
     "injection_recall",
     "benign_specificity",
     "accuracy",
+    // graph_korean (issue #45, axis D)
+    "trigram_recall_at_5",
+    "trigram_recall_at_10",
+    "trigram_precision_at_5",
+    "cjk_recall_at_5",
+    "cjk_recall_at_10",
+    "cjk_precision_at_5",
+    "recall_gain_at_5",
+    "fp_reduction",
 ];
 
 /// Metrics where lower is better.
@@ -871,6 +1062,9 @@ const LOWER_IS_BETTER: &[&str] = &[
     "max_error",
     "missed_secrets",
     "degradation_2bit_vs_4bit",
+    // graph_korean (issue #45, axis D)
+    "trigram_fp_rate",
+    "cjk_fp_rate",
 ];
 
 fn compare_reports(current: &[EvalReport], baseline: &[EvalReport]) -> (Vec<String>, bool) {
@@ -976,6 +1170,10 @@ fn main() {
     if should_run(&Commands::Graph) {
         reports.push(eval_graph::run(&cli.datasets_dir));
     }
+    #[cfg(feature = "graph-cjk")]
+    if should_run(&Commands::GraphKorean) {
+        reports.push(eval_graph_korean::run(&cli.datasets_dir));
+    }
 
     let summary = EvalSummary { results: reports };
 
@@ -1002,10 +1200,98 @@ fn main() {
             }
             if has_regression {
                 eprintln!("\n❌ Regression detected — at least one metric worsened.");
-                exit(1);
+                if cli.strict {
+                    exit(1);
+                }
             } else {
                 eprintln!("\n✅ No regression — all changes are improvements or neutral.");
             }
         }
+    }
+
+    // CI gate mode (ROADMAP v1.0.0 #3): fail on module failure/error, or on a
+    // baseline module silently disappearing. Without `--strict` the eval CLI is
+    // a pure reporter — a dataset load error or a failing module previously
+    // exited 0, masking regressions in CI.
+    if cli.strict {
+        let failed = gate_failures(&summary.results);
+        let missing = baseline
+            .as_ref()
+            .map(|b| missing_modules(&summary.results, &b.results))
+            .unwrap_or_default();
+        if !failed.is_empty() || !missing.is_empty() {
+            for m in &failed {
+                eprintln!("❌ strict: module {m} did not pass");
+            }
+            for m in &missing {
+                eprintln!("❌ strict: module {m} disappeared vs baseline");
+            }
+            exit(1);
+        }
+    }
+}
+
+/// Modules that failed or errored — used by `--strict` gate mode.
+fn gate_failures(results: &[EvalReport]) -> Vec<String> {
+    results
+        .iter()
+        .filter(|r| !r.passed || r.metrics.get("error").is_some())
+        .map(|r| r.module.clone())
+        .collect()
+}
+
+/// Baseline modules absent from the current run — catches a scenario silently
+/// being dropped (e.g. a dataset file goes missing) in `--strict` mode.
+fn missing_modules(current: &[EvalReport], baseline: &[EvalReport]) -> Vec<String> {
+    let have: std::collections::HashSet<&str> = current.iter().map(|r| r.module.as_str()).collect();
+    baseline
+        .iter()
+        .map(|r| r.module.as_str())
+        .filter(|m| !have.contains(m))
+        .map(String::from)
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn report(module: &str, passed: bool, error: bool) -> EvalReport {
+        EvalReport {
+            module: module.into(),
+            metrics: if error {
+                serde_json::json!({"error": "boom"})
+            } else {
+                serde_json::json!({})
+            },
+            passed,
+        }
+    }
+
+    #[test]
+    fn gate_failures_collects_fail_and_error() {
+        let rs = vec![
+            report("a", true, false),
+            report("b", false, false),
+            report("c", true, true),
+        ];
+        let got: std::collections::HashSet<String> = gate_failures(&rs).into_iter().collect();
+        assert!(got.contains("b"));
+        assert!(got.contains("c"));
+        assert!(!got.contains("a"));
+    }
+
+    #[test]
+    fn missing_modules_detects_drop() {
+        let cur = vec![report("a", true, false)];
+        let base = vec![report("a", true, false), report("b", true, false)];
+        assert_eq!(missing_modules(&cur, &base), vec!["b".to_string()]);
+    }
+
+    #[test]
+    fn missing_modules_empty_when_unchanged() {
+        let cur = vec![report("a", true, false), report("b", true, false)];
+        let base = vec![report("a", true, false), report("b", true, false)];
+        assert!(missing_modules(&cur, &base).is_empty());
     }
 }

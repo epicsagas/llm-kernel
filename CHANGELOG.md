@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-07-10
+
+### Added
+- **graph** (`graph-pool`, issue #45 axis E): `AsyncPoolGraph::open` now enables WAL on the file and applies `busy_timeout` + `synchronous = NORMAL` to every connection. Previously the pool ran under the default DELETE journal with no busy timeout, where a writer's lock blocked readers and concurrent writers failed immediately with `SQLITE_BUSY` — the module's "concurrent reads during writes" claim did not actually hold. Measured: a 16-reader wave under a sustained writer completes ~1.8× faster than the single-connection `AsyncGraph` wrapper (`benches/concurrency_bench.rs`, `docs/benchmarks/graph_concurrency.md`).
+- **eval** (#45 axis D): `graph-korean` scenario quantifying `graph-cjk` vs FTS5 `trigram` Korean recall — trigram recall@5 **0.286** vs cjk **1.000** (+0.714) on a 40-doc/28-query corpus, because 2-syllable Korean tokens form no trigram. Precision is identical (both substring-based). Dataset + invariant checker under `eval/datasets/`; results in `docs/benchmarks/korean-recall.md`.
+- **eval** (ROADMAP v1.0.0 #3): `--strict` gate mode — exits non-zero if any module fails, errors, or disappears vs baseline, closing a leak where a dataset load failure or failing module exited 0.
+- **ci** (ROADMAP v1.0.0 #3, #45 axis A): `bench-smoke` job (criterion `--test` single-pass — deterministic, blocking) and the `eval` job now runs `--strict --baseline`. Local-only timing comparison documented in `docs/benchmarks/README.md` with `make bench-save` / `bench-cmp`.
+- **ci** (ROADMAP v1.0.0 #4): `.github/workflows/semver.yml` — `cargo-semver-checks` against the published crates.io version. For 0.x, breaking changes fail unless the minor version is bumped in the same PR (enforcing the "API 동결" discipline); a `semver-break-intended` label bypasses deliberate breaks.
+
+### Fixed
+- **bench** (`compute_bench`): UTF-8 char-boundary panic when slicing the Japanese fixture at byte 200 — caught immediately by the new `bench-smoke` gate. Slices replaced with `chars().take(200)`.
+- **llm** (security M2): HTTP error response bodies are now routed through `redact_http_body` before being stored in `KernelError::Http` — a proxy that echoes the `Authorization` header in an error body can no longer leak the API key through error logs. Full masking under the `safety` feature.
+
+### Changed
+- **api** (ROADMAP v1.0.0 #1): public-surface audit — 8 internal-only `pub` items reduced to `pub(crate)` (`write_atomic`, `redact_credentials`, `LLMRequest::into_openai_messages`/`into_anthropic_messages`, `edges_among`, `remove_edges_for_node`, `edges_for_node`) and dead code `importance_for_type` removed. `list_node_ids` / `read_nodes_limited` stay `pub` (consumed by the bundled `migrate` binary / cross-feature).
+
+### Docs
+- (ROADMAP v1.0.0 #2): `# Example` doctests on primary entry surface — `estimate_tokens`, `mask_secrets`, `LLMRequest::builder`, `OpenAIClient::from_key`.
+- (ROADMAP v1.0.0 #5): `docs/security-audit-2026-07.md` — full review (no High findings; M1 documented, M2 mitigated).
+- (ROADMAP v1.0.0 #6): `docs/features.md` — full feature catalog + platform compatibility matrix.
+- (ROADMAP v1.0.0 #3): `docs/benchmarks/compute.md` — measured token/RRF/cosine baselines.
+
 ## [0.17.0] - 2026-07-08
 
 ### Added

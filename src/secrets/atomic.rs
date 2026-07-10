@@ -6,7 +6,7 @@ use crate::error::{KernelError, Result};
 /// Write data to a file atomically using a temp file + rename.
 ///
 /// On Unix, sets the file mode to `mode` (e.g. `0o600` for secrets).
-pub fn write_atomic(path: &str, data: &[u8], mode: u32) -> Result<()> {
+pub(crate) fn write_atomic(path: &str, data: &[u8], mode: u32) -> Result<()> {
     let target = Path::new(path);
     let parent = target
         .parent()

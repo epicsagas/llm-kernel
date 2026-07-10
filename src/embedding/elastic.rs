@@ -52,7 +52,7 @@ use super::{AsyncVectorIndex, SearchHit};
 /// similarity) if it does not already exist. All operations are async over a
 /// plain [`reqwest::Client`]. Connection-string credentials embedded in `url`
 /// (e.g. `https://user:pass@host`) are used for the request but never leaked in
-/// error messages — see [`redact_credentials`].
+/// error messages — see `redact_credentials`.
 pub struct ElasticsearchVectorIndex {
     client: reqwest::Client,
     /// Base URL, possibly containing `user:pass@` credentials. Used verbatim
@@ -89,7 +89,7 @@ impl ElasticsearchVectorIndex {
 
     /// Drop the backing index (useful for test cleanup or full reset).
     pub async fn delete_index(&self) -> Result<()> {
-        let resp = self.delete(&format!("/{}", &self.index)).await?;
+        let resp = self.delete(&format!("/{}", self.index)).await?;
         // 200 (deleted) or 404 (already gone) are both fine.
         if !resp.status().is_success() && resp.status().as_u16() != 404 {
             return Err(self.status_err(resp).await);
@@ -102,7 +102,7 @@ impl ElasticsearchVectorIndex {
         // HEAD /{index} → 200 if exists, 404 otherwise.
         let head = self
             .client
-            .head(format!("{}/{}", &self.base_url, &self.index))
+            .head(format!("{}/{}", self.base_url, self.index))
             .send()
             .await
             .map_err(|e| KernelError::Embedding(redact_credentials(&e.to_string())))?;
@@ -126,7 +126,7 @@ impl ElasticsearchVectorIndex {
                 }
             }
         });
-        let resp = self.put(&format!("/{}", &self.index), body).await?;
+        let resp = self.put(&format!("/{}", self.index), body).await?;
         if !resp.status().is_success() {
             return Err(self.status_err(resp).await);
         }
@@ -143,7 +143,7 @@ impl ElasticsearchVectorIndex {
 
     async fn put(&self, path: &str, body: serde_json::Value) -> Result<reqwest::Response> {
         self.client
-            .put(format!("{}{}", &self.base_url, path))
+            .put(format!("{}{}", self.base_url, path))
             .json(&body)
             .send()
             .await
@@ -152,7 +152,7 @@ impl ElasticsearchVectorIndex {
 
     async fn delete(&self, path: &str) -> Result<reqwest::Response> {
         self.client
-            .delete(format!("{}{}", &self.base_url, path))
+            .delete(format!("{}{}", self.base_url, path))
             .send()
             .await
             .map_err(|e| KernelError::Embedding(redact_credentials(&e.to_string())))
@@ -160,7 +160,7 @@ impl ElasticsearchVectorIndex {
 
     async fn ndjson(&self, path: &str, body: String) -> Result<reqwest::Response> {
         self.client
-            .post(format!("{}{}", &self.base_url, path))
+            .post(format!("{}{}", self.base_url, path))
             .header(CONTENT_TYPE, "application/x-ndjson")
             .body(body)
             .send()
@@ -177,7 +177,7 @@ impl ElasticsearchVectorIndex {
         let body = truncate_error_body(&redact_credentials(&body));
         KernelError::Embedding(format!(
             "elasticsearch returned status {status} for index `{}` [url redacted]: {}",
-            &self.index, body
+            self.index, body
         ))
     }
 
@@ -289,7 +289,7 @@ impl AsyncVectorIndex for ElasticsearchVectorIndex {
         });
         let resp = self
             .client
-            .post(format!("{}/{}/_search", &self.base_url, &self.index))
+            .post(format!("{}/{}/_search", self.base_url, self.index))
             .json(&body)
             .send()
             .await
@@ -338,7 +338,7 @@ impl AsyncVectorIndex for ElasticsearchVectorIndex {
         });
         let resp = self
             .client
-            .post(format!("{}/{}/_search", &self.base_url, &self.index))
+            .post(format!("{}/{}/_search", self.base_url, self.index))
             .json(&body)
             .send()
             .await
@@ -363,7 +363,7 @@ impl AsyncVectorIndex for ElasticsearchVectorIndex {
     async fn len(&self) -> Result<usize> {
         let resp = self
             .client
-            .post(format!("{}/{}/_count", &self.base_url, &self.index))
+            .post(format!("{}/{}/_count", self.base_url, self.index))
             .json(&serde_json::json!({}))
             .send()
             .await
@@ -391,7 +391,7 @@ impl AsyncVectorIndex for ElasticsearchVectorIndex {
 /// Userinfo is everything before the **last** `@` within the URL authority
 /// (matching the WHATWG URL spec), so a password that itself contains `@`
 /// (`https://u:p@ss@host`) is fully redacted rather than leaking the tail.
-pub fn redact_credentials(s: &str) -> String {
+pub(crate) fn redact_credentials(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut rest = s;
     loop {

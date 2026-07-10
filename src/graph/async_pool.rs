@@ -63,7 +63,7 @@ impl PoolInner {
         {
             return Ok(conn);
         }
-        if self.shared_mem {
+        let mut conn = if self.shared_mem {
             Connection::open_with_flags(
                 &self.path,
                 OpenFlags::SQLITE_OPEN_READ_WRITE
@@ -71,10 +71,15 @@ impl PoolInner {
                     | OpenFlags::SQLITE_OPEN_URI
                     | OpenFlags::SQLITE_OPEN_NO_MUTEX,
             )
-            .map_err(|e| KernelError::Store(e.to_string()))
+            .map_err(|e| KernelError::Store(e.to_string()))?
         } else {
-            Connection::open(&self.path).map_err(|e| KernelError::Store(e.to_string()))
-        }
+            Connection::open(&self.path).map_err(|e| KernelError::Store(e.to_string()))?
+        };
+        // busy_timeout is per-connection and does NOT persist, so every newly
+        // opened connection must set it — otherwise concurrent writers get an
+        // immediate SQLITE_BUSY instead of waiting (see open() for WAL setup).
+        apply_concurrency_pragmas(&mut conn)?;
+        Ok(conn)
     }
 
     fn return_conn(&self, conn: Connection) {
@@ -83,6 +88,22 @@ impl PoolInner {
         }
         // If lock fails (poisoned), drop the connection — it will be recreated on next take.
     }
+}
+
+/// Per-connection concurrency PRAGMAs. `journal_mode = WAL` is set once on the
+/// first file connection in [`AsyncPoolGraph::open`] (it persists to the DB
+/// file, so every later connection inherits it); `busy_timeout` and
+/// `synchronous` do **not** persist and must be applied to each connection.
+/// Without these the pool runs under the default DELETE journal with no busy
+/// timeout — writes block readers and concurrent writers fail immediately with
+/// SQLITE_BUSY, defeating the pool's reason to exist.
+fn apply_concurrency_pragmas(conn: &mut Connection) -> Result<()> {
+    conn.execute_batch(
+        "PRAGMA busy_timeout = 5000;\n\
+         PRAGMA synchronous = NORMAL;",
+    )
+    .map_err(|e| KernelError::Store(format!("PRAGMA failed: {e}")))?;
+    Ok(())
 }
 
 // ── AsyncPoolGraph ──────────────────────────────────
@@ -116,9 +137,16 @@ impl AsyncPoolGraph {
             if let Some(parent) = Path::new(&path_for_open).parent() {
                 std::fs::create_dir_all(parent)?;
             }
-            let conn =
+            let mut conn =
                 Connection::open(&path_for_open).map_err(|e| KernelError::Store(e.to_string()))?;
             crate::graph::schema::init_graph_schema(&conn)?;
+            // WAL persists to the DB file, so all later pool connections inherit
+            // it; busy_timeout + synchronous are per-connection (set on each via
+            // apply_concurrency_pragmas). Without WAL the module's "concurrent
+            // reads during writes" claim does not hold.
+            conn.execute_batch("PRAGMA journal_mode = WAL;")
+                .map_err(|e| KernelError::Store(format!("PRAGMA failed: {e}")))?;
+            apply_concurrency_pragmas(&mut conn)?;
             Ok(conn)
         })
         .await
@@ -145,7 +173,7 @@ impl AsyncPoolGraph {
         let uri = format!("file:llm_kernel_pool_{id}?mode=memory&cache=shared");
         let uri_clone = uri.clone();
         let conn = task::spawn_blocking(move || -> Result<Connection> {
-            let conn = Connection::open_with_flags(
+            let mut conn = Connection::open_with_flags(
                 &uri_clone,
                 OpenFlags::SQLITE_OPEN_READ_WRITE
                     | OpenFlags::SQLITE_OPEN_CREATE
@@ -154,6 +182,9 @@ impl AsyncPoolGraph {
             )
             .map_err(|e| KernelError::Store(e.to_string()))?;
             crate::graph::schema::init_graph_schema(&conn)?;
+            // In-memory DBs ignore journal_mode, but busy_timeout still matters
+            // for the shared-cache connections the pool spawns on demand.
+            apply_concurrency_pragmas(&mut conn)?;
             Ok(conn)
         })
         .await

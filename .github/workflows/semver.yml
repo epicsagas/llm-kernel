@@ -1,0 +1,48 @@
+name: Semver
+
+# Mechanical guard against accidental API breakage (ROADMAP v1.0.0 #4).
+# cargo-semver-checks diffs the PR's public API against the latest published
+# crates.io version. For a 0.x crate the tool's default rule is:
+#   - additive change, version unchanged  → PASS
+#   - breaking change, version unchanged  → FAIL  ← the case we want to catch
+#   - breaking change, minor bumped (0.17→0.18) → PASS (explicit, deliberate)
+# So no `release-type` is set: breaking changes are *always* flagged unless the
+# minor version is bumped in the same PR — enforcing the cold-audit "API 동결"
+# discipline without forbidding a deliberate breaking release. The downstream
+# version-split problem (cold audit §2) surfaces here as a hard CI failure.
+#
+# Runs as a *separate* workflow (not in ci.yml) because release.yml calls ci.yml
+# via workflow_call, and a release may legitimately include a breaking change —
+# gating it there would block releases. Pulling labeled/unlabeled into this
+# workflow also avoids re-running ci.yml's 31-matrix test job on label toggles.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  semver-checks:
+    # Allow a deliberate breaking change to skip the gate by labelling the PR.
+    if: github.event_name != 'pull_request' || !contains(github.event.pull_request.labels.*.name, 'semver-break-intended')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install system deps (OpenBLAS for turbovec under `full`)
+        run: sudo apt-get install -y libopenblas-dev
+      - uses: obi1kenobi/cargo-semver-checks-action@v2
+        with:
+          package: llm-kernel
+          # `full` is the broadest buildable surface. `--all-features` and the
+          # action's default feature heuristic both enable the two fastembed
+          # modes at once, tripping the compile_error! in src/lib.rs (#50/#55).
+          feature-group: only-explicit-features
+          features: full
+          shared-key: semver # separate rust-cache key from the ci.yml test matrix
+          rust-toolchain: stable

@@ -1,0 +1,28 @@
+{"query": "검색", "category": "short-noun", "expected_ids": ["kd-001"], "note": "2음절 — trigram 미형성"}
+{"query": "색인", "category": "short-noun", "expected_ids": ["kd-002"], "note": "2음절 — trigram 미형성"}
+{"query": "토큰", "category": "short-noun", "expected_ids": ["kd-003"], "note": "2음절 — trigram 미형성"}
+{"query": "벡터", "category": "short-noun", "expected_ids": ["kd-004"], "note": "2음절 — trigram 미형성"}
+{"query": "캐시", "category": "short-noun", "expected_ids": ["kd-005"], "note": "2음절 — trigram 미형성"}
+{"query": "노드", "category": "short-noun", "expected_ids": ["kd-006"], "note": "2음절 — trigram 미형성"}
+{"query": "엣지", "category": "short-noun", "expected_ids": ["kd-007"], "note": "2음절 — trigram 미형성"}
+{"query": "쿼리", "category": "short-noun", "expected_ids": ["kd-008"], "note": "2음절 — trigram 미형성"}
+{"query": "구축", "category": "particle-ending", "expected_ids": ["kd-009"], "note": "2음절 어간, 문서는 활용형만"}
+{"query": "저장", "category": "particle-ending", "expected_ids": ["kd-010"], "note": "2음절 어간, 문서는 활용형만"}
+{"query": "조회", "category": "particle-ending", "expected_ids": ["kd-011"], "note": "2음절 어간, 문서는 활용형만"}
+{"query": "갱신", "category": "particle-ending", "expected_ids": ["kd-012"], "note": "2음절 어간, 문서는 활용형만"}
+{"query": "삭제", "category": "particle-ending", "expected_ids": ["kd-013"], "note": "2음절 어간, 문서는 활용형만"}
+{"query": "연결", "category": "particle-ending", "expected_ids": ["kd-014"], "note": "2음절 어간, 문서는 활용형만"}
+{"query": "버킷 슬롯", "category": "compound-split", "expected_ids": ["kd-015"], "note": "2+2 토큰, 문서는 무공백 복합명사"}
+{"query": "블록 버퍼", "category": "compound-split", "expected_ids": ["kd-016"], "note": "2+2 토큰, 문서는 무공백 복합명사"}
+{"query": "로그 덤프", "category": "compound-split", "expected_ids": ["kd-017"], "note": "2+2 토큰, 문서는 무공백 복합명사"}
+{"query": "커밋 로그", "category": "compound-split", "expected_ids": ["kd-018"], "note": "2+2 토큰, 문서는 무공백 복합명사"}
+{"query": "패킷 허브", "category": "compound-split", "expected_ids": ["kd-019"], "note": "2+2 토큰, 문서는 무공백 복합명사"}
+{"query": "링크 포트", "category": "compound-split", "expected_ids": ["kd-020"], "note": "2+2 토큰, 문서는 무공백 복합명사"}
+{"query": "프레임버퍼", "category": "long-noun", "expected_ids": ["kd-021"], "note": "4+음절 — trigram 정상 동작(패리티 예상)"}
+{"query": "스냅샷덤프", "category": "long-noun", "expected_ids": ["kd-023"], "note": "4+음절 — trigram 정상 동작(패리티 예상)"}
+{"query": "체크섬패킷", "category": "long-noun", "expected_ids": ["kd-025"], "note": "4+음절 — trigram 정상 동작(패리티 예상)"}
+{"query": "파이프라인", "category": "long-noun", "expected_ids": ["kd-027"], "note": "4+음절 — trigram 정상 동작(패리티 예상)"}
+{"query": "디렉터리", "category": "substring-fp", "expected_ids": ["kd-029"], "note": "파생어(서브디렉터리)에 부분문자열 — cjk/trigram 모두 FP"}
+{"query": "아키텍처", "category": "substring-fp", "expected_ids": ["kd-031"], "note": "파생어(마이크로아키텍처)에 부분문자열 — 모두 FP"}
+{"query": "레퍼런스", "category": "substring-fp", "expected_ids": ["kd-033"], "note": "파생어(크로스레퍼런스)에 부분문자열 — 모두 FP"}
+{"query": "컴포넌트", "category": "substring-fp", "expected_ids": ["kd-035"], "note": "파생어(서브컴포넌트)에 부분문자열 — 모두 FP"}

@@ -20,8 +20,8 @@ fn bench_estimate_tokens(c: &mut Criterion) {
         "これは日本語のテストテキストです。漢字ひらがなカタカナを混ぜています。".repeat(50);
     let mixed_text = format!(
         "{}{}{}",
-        &ascii_text[..200],
-        &cjk_text[..200],
+        ascii_text.chars().take(200).collect::<String>(),
+        cjk_text.chars().take(200).collect::<String>(),
         "🎉🚀👍⚡🔥💯".repeat(20)
     );
 
