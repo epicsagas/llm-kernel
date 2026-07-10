@@ -193,7 +193,7 @@ serde_json  = { version = "1", optional = true }
 ureq        = { version = "3", features = ["json"], optional = true }
 tempfile    = { version = "3", optional = true }
 reqwest     = { version = "0.13", features = ["json", "rustls", "stream"], default-features = false, optional = true }
-rusqlite    = { version = "0.37", features = ["bundled"], optional = true }
+rusqlite    = { version = "0.40", features = ["bundled"], optional = true }
 toml        = { version = "1", optional = true }
 tokio       = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"], optional = true }
 tokio-stream = { version = "0.1", optional = true }
