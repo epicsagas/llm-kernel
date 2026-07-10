@@ -1,21 +1,27 @@
 # Progress
 
-> Auto-generated status snapshot. Last updated: 2026-07-10
+> Auto-generated status snapshot. Last updated: 2026-07-11
 
-## Current Version: v0.18.0
+## Current Version: v0.19.0
 
 | Metric | Value |
 |--------|-------|
-| Version | `0.18.0` |
+| Version | `0.19.0` |
 | Edition | Rust 2024, MSRV 1.92 |
-| Lines of code | ~25,400 |
-| Total tests | `--features full`: 627 passed, 14 ignored, 0 failed |
+| Lines of code | ~26,600 |
+| Total tests | `--features full`: 642 passed, 14 ignored, 0 failed |
 | Backend features | `graph-pg` (PostgreSQL), `graph-pg-tls` (TLS), `qdrant` (vector search), `elastic` (Elasticsearch vector search), `pgvector` (PostgreSQL vector search), `mcp-http` (remote MCP) |
-| Last commit | `feat(v1-readiness): issue #45 + v1.0.0 readiness #1/#2/#3/#5/#6 (#64)` |
+| Last commit | `feat(graph): general directed-graph backend support (v0.19.0) (#66)` |
 
 ---
 
 ## Recent Releases
+
+### v0.19.0 (2026-07-11)
+
+- **graph**: general directed-graph backend — `GraphBackend` trait 4종 default 메서드 (non-breaking): `append_edges` (batch upsert), `edges_for_node_dir` / `neighbors_weighted` (`EdgeDirection` Out/In/Both + relation 필터), `related_nodes_filtered` (filtered BFS). `EdgeDirection` enum. `SqliteGraph`/`PgGraph` override + `AsyncGraph`/`AsyncPoolGraph` inherent.
+- **graph** (`graph-pg`): `from_client` public (외부 `postgres::Client` 주입) + **optional table prefix** (`connect_with_prefix` / `from_client_with_prefix`) — 같은 DB 다중 그래프 공존(기본 빈 접두어로 서비스별 DB 유지).
+- **graph**: schema v3 — `idx_edges_src_rel` / `idx_edges_tgt_rel` 복합 인덱스 (relation 필터 쿼리 가속, additive migration).
 
 ### v0.18.0 (2026-07-10)
 
