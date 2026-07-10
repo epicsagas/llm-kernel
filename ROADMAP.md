@@ -8,7 +8,7 @@ llm-kernel development roadmap from v0.3.2 to v1.0.0.
 * **[Future Milestones Feasibility Study](docs/research/future_roadmap_evaluation.md)**
 * **[Graph Performance Maximization Strategy](docs/research/graph_performance_strategy.md)**
 
-> **Current phase: v0.17.0 complete ✅ — Next: v1.0.0 Production Readiness**
+> **Current phase: v0.18.0 staged (unreleased) — v1.0.0 readiness gates #1/#2/#3/#5/#6 shipped; Next: v1.0.0 (axis B + external integration)**
 >
 > v1.0.0 prerequisites (issue #45): **#1 API audit ✅, #2 examples (primary surface) ✅, #3 perf baselines + CI gates ✅, #4 semver ✅, #5 security ✅, #6 feature/platform docs ✅**; axes **D ✅ measured, E ✅ measured + WAL fix, A ✅**. Remaining: axis B scale characterization (10K–1M), external integration (v1.0.0 exit criterion).
 
@@ -300,6 +300,24 @@ Make the Rust `add()` path actually insert and enable transactional integration.
 
 ---
 
+### v0.18.0 — v1.0.0 Readiness Gates ✅
+
+Measured perf/quality gates, API audit, security review, and docs — the bulk of the v1.0.0 prerequisites shipped as an incubating minor release. The API audit's `pub` → `pub(crate)` reductions + dead-code removal are intentional **breaking** changes (permitted under 0.x with a minor bump, enforced by the new semver gate). Tracked in PR [#64](https://github.com/epicsagas/llm-kernel/pull/64); issue [#45](https://github.com/epicsagas/llm-kernel/issues/45).
+
+| # | Deliverable | Scope | Key Files |
+|---|-------------|-------|-----------|
+| E | `AsyncPoolGraph::open` enables WAL + per-connection `busy_timeout`/`synchronous=NORMAL` — the pool's "concurrent reads during writes" claim now holds (1.8× faster 16-reader wave under writer) | M | `src/graph/async_pool.rs` |
+| D | `graph-korean` eval: `graph-cjk` vs FTS5 `trigram` recall (1.000 vs 0.286 @k=5) + `--strict` CI gate mode | M | `src/bin/eval.rs`, `eval/datasets/` |
+| A | `bench-smoke` CI job (caught a real UTF-8 panic) + `semver.yml` (`cargo-semver-checks`; breaking requires minor bump) | M | `.github/workflows/` |
+| 1 | API audit: 8 internal `pub` → `pub(crate)`, dead `importance_for_type` removed (**breaking**) | L | all modules |
+| 2 | `# Example` doctests on primary entry surface (`estimate_tokens`, `mask_secrets`, `LLMRequest::builder`, `OpenAIClient::from_key`) | M | `src/tokens`, `src/safety`, `src/llm` |
+| 5 | Security M2: HTTP error bodies routed through `mask_secrets` before `KernelError::Http` (prevents API-key leak via proxy-echoed error bodies) | S | `src/llm/client.rs`, `docs/security-audit-2026-07.md` |
+| 6 | `docs/features.md` feature catalog + platform matrix; measured baselines in `docs/benchmarks/` | S | `docs/` |
+
+**Exit criteria:** gates #1/#2/#3/#5/#6 closed; axis A/D/E measured. Remaining for v1.0.0: axis B (scale 10K–1M) + external integration.
+
+---
+
 ### v1.0.0 — Production Readiness
 
 API stability guarantee. Once shipped, all public types and signatures are locked under semver.
@@ -373,6 +391,9 @@ v0.3.2
   │
   ├── v0.17.0 pgvector Transaction Integration ✅
   │            add() cast fix, pool() + remove_in_tx
+  │
+  ├── v0.18.0 v1.0.0 Readiness Gates ✅
+  │            WAL pool, graph-korean eval, --strict gate, semver, API audit, security M2
   │
   └── v1.0.0  Production Readiness
                API audit, semver lock, perf baselines, security audit

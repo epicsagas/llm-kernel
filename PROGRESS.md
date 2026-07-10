@@ -1,21 +1,30 @@
 # Progress
 
-> Auto-generated status snapshot. Last updated: 2026-07-08
+> Auto-generated status snapshot. Last updated: 2026-07-10
 
-## Current Version: v0.17.0
+## Current Version: v0.18.0
 
 | Metric | Value |
 |--------|-------|
-| Version | `0.17.0` |
+| Version | `0.18.0` |
 | Edition | Rust 2024, MSRV 1.92 |
 | Lines of code | ~25,400 |
 | Total tests | `--features full`: 627 passed, 14 ignored, 0 failed |
 | Backend features | `graph-pg` (PostgreSQL), `graph-pg-tls` (TLS), `qdrant` (vector search), `elastic` (Elasticsearch vector search), `pgvector` (PostgreSQL vector search), `mcp-http` (remote MCP) |
-| Last commit | `feat(embedding): pgvector 트랜잭션 통합 + add 캐스트 수정 (v0.17.0)` |
+| Last commit | `feat(v1-readiness): issue #45 + v1.0.0 readiness #1/#2/#3/#5/#6 (#64)` |
 
 ---
 
 ## Recent Releases
+
+### v0.18.0 (2026-07-10)
+
+- **graph** (`graph-pool`, issue #45 axis E): `AsyncPoolGraph::open` enables WAL on the file + applies `busy_timeout`/`synchronous=NORMAL` per connection — the pool's "concurrent reads during writes" claim previously did not hold (DELETE journal, no busy timeout). Measured 1.8× faster 16-reader wave under writer.
+- **eval** (#45 axis D): `graph-korean` scenario quantifying `graph-cjk` vs FTS5 `trigram` Korean recall (1.000 vs 0.286 @k=5) + `--strict` CI gate mode (exits non-zero on module failure/error/disappearance vs baseline).
+- **ci** (#45 axis A): `bench-smoke` job (caught a real UTF-8 panic) + `.github/workflows/semver.yml` (`cargo-semver-checks`; 0.x breaking requires a minor bump).
+- **api** (#1, breaking): 8 internal-only `pub` items → `pub(crate)`, dead `importance_for_type` removed; `list_node_ids`/`read_nodes_limited` stay `pub` (migrate binary / cross-feature).
+- **llm** (#5, security M2): HTTP error response bodies routed through `mask_secrets` before `KernelError::Http` (prevents API-key leak via proxy-echoed error bodies).
+- **docs** (#2/#3/#6): `# Example` doctests on primary entry surface; measured baselines in `docs/benchmarks/`; `docs/features.md` feature catalog + platform matrix; `docs/security-audit-2026-07.md`.
 
 ### v0.17.0 (2026-07-08)
 
