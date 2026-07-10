@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **graph** (`graph-pool`, issue #45 axis E): `AsyncPoolGraph::open` now enables WAL on the file and applies `busy_timeout` + `synchronous = NORMAL` to every connection. Previously the pool ran under the default DELETE journal with no busy timeout, where a writer's lock blocked readers and concurrent writers failed immediately with `SQLITE_BUSY` — the module's "concurrent reads during writes" claim did not actually hold. Measured: a 16-reader wave under a sustained writer completes ~1.8× faster than the single-connection `AsyncGraph` wrapper (`benches/concurrency_bench.rs`, `docs/benchmarks/graph_concurrency.md`).
+- **eval** (#45 axis D): `graph-korean` scenario quantifying `graph-cjk` vs FTS5 `trigram` Korean recall — trigram recall@5 **0.286** vs cjk **1.000** (+0.714) on a 40-doc/28-query corpus, because 2-syllable Korean tokens form no trigram. Precision is identical (both substring-based). Dataset + invariant checker under `eval/datasets/`; results in `docs/benchmarks/korean-recall.md`.
+- **eval** (ROADMAP v1.0.0 #3): `--strict` gate mode — exits non-zero if any module fails, errors, or disappears vs baseline, closing a leak where a dataset load failure or failing module exited 0.
+- **ci** (ROADMAP v1.0.0 #3, #45 axis A): `bench-smoke` job (criterion `--test` single-pass — deterministic, blocking) and the `eval` job now runs `--strict --baseline`. Local-only timing comparison documented in `docs/benchmarks/README.md` with `make bench-save` / `bench-cmp`.
+- **ci** (ROADMAP v1.0.0 #4): `.github/workflows/semver.yml` — `cargo-semver-checks` against the published crates.io version. For 0.x, breaking changes fail unless the minor version is bumped in the same PR (enforcing the "API 동결" discipline); a `semver-break-intended` label bypasses deliberate breaks.
+
+### Fixed
+- **bench** (`compute_bench`): UTF-8 char-boundary panic when slicing the Japanese fixture at byte 200 — caught immediately by the new `bench-smoke` gate. Slices replaced with `chars().take(200)`.
+
 ## [0.17.0] - 2026-07-08
 
 ### Added

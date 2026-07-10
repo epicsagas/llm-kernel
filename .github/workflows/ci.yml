@@ -209,7 +209,24 @@ jobs:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - name: Install system deps (OpenBLAS for turbovec)
-        run: sudo apt-get install -y libopenblas-dev
-      - name: Run quality eval (regression check)
-        run: cargo run --bin llm-kernel-eval --features eval-full -- --baseline eval/baseline.json all
+      - name: Run quality eval (regression + strict gate)
+        # --strict exits non-zero if any module fails, errors, or disappears vs
+        # baseline — previously a dataset load failure or failing module exited
+        # 0 and masked regressions (ROADMAP v1.0.0 #3, issue #45 axis A).
+        run: cargo run --bin llm-kernel-eval --features eval-full -- --strict --baseline eval/baseline.json all
+
+  # Compile + single-pass execution of every benchmark. criterion's `--test` mode
+  # runs each bench once with no timing verdict, so this is deterministic and
+  # safe as a blocking gate: it catches benchmark breakage (compile error, panic,
+  # fixture regression) without the flakiness of timing comparison on a shared
+  # runner. Timing regression detection stays a local-only workflow — shared
+  # runners' CPU steal/turbo variance routinely exceeds criterion's 1% noise
+  # threshold (see docs/benchmarks/README.md). (ROADMAP v1.0.0 #3, issue #45.)
+  bench-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Bench smoke (compile + single-pass run)
+        run: cargo bench --no-default-features --features "graph,search,tokens,embedding" -- --test

@@ -168,7 +168,7 @@ safety = ["dep:regex"]
 
 # Quality evaluation CLI (datasets-based metrics)
 eval = ["dep:clap", "dep:anyhow", "tokens", "safety", "embedding", "search"]
-eval-full = ["eval", "graph"]
+eval-full = ["eval", "graph", "graph-cjk"]
 
 # Everything except Windows-only execution backends and dev-only CLI tooling.
 # Intentionally excluded:
@@ -226,7 +226,7 @@ pgvector     = { version = "0.4", default-features = false, features = ["sqlx"],
 
 [dev-dependencies]
 tempfile = "3"
-criterion = { version = "0.8", features = ["html_reports"] }
+criterion = { version = "0.8", features = ["html_reports", "async_tokio"] }
 tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread"] }
 
 [[bench]]
@@ -238,6 +238,11 @@ required-features = ["graph"]
 name = "compute_bench"
 harness = false
 required-features = ["search", "tokens", "embedding"]
+
+[[bench]]
+name = "concurrency_bench"
+harness = false
+required-features = ["graph-pool", "graph-async"]
 
 [[bin]]
 name = "llm-kernel-eval"
