@@ -39,7 +39,7 @@ use super::algo::{CsrGraph, pagerank_default};
 use super::lifecycle::now_iso;
 use super::recall::{W_ACCESS, W_FTS, W_GRAPH, W_IMPORTANCE, W_RECENCY, compute_recency};
 use super::schema::GRAPH_SCHEMA_VERSION;
-use super::types::{escape_like, join_csv, split_csv};
+use super::types::{EdgeDirection, escape_like, join_csv, split_csv};
 use super::{GraphBackend, GraphEdge, GraphNode, ScoredNode};
 use crate::error::{KernelError, Result};
 
@@ -123,13 +123,15 @@ fn init_schema(client: &mut Client) -> Result<()> {
             CREATE INDEX IF NOT EXISTS idx_edges_source  ON edges(source);
             CREATE INDEX IF NOT EXISTS idx_edges_target  ON edges(target);
             CREATE UNIQUE INDEX IF NOT EXISTS idx_edges_src_tgt_rel ON edges(source, target, relation);
+            CREATE INDEX IF NOT EXISTS idx_edges_src_rel ON edges(source, relation);
+            CREATE INDEX IF NOT EXISTS idx_edges_tgt_rel ON edges(target, relation);
             CREATE INDEX IF NOT EXISTS idx_nodes_type       ON nodes(node_type);
             CREATE INDEX IF NOT EXISTS idx_nodes_updated    ON nodes(updated DESC);
             CREATE INDEX IF NOT EXISTS idx_nodes_importance ON nodes(importance DESC);
             CREATE INDEX IF NOT EXISTS idx_nodes_accessed   ON nodes(accessed_at DESC);
             CREATE INDEX IF NOT EXISTS idx_nodes_created    ON nodes(created);
             CREATE TABLE IF NOT EXISTS _meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-            INSERT INTO _meta (key, value) VALUES ('graph_schema_version', '2')
+            INSERT INTO _meta (key, value) VALUES ('graph_schema_version', '3')
                 ON CONFLICT (key) DO NOTHING;",
         )
         .map_err(pg_err)?;
@@ -164,6 +166,15 @@ fn migrate(client: &mut Client, current: u32) -> Result<u32> {
         tx.batch_execute("CREATE INDEX IF NOT EXISTS idx_nodes_created ON nodes(created);")
             .map_err(pg_err)?;
         v = 2;
+    }
+    // v2 -> v3: composite indexes for relation-filtered directed edge lookups.
+    if v < 3 {
+        tx.batch_execute(
+            "CREATE INDEX IF NOT EXISTS idx_edges_src_rel ON edges(source, relation);
+             CREATE INDEX IF NOT EXISTS idx_edges_tgt_rel ON edges(target, relation);",
+        )
+        .map_err(pg_err)?;
+        v = 3;
     }
     tx.execute(
         "UPDATE _meta SET value = $1 WHERE key = 'graph_schema_version'",
@@ -248,7 +259,11 @@ impl PgGraph {
     }
 
     /// Shared post-connect setup (schema + migrations) for every constructor.
-    fn from_client(mut client: Client) -> Result<Self> {
+    ///
+    /// Public so a consumer that already owns a synchronous `postgres::Client`
+    /// can adopt `PgGraph` without re-opening the connection. For an *async*
+    /// pool (e.g. `sqlx::PgPool`), use the planned `SqlxPgGraph` backend instead.
+    pub fn from_client(mut client: Client) -> Result<Self> {
         init_schema(&mut client)?;
         let current = schema_version(&mut client)?;
         migrate(&mut client, current)?;
@@ -595,6 +610,121 @@ impl GraphBackend for PgGraph {
         )
         .map_err(pg_err)?;
         Ok(())
+    }
+
+    fn append_edges(&self, edges: &[GraphEdge]) -> Result<()> {
+        if edges.is_empty() {
+            return Ok(());
+        }
+        const CHUNK: usize = 5000;
+        let mut c = self.lock();
+        for chunk in edges.chunks(CHUNK) {
+            // Each chunk is its own transaction — bounds WAL growth and keeps a
+            // partial index build recoverable. `ON CONFLICT DO NOTHING` preserves
+            // the per-row idempotency of `append_edge`.
+            let mut tx = c.transaction().map_err(pg_err)?;
+            {
+                let stmt = tx
+                    .prepare(
+                        "INSERT INTO edges (id, source, target, relation, weight, ts)
+                         VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING",
+                    )
+                    .map_err(pg_err)?;
+                for e in chunk {
+                    let params: [&(dyn ToSql + Sync); 6] =
+                        [&e.id, &e.source, &e.target, &e.relation, &e.weight, &e.ts];
+                    tx.execute(&stmt, &params).map_err(pg_err)?;
+                }
+            }
+            tx.commit().map_err(pg_err)?;
+        }
+        Ok(())
+    }
+
+    fn edges_for_node_dir(
+        &self,
+        node_id: &str,
+        dir: EdgeDirection,
+        relation: Option<&str>,
+    ) -> Result<Vec<GraphEdge>> {
+        let mut c = self.lock();
+        let dir_clause = match dir {
+            EdgeDirection::Out => "source = $1",
+            EdgeDirection::In => "target = $1",
+            EdgeDirection::Both => "(source = $1 OR target = $1)",
+        };
+        let rows = if let Some(r) = relation {
+            let sql = format!(
+                "SELECT id, source, target, relation, weight, ts FROM edges \
+                 WHERE {dir_clause} AND relation = $2 ORDER BY weight DESC"
+            );
+            c.query(&sql, &[&node_id, &r]).map_err(pg_err)?
+        } else {
+            let sql = format!(
+                "SELECT id, source, target, relation, weight, ts FROM edges \
+                 WHERE {dir_clause} ORDER BY weight DESC"
+            );
+            c.query(&sql, &[&node_id]).map_err(pg_err)?
+        };
+        Ok(rows.iter().map(row_to_edge).collect())
+    }
+
+    fn neighbors_weighted(
+        &self,
+        seed_ids: &[String],
+        dir: EdgeDirection,
+        relation: Option<&str>,
+    ) -> Result<Vec<(String, f64)>> {
+        if seed_ids.is_empty() {
+            return Ok(vec![]);
+        }
+        const MAX_SEEDS: usize = 100;
+        let seed_ids = if seed_ids.len() > MAX_SEEDS {
+            &seed_ids[..MAX_SEEDS]
+        } else {
+            seed_ids
+        };
+        let seed_arr: Vec<String> = seed_ids.to_vec();
+        let seed_set: HashSet<&str> = seed_ids.iter().map(String::as_str).collect();
+        let mut c = self.lock();
+        let mut weights: std::collections::HashMap<String, f64> = std::collections::HashMap::new();
+
+        // Walk each directional half (source side, target side, or both).
+        let halves: &[&str] = match dir {
+            EdgeDirection::Out => &["source"],
+            EdgeDirection::In => &["target"],
+            EdgeDirection::Both => &["source", "target"],
+        };
+        for &follow in halves {
+            // `follow` is the column the seed matches; the neighbor is the
+            // opposite endpoint.
+            let select_col = if follow == "source" {
+                "target"
+            } else {
+                "source"
+            };
+            let rel_clause = relation.map(|_| " AND relation = $2").unwrap_or("");
+            let sql = format!(
+                "SELECT {select_col} AS nb, SUM(weight) AS w FROM edges \
+                 WHERE {follow} = ANY($1){rel_clause} GROUP BY {select_col}"
+            );
+            let rows = if let Some(r) = relation {
+                c.query(&sql, &[&seed_arr, &r]).map_err(pg_err)?
+            } else {
+                c.query(&sql, &[&seed_arr]).map_err(pg_err)?
+            };
+            for row in &rows {
+                let nb: String = row.get(0);
+                let w: f64 = row.get(1);
+                if !seed_set.contains(nb.as_str()) {
+                    *weights.entry(nb).or_default() += w;
+                }
+            }
+        }
+
+        let mut result: Vec<(String, f64)> = weights.into_iter().collect();
+        result.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        Ok(result)
     }
 
     fn edges_for_node(&self, node_id: &str) -> Result<Vec<GraphEdge>> {

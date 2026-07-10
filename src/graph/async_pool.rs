@@ -44,7 +44,7 @@ use tokio::task;
 static MEM_POOL_ID: LazyLock<AtomicU64> = LazyLock::new(|| AtomicU64::new(0));
 
 use crate::error::{KernelError, Result};
-use crate::graph::types::{GraphEdge, GraphNode, GraphStats, ScoredNode};
+use crate::graph::types::{EdgeDirection, GraphEdge, GraphNode, GraphStats, ScoredNode};
 
 // ── Pool inner state ────────────────────────────────
 
@@ -259,6 +259,46 @@ impl AsyncPoolGraph {
     pub async fn append_edge(&self, edge: GraphEdge) -> Result<()> {
         self.with_conn(move |c| crate::graph::store::append_edge(c, &edge))
             .await
+    }
+
+    /// Append many edges in one transaction (duplicates by ID *or* by the
+    /// `(source, target, relation)` unique index are ignored).
+    pub async fn append_edges(&self, edges: Vec<GraphEdge>) -> Result<()> {
+        self.with_conn(move |c| crate::graph::store::append_edges(c, &edges))
+            .await
+    }
+
+    /// Read edges touching `node_id`, filtered by direction and optional relation.
+    pub async fn edges_for_node_dir(
+        &self,
+        node_id: impl Into<String>,
+        dir: EdgeDirection,
+        relation: Option<String>,
+    ) -> Result<Vec<GraphEdge>> {
+        let node_id = node_id.into();
+        self.with_conn(move |c| {
+            crate::graph::store::edges_for_node_dir(c, &node_id, dir, relation.as_deref())
+        })
+        .await
+    }
+
+    /// 1-hop neighbors of `seed_ids` (weighted sum), filtered by direction and
+    /// an optional relation. Seed nodes are excluded.
+    pub async fn neighbors_weighted(
+        &self,
+        seed_ids: Vec<String>,
+        dir: EdgeDirection,
+        relation: Option<String>,
+    ) -> Result<Vec<(String, f64)>> {
+        self.with_conn(move |c| {
+            Ok(crate::graph::traversal::neighbors_weighted(
+                c,
+                &seed_ids,
+                dir,
+                relation.as_deref(),
+            ))
+        })
+        .await
     }
 
     /// Read all edges (limited to 10 000).

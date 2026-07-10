@@ -34,10 +34,10 @@ pub use crate::secrets::{SecretVault, redact_credential};
 
 #[cfg(feature = "graph")]
 pub use crate::graph::{
-    Graph, GraphEdge, GraphNode, GraphNodeSummary, GraphStats, ScoredNode, append_edge,
-    build_graph, compute_stats, decay_importance, delete_node, graph_neighbors, init_graph_schema,
-    query_nodes, read_node, related_nodes, search_nodes, smart_recall, tag_stale_nodes,
-    upsert_node,
+    EdgeDirection, Graph, GraphEdge, GraphNode, GraphNodeSummary, GraphStats, ScoredNode,
+    append_edge, build_graph, compute_stats, decay_importance, delete_node, graph_neighbors,
+    init_graph_schema, query_nodes, read_node, related_nodes, search_nodes, smart_recall,
+    tag_stale_nodes, upsert_node,
 };
 
 // --- MCP ---

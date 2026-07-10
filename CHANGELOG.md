@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-07-11
+
+### Added
+- **graph**: general directed-graph backend support — batch edge writes
+  (`GraphBackend::append_edges`), directional / relation-filtered lookups
+  (`edges_for_node_dir`, `neighbors_weighted`), filtered BFS
+  (`related_nodes_filtered`), and the `EdgeDirection` enum (`Out` / `In` / `Both`).
+  The new trait methods ship with **default implementations**, so adding them is
+  non-breaking for external `GraphBackend` implementors; `SqliteGraph` and
+  `PgGraph` override for throughput. The async SQLite wrappers (`AsyncGraph`,
+  `AsyncPoolGraph`) gain matching inherent methods. This is the foundation for
+  the planned klr citation-graph and alcove backlink integrations (the v1.0.0
+  "real-world integration" exit criterion); klr/alcove integration lands in a
+  follow-up.
+- **graph** (`graph-pg`): `PgGraph::from_client` is now public — a consumer that
+  already owns a synchronous `postgres::Client` can adopt `PgGraph` without
+  re-opening the connection.
+- **graph**: schema v3 — composite `idx_edges_src_rel` / `idx_edges_tgt_rel`
+  indexes serve relation-filtered directional edge queries (additive migration;
+  no impact on existing graphs).
+
 ### Changed
 - **deps** (#63): `rusqlite` 0.37 → 0.40 — reverses the intentional 0.40 → 0.37 downgrade from #61 (which held rusqlite at 0.37 because 0.38+ raised build requirements). The intervening dependency updates let 0.40 build cleanly again: `cargo check` and `cargo build --release --features full` both pass on MSRV 1.92. Note: re-introduces the `rsqlite-vfs` transitive dependency #61 had dropped as a side effect.
 - **deps** (#62): `regex` 1.12 → 1.13.

@@ -1,15 +1,21 @@
-//! AI agent memory graph — SQLite-backed long-term memory with FTS5 search,
-//! smart recall, and graph-structured relevance boosting.
+//! AI agent memory graph — SQLite/PostgreSQL-backed long-term memory with FTS5
+//! search, smart recall, and graph-structured relevance boosting.
 //!
-//! This is **not** a general-purpose graph library. It is an agent *memory*
-//! layer: nodes carry importance and decaying recency/access signals, and are
-//! recalled by composite scoring (recency + importance + access + FTS + graph
-//! boost), with CSR algorithms ([`algo`]) surfacing structurally central
-//! memories. The niche is comparable to **Zep / Mem0 / Letta**, but local-first
-//! and vault-based rather than a hosted service.
+//! The module is tuned for agent *memory*: nodes carry importance and decaying
+//! recency/access signals, and are recalled by composite scoring (recency +
+//! importance + access + FTS + graph boost), with CSR algorithms ([`algo`])
+//! surfacing structurally central memories. The niche is comparable to
+//! **Zep / Mem0 / Letta**, but local-first and vault-based rather than a hosted
+//! service.
 //!
-//! For pure topology with no memory semantics, `petgraph` or a graph database
-//! is a better fit; this module optimizes for *recall* of accumulated context.
+//! From v0.19 the trait also serves **general directed-graph workloads** —
+//! citation networks, document backlinks, dependency graphs — via batch edge
+//! writes ([`GraphBackend::append_edges`]), directional / relation-filtered
+//! lookups ([`GraphBackend::edges_for_node_dir`],
+//! [`GraphBackend::neighbors_weighted`]), and filtered BFS
+//! ([`GraphBackend::related_nodes_filtered`]); [`EdgeDirection`] selects
+//! out / in / both. For pure topology with no memory semantics, `petgraph` or
+//! a graph database remains a better fit.
 //!
 //! Provides a complete knowledge graph layer on top of SQLite:
 //!
@@ -97,7 +103,8 @@ pub use store::{
 };
 pub use traversal::{build_graph, graph_neighbors, related_nodes};
 pub use types::{
-    Graph, GraphEdge, GraphNode, GraphNodeSummary, GraphStats, ScoredNode, validate_uuid,
+    EdgeDirection, Graph, GraphEdge, GraphNode, GraphNodeSummary, GraphStats, ScoredNode,
+    validate_uuid,
 };
 
 #[cfg(feature = "graph-cjk")]
