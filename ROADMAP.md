@@ -8,7 +8,7 @@ llm-kernel development roadmap from v0.3.2 to v1.0.0.
 * **[Future Milestones Feasibility Study](docs/research/future_roadmap_evaluation.md)**
 * **[Graph Performance Maximization Strategy](docs/research/graph_performance_strategy.md)**
 
-> **Current phase: v0.18.0 staged (unreleased) — v1.0.0 readiness gates #1/#2/#3/#5/#6 shipped; Next: v1.0.0 (axis B + external integration)**
+> **Current phase: v0.18.0 ✅ released → v0.19.0 staged (general directed-graph backend, PR #66) — Next: v1.0.0 (axis B + external integration: klr citation graph + alcove backlinks)**
 >
 > v1.0.0 prerequisites (issue #45): **#1 API audit ✅, #2 examples (primary surface) ✅, #3 perf baselines + CI gates ✅, #4 semver ✅, #5 security ✅, #6 feature/platform docs ✅**; axes **D ✅ measured, E ✅ measured + WAL fix, A ✅**. Remaining: axis B scale characterization (10K–1M), external integration (v1.0.0 exit criterion).
 
@@ -318,6 +318,22 @@ Measured perf/quality gates, API audit, security review, and docs — the bulk o
 
 ---
 
+### v0.19.0 — General Directed-Graph Backend ✅ (staged, PR #66)
+
+Extends `GraphBackend` from an AI-memory-recall layer into a **general directed-graph backend** — the foundation for the v1.0.0 "real-world integration" exit criterion (klr citation graph + alcove backlinks). Four new trait methods ship with **default implementations**, so adding them is non-breaking for external implementors (pre-1.0 surface freeze).
+
+| # | Deliverable | Scope | Key Files |
+|---|-------------|-------|-----------|
+| 1 | `append_edges` — batch edge upsert (single transaction + prepared-statement reuse; scales to hundreds of thousands of edges) | M | `src/graph/store.rs`, `src/graph/pg.rs` |
+| 2 | `EdgeDirection` + `edges_for_node_dir` / `neighbors_weighted` — directional (Out/In/Both) + relation-filtered lookups | M | `src/graph/types.rs`, `src/graph/traversal.rs`, `src/graph/backend.rs` |
+| 3 | `related_nodes_filtered` — BFS with direction + relation filter | S | `src/graph/backend.rs` |
+| 4 | Schema v3 — `idx_edges_src_rel` / `idx_edges_tgt_rel` composite indexes for relation-filtered queries | S | `src/graph/schema.rs`, `src/graph/pg.rs` |
+| 5 | `PgGraph::from_client` public — external synchronous `postgres::Client` injection | S | `src/graph/pg.rs` |
+
+**Exit criteria:** trait surface frozen pre-1.0; `SqliteGraph`/`PgGraph`/`AsyncGraph`/`AsyncPoolGraph` all covered; CI green (`semver-checks` confirms non-breaking). External integration lands in stages 2/3. Step F (`PgGraph` table prefix for same-DB coexistence) deferred to stage 2 (klr integration); the planned async `SqlxPgGraph` backend (for klr's `sqlx::PgPool`) is designed but unimplemented.
+
+---
+
 ### v1.0.0 — Production Readiness
 
 API stability guarantee. Once shipped, all public types and signatures are locked under semver.
@@ -331,7 +347,7 @@ API stability guarantee. Once shipped, all public types and signatures are locke
 | 5 | Security audit (`SECURITY.md` already published; `cargo audit` + gitleaks already in CI) — **done (`docs/security-audit-2026-07.md`)** | M | `src/safety/`, `src/secrets/` |
 | 6 | Document `full` feature set and platform compatibility matrix — **done (`docs/features.md`)** | S | `docs/features.md` |
 
-**Exit criteria:** `cargo-semver-checks` passes, every public item documented with examples, perf baselines in CI, security review complete, at least one external project integrated successfully.
+**Exit criteria:** `cargo-semver-checks` passes, every public item documented with examples, perf baselines in CI, security review complete, at least one external project integrated successfully — **external integration staged**: (1) general directed-graph backend ✅ v0.19.0, (2) klr citation-graph integration, (3) alcove backlink integration.
 
 ---
 
@@ -395,8 +411,11 @@ v0.3.2
   ├── v0.18.0 v1.0.0 Readiness Gates ✅
   │            WAL pool, graph-korean eval, --strict gate, semver, API audit, security M2
   │
+  ├── v0.19.0 General Directed-Graph Backend ✅
+  │            append_edges, EdgeDirection, relation-filtered lookups, schema v3, from_client pub
+  │
   └── v1.0.0  Production Readiness
-               API audit, semver lock, perf baselines, security audit
+               API audit, semver lock, perf baselines, security audit, external integration
 ```
 
 Key dependency chains:
