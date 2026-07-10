@@ -1,0 +1,40 @@
+{"id": "kd-001", "node_type": "concept", "title": "전문 검색 동작", "body": "전문 검색은 문서에서 키워드를 찾는 기능이다. 검색 속도가 중요하다.", "tags": ["검색"], "projects": ["eval-ko"], "importance": 0.9, "created": "2026-01-01T00:00:00Z"}
+{"id": "kd-002", "node_type": "concept", "title": "역 색인 구조", "body": "역 색인은 단어별로 문서 목록을 보관한다. 색인 비용이 든다.", "tags": ["색인"], "projects": ["eval-ko"], "importance": 0.885, "created": "2026-01-01T00:00:00Z"}
+{"id": "kd-003", "node_type": "concept", "title": "토큰 분할", "body": "토큰은 텍스트의 최소 단위다. 토큰 수로 사용량을 잰다.", "tags": ["토큰"], "projects": ["eval-ko"], "importance": 0.87, "created": "2026-01-01T00:00:00Z"}
+{"id": "kd-004", "node_type": "concept", "title": "벡터 거리", "body": "벡터는 방향과 크기를 가진다. 벡터 간 거리로 유사도를 잰다.", "tags": ["벡터"], "projects": ["eval-ko"], "importance": 0.855, "created": "2026-01-01T00:00:00Z"}
+{"id": "kd-005", "node_type": "concept", "title": "캐시 계층", "body": "캐시는 자주 쓰는 값을 빠르게 준다. 캐시 적중률을 추적한다.", "tags": ["캐시"], "projects": ["eval-ko"], "importance": 0.84, "created": "2026-01-01T00:00:00Z"}
+{"id": "kd-006", "node_type": "concept", "title": "노드 생명주기", "body": "노드는 정점 역할을 한다. 노드 간에 선으로 이어진다.", "tags": ["노드"], "projects": ["eval-ko"], "importance": 0.825, "created": "2026-01-01T00:00:00Z"}
+{"id": "kd-007", "node_type": "concept", "title": "엣지 가중치", "body": "엣지는 정점을 잇는 선이다. 엣지 무게로 관계 강도를 나타낸다.", "tags": ["엣지"], "projects": ["eval-ko"], "importance": 0.81, "created": "2026-01-01T00:00:00Z"}
+{"id": "kd-008", "node_type": "concept", "title": "쿼리 계획", "body": "쿼리는 자료를 요청하는 명령이다. 쿼리 계획을 분석한다.", "tags": ["쿼리"], "projects": ["eval-ko"], "importance": 0.795, "created": "2026-01-01T00:00:00Z"}
+{"id": "kd-009", "node_type": "concept", "title": "시스템 구축", "body": "데이터베이스를 구축했다. 구축하며 스키마를 검증한다.", "tags": ["구축"], "projects": ["eval-ko"], "importance": 0.78, "created": "2026-01-01T00:00:00Z"}
+{"id": "kd-010", "node_type": "concept", "title": "영속 저장", "body": "자료를 저장한다. 저장하며 압축을 적용한다.", "tags": ["저장"], "projects": ["eval-ko"], "importance": 0.765, "created": "2026-01-01T00:00:00Z"}
+{"id": "kd-011", "node_type": "concept", "title": "빠른 조회", "body": "포인터로 조회한다. 조회하고 값을 돌려준다.", "tags": ["조회"], "projects": ["eval-ko"], "importance": 0.75, "created": "2026-01-01T00:00:00Z"}
+{"id": "kd-012", "node_type": "concept", "title": "주기 갱신", "body": "값을 갱신한다. 갱신하면 일관성이 유지된다.", "tags": ["갱신"], "projects": ["eval-ko"], "importance": 0.735, "created": "2026-01-01T00:00:00Z"}
+{"id": "kd-013", "node_type": "concept", "title": "안전 삭제", "body": "행을 삭제한다. 삭제된 값은 보관된다.", "tags": ["삭제"], "projects": ["eval-ko"], "importance": 0.72, "created": "2026-01-01T00:00:00Z"}
+{"id": "kd-014", "node_type": "concept", "title": "피어 연결", "body": "대상을 연결한다. 연결된 통로가 유지된다.", "tags": ["연결"], "projects": ["eval-ko"], "importance": 0.705, "created": "2026-01-01T00:00:00Z"}
+{"id": "kd-015", "node_type": "concept", "title": "버킷슬롯 할당", "body": "해시 버킷슬롯에 값을 넣는다. 버킷슬롯 충돌을 처리한다.", "tags": ["버킷슬롯"], "projects": ["eval-ko"], "importance": 0.69, "created": "2026-01-01T00:00:00Z"}
+{"id": "kd-016", "node_type": "concept", "title": "블록버퍼 쓰기", "body": "디스크 블록버퍼에 모은다. 블록버퍼를 비운다.", "tags": ["블록버퍼"], "projects": ["eval-ko"], "importance": 0.675, "created": "2026-01-01T00:00:00Z"}
+{"id": "kd-017", "node_type": "concept", "title": "로그덤프 출력", "body": "장애 시 로그덤프를 남긴다. 로그덤프로 원인을 찾는다.", "tags": ["로그덤퍼"], "projects": ["eval-ko"], "importance": 0.66, "created": "2026-01-01T00:00:00Z"}
+{"id": "kd-018", "node_type": "concept", "title": "커밋로그 기록", "body": "트랜잭션 커밋로그에 적는다. 커밋로그로 복구한다.", "tags": ["커밋로그"], "projects": ["eval-ko"], "importance": 0.645, "created": "2026-01-01T00:00:00Z"}
+{"id": "kd-019", "node_type": "concept", "title": "패킷허브 중계", "body": "패킷허브가 패킷을 나눈다. 패킷허브로 흐름을 제어한다.", "tags": ["패킷허브"], "projects": ["eval-ko"], "importance": 0.63, "created": "2026-01-01T00:00:00Z"}
+{"id": "kd-020", "node_type": "concept", "title": "링크포트 점검", "body": "링크포트로 신호를 보낸다. 링크포트 상태를 점검한다.", "tags": ["링크포트"], "projects": ["eval-ko"], "importance": 0.615, "created": "2026-01-01T00:00:00Z"}
+{"id": "kd-021", "node_type": "concept", "title": "통합 프레임버퍼", "body": "프레임버퍼가 화면을 그린다. 프레임버퍼 크기를 정한다.", "tags": ["프레임버퍼"], "projects": ["eval-ko"], "importance": 0.6, "created": "2026-01-01T00:00:00Z"}
+{"id": "kd-022", "node_type": "concept", "title": "프레임 단위", "body": "프레임을 순서대로 보낸다. 프레임 경계를 맞춘다.", "tags": ["프레임"], "projects": ["eval-ko"], "importance": 0.585, "created": "2026-01-01T00:00:00Z"}
+{"id": "kd-023", "node_type": "concept", "title": "스냅샷덤프 보존", "body": "스냅샷덤프로 상태를 보존한다. 스냅샷덤프 크기를 제한한다.", "tags": ["스냅샷덤프"], "projects": ["eval-ko"], "importance": 0.57, "created": "2026-01-01T00:00:00Z"}
+{"id": "kd-024", "node_type": "concept", "title": "스냅샷 촬영", "body": "스냅샷을 주기로 찍는다. 스냅샷 시점을 기록한다.", "tags": ["스냅샷"], "projects": ["eval-ko"], "importance": 0.555, "created": "2026-01-01T00:00:00Z"}
+{"id": "kd-025", "node_type": "concept", "title": "체크섬패킷 검증", "body": "체크섬패킷으로 오류를 잡는다. 체크섬패킷 무결성을 확인한다.", "tags": ["체크섬패킷"], "projects": ["eval-ko"], "importance": 0.54, "created": "2026-01-01T00:00:00Z"}
+{"id": "kd-026", "node_type": "concept", "title": "체크섬 계산", "body": "체크섬을 매 단위마다 구한다. 체크섬 값으로 비교한다.", "tags": ["체크섬"], "projects": ["eval-ko"], "importance": 0.525, "created": "2026-01-01T00:00:00Z"}
+{"id": "kd-027", "node_type": "concept", "title": "파이프라인 구성", "body": "파이프라인으로 단계를 잇는다. 파이프라인 깊이를 조정한다.", "tags": ["파이프라인"], "projects": ["eval-ko"], "importance": 0.51, "created": "2026-01-01T00:00:00Z"}
+{"id": "kd-028", "node_type": "concept", "title": "파이프 전달", "body": "파이프를 통해 값을 넘긴다. 파이프 단위로 모은다.", "tags": ["파이프"], "projects": ["eval-ko"], "importance": 0.495, "created": "2026-01-01T00:00:00Z"}
+{"id": "kd-029", "node_type": "concept", "title": "디렉터리 구조", "body": "디렉터리는 파일을 계층으로 묶는다. 디렉터리 깊이를 제한한다.", "tags": ["디렉터리"], "projects": ["eval-ko"], "importance": 0.48, "created": "2026-01-01T00:00:00Z"}
+{"id": "kd-030", "node_type": "concept", "title": "서브디렉터리 순회", "body": "서브디렉터리까지 탐색한다. 서브디렉터리 목록을 수집한다.", "tags": ["서브디렉터리"], "projects": ["eval-ko"], "importance": 0.465, "created": "2026-01-01T00:00:00Z"}
+{"id": "kd-031", "node_type": "concept", "title": "아키텍처 설계", "body": "아키텍처는 구성 원리를 정한다. 아키텍처 문서를 작성한다.", "tags": ["아키텍처"], "projects": ["eval-ko"], "importance": 0.45, "created": "2026-01-01T00:00:00Z"}
+{"id": "kd-032", "node_type": "concept", "title": "마이크로아키텍처 도입", "body": "마이크로아키텍처로 분리한다. 마이크로아키텍처 이점을 평가한다.", "tags": ["마이크로아키텍처"], "projects": ["eval-ko"], "importance": 0.435, "created": "2026-01-01T00:00:00Z"}
+{"id": "kd-033", "node_type": "concept", "title": "레퍼런스 기준", "body": "레퍼런스를 비교 축으로 쓴다. 레퍼런스 값으로 보정한다.", "tags": ["레퍼런스"], "projects": ["eval-ko"], "importance": 0.42, "created": "2026-01-01T00:00:00Z"}
+{"id": "kd-034", "node_type": "concept", "title": "크로스레퍼런스 표", "body": "크로스레퍼런스로 교차 점검한다. 크로스레퍼런스 항목을 나열한다.", "tags": ["크로스레퍼런스"], "projects": ["eval-ko"], "importance": 0.405, "created": "2026-01-01T00:00:00Z"}
+{"id": "kd-035", "node_type": "concept", "title": "컴포넌트 분해", "body": "컴포넌트는 독립 단위다. 컴포넌트 간 통신을 정의한다.", "tags": ["컴포넌트"], "projects": ["eval-ko"], "importance": 0.39, "created": "2026-01-01T00:00:00Z"}
+{"id": "kd-036", "node_type": "concept", "title": "서브컴포넌트 추출", "body": "서브컴포넌트로 쪼갠다. 서브컴포넌트 경계를 나눈다.", "tags": ["서브컴포넌트"], "projects": ["eval-ko"], "importance": 0.375, "created": "2026-01-01T00:00:00Z"}
+{"id": "kd-037", "node_type": "concept", "title": "REST API 설계", "body": "엔드포인트와 상태코드를 정의한다. 버전을 관리한다.", "tags": ["api"], "projects": ["eval-ko"], "importance": 0.36, "created": "2026-01-01T00:00:00Z"}
+{"id": "kd-038", "node_type": "concept", "title": "JSON 스키마", "body": "필드 타입과 제약을 검사한다. 예시를 기록한다.", "tags": ["json"], "projects": ["eval-ko"], "importance": 0.345, "created": "2026-01-01T00:00:00Z"}
+{"id": "kd-039", "node_type": "concept", "title": "OAuth 위임", "body": "권한 위임으로 접근을 허용한다. 범위를 제한한다.", "tags": ["oauth"], "projects": ["eval-ko"], "importance": 0.33, "created": "2026-01-01T00:00:00Z"}
+{"id": "kd-040", "node_type": "concept", "title": "gRPC 스트림", "body": "양방향 흐름으로 값을 보낸다. 백프레셔를 다룬다.", "tags": ["grpc"], "projects": ["eval-ko"], "importance": 0.315, "created": "2026-01-01T00:00:00Z"}

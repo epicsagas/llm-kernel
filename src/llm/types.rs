@@ -299,7 +299,7 @@ impl LLMRequest {
     /// Convert into OpenAI-format messages, consuming the request.
     ///
     /// Prepends a system message if `self.system` is set.
-    pub fn into_openai_messages(self) -> Vec<(String, String)> {
+    pub(crate) fn into_openai_messages(self) -> Vec<(String, String)> {
         let mut out = Vec::with_capacity(self.messages.len() + 1);
         if let Some(system) = self.system {
             out.push(("system".into(), system));
@@ -313,7 +313,7 @@ impl LLMRequest {
     /// Convert into Anthropic-format messages, consuming the request.
     ///
     /// Returns only user/assistant messages (system is handled separately by Anthropic API).
-    pub fn into_anthropic_messages(self) -> Vec<(String, String)> {
+    pub(crate) fn into_anthropic_messages(self) -> Vec<(String, String)> {
         self.messages
             .into_iter()
             .map(|m| (m.role.to_string(), m.text_content()))
@@ -322,6 +322,18 @@ impl LLMRequest {
 }
 
 /// Builder for constructing `LLMRequest` instances with a fluent API.
+///
+/// # Example
+///
+/// ```no_run
+/// use llm_kernel::llm::LLMRequest;
+///
+/// let request = LLMRequest::builder()
+///     .system("You are concise.")
+///     .user_message("Summarise Rust ownership in one line.")
+///     .temperature(0.0)
+///     .build();
+/// ```
 #[derive(Debug, Clone, Default)]
 pub struct LLMRequestBuilder {
     system: Option<String>,

@@ -8,6 +8,23 @@ use crate::llm::types::{
     LLMRequest, LLMResponse, LLMStream, ModelConfig, ResponseFormat, StreamEvent, TokenUsage,
 };
 
+/// Best-effort redaction of an HTTP error response body before it lands in a
+/// [`KernelError::Http`]. Some API gateways/proxies echo the request
+/// `Authorization` header inside error bodies; without this, a caller that logs
+/// the error leaks the API key. Full pattern masking when the `safety` feature
+/// is enabled; otherwise the body is passed through unchanged (the masking
+/// regex is an opt-in dependency).
+fn redact_http_body(body: &str) -> String {
+    #[cfg(feature = "safety")]
+    {
+        crate::safety::sanitize::mask_secrets(body)
+    }
+    #[cfg(not(feature = "safety"))]
+    {
+        body.to_string()
+    }
+}
+
 /// Convert kernel [`ToolDefinition`]s into OpenAI `tools` (`type: "function"`).
 fn openai_tools(tools: &[ToolDefinition]) -> Vec<serde_json::Value> {
     tools
@@ -132,6 +149,14 @@ impl OpenAIClient {
     /// Returns a [`KernelError::Config`] if the HTTP client (with its connect /
     /// total timeouts) cannot be built, rather than silently falling back to a
     /// timeout-less `reqwest::Client::default()`.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use llm_kernel::llm::OpenAIClient;
+    /// let client = OpenAIClient::from_key("gpt-4o-mini", "sk-...")?;
+    /// # Ok::<(), llm_kernel::error::KernelError>(())
+    /// ```
     pub fn from_key(model: impl Into<String>, api_key: impl Into<String>) -> Result<Self> {
         Ok(Self {
             api_key: api_key.into(),
@@ -277,7 +302,7 @@ impl LLMClient for OpenAIClient {
             let text = resp.text().await.unwrap_or_default();
             return Err(KernelError::Http {
                 status: status.as_u16(),
-                message: text,
+                message: redact_http_body(&text),
             });
         }
 
@@ -367,7 +392,7 @@ impl LLMClient for OpenAIClient {
             let text = resp.text().await.unwrap_or_default();
             return Err(KernelError::Http {
                 status: status.as_u16(),
-                message: text,
+                message: redact_http_body(&text),
             });
         }
 
@@ -669,7 +694,7 @@ impl LLMClient for AnthropicClient {
             let text = resp.text().await.unwrap_or_default();
             return Err(KernelError::Http {
                 status: status.as_u16(),
-                message: text,
+                message: redact_http_body(&text),
             });
         }
 
@@ -765,7 +790,7 @@ impl LLMClient for AnthropicClient {
             let text = resp.text().await.unwrap_or_default();
             return Err(KernelError::Http {
                 status: status.as_u16(),
-                message: text,
+                message: redact_http_body(&text),
             });
         }
 

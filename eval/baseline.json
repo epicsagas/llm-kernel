@@ -4,9 +4,9 @@
       "module": "tokens",
       "metrics": {
         "entries": 49,
-        "mae": 4.122448979591836,
-        "max_error": 16.0,
-        "pct_within_10pct": 16.3265306122449,
+        "mae": 3.9183673469387754,
+        "max_error": 9.0,
+        "pct_within_10pct": 28.57142857142857,
         "pct_within_3": 44.89795918367347
       },
       "passed": true
@@ -14,11 +14,11 @@
     {
       "module": "safety",
       "metrics": {
-        "avg_f1": 0.9756493531708983,
-        "avg_precision": 0.9668932617769826,
+        "avg_f1": 0.9839340956932661,
+        "avg_precision": 0.983303518187239,
         "avg_recall": 0.98456548247769,
         "entries": 39,
-        "exact_match_rate": 0.8461538461538461,
+        "exact_match_rate": 0.8717948717948718,
         "missed_secrets": 4
       },
       "passed": true
@@ -36,6 +36,16 @@
       "passed": true
     },
     {
+      "module": "injection",
+      "metrics": {
+        "accuracy": 1.0,
+        "benign_specificity": 1.0,
+        "cases": 17,
+        "injection_recall": 1.0
+      },
+      "passed": true
+    },
+    {
       "module": "search",
       "metrics": {
         "avg_mrr": 1.0,
@@ -48,20 +58,28 @@
     {
       "module": "graph",
       "metrics": {
-        "avg_f1": 0.9800000000000001,
-        "avg_precision": 0.9666666666666666,
+        "avg_f1": 0.9833333333333334,
+        "avg_precision": 0.9722222222222222,
         "avg_recall": 1.0,
-        "scenarios_run": 10
+        "scenarios_run": 12
       },
       "passed": true
     },
     {
-      "module": "injection",
+      "module": "graph_korean",
       "metrics": {
-        "cases": 17,
-        "injection_recall": 1.0,
-        "benign_specificity": 1.0,
-        "accuracy": 1.0
+        "cjk_fp_rate": 0.07142857142857142,
+        "cjk_precision_at_5": 0.9285714285714286,
+        "cjk_recall_at_10": 1.0,
+        "cjk_recall_at_5": 1.0,
+        "docs": 40,
+        "fp_reduction": 0.0,
+        "queries": 28,
+        "recall_gain_at_5": 0.7142857142857143,
+        "trigram_fp_rate": 0.07142857142857142,
+        "trigram_precision_at_5": 0.9285714285714286,
+        "trigram_recall_at_10": 0.2857142857142857,
+        "trigram_recall_at_5": 0.2857142857142857
       },
       "passed": true
     }
