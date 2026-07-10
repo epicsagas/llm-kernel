@@ -177,7 +177,7 @@ impl ElasticsearchVectorIndex {
         let body = truncate_error_body(&redact_credentials(&body));
         KernelError::Embedding(format!(
             "elasticsearch returned status {status} for index `{}` [url redacted]: {}",
-            &self.index, body
+            self.index, body
         ))
     }
 
