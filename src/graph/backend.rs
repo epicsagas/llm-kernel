@@ -25,7 +25,7 @@ use crate::graph::store::{
     append_edge, delete_edge, delete_node, edges_for_node, remove_edges_for_node, upsert_node,
 };
 use crate::graph::traversal::related_nodes;
-use crate::graph::types::{GraphEdge, GraphNode, ScoredNode};
+use crate::graph::types::{EdgeDirection, GraphEdge, GraphNode, ScoredNode};
 
 /// Sync, object-safe trait for graph backends.
 ///
@@ -63,6 +63,100 @@ pub trait GraphBackend: Send + Sync {
     fn related_nodes(&self, start_id: &str, depth: usize) -> Result<Vec<String>>;
     /// Append an edge (duplicates by edge ID are ignored).
     fn append_edge(&self, edge: &GraphEdge) -> Result<()>;
+    /// Append many edges in one call.
+    ///
+    /// Duplicates by edge ID *or* by the `(source, target, relation)` unique
+    /// index are ignored. The default implementation loops [`Self::append_edge`];
+    /// backends with a batch path override it for throughput (citation graphs
+    /// built during indexing can reach hundreds of thousands of edges).
+    fn append_edges(&self, edges: &[GraphEdge]) -> Result<()> {
+        for edge in edges {
+            self.append_edge(edge)?;
+        }
+        Ok(())
+    }
+    /// Read edges touching `node_id`, filtered by direction and an optional
+    /// relation. The default implementation reads both directions via
+    /// [`Self::edges_for_node`] and filters in Rust; backends with directional
+    /// indexes override for efficiency.
+    fn edges_for_node_dir(
+        &self,
+        node_id: &str,
+        dir: EdgeDirection,
+        relation: Option<&str>,
+    ) -> Result<Vec<GraphEdge>> {
+        Ok(self
+            .edges_for_node(node_id)?
+            .into_iter()
+            .filter(|e| match dir {
+                EdgeDirection::Out => e.source == node_id,
+                EdgeDirection::In => e.target == node_id,
+                EdgeDirection::Both => true,
+            })
+            .filter(|e| relation.is_none_or(|r| e.relation == r))
+            .collect())
+    }
+    /// 1-hop neighbors of `seed_ids` (weighted sum), restricted by direction
+    /// and an optional relation. Seed nodes are excluded. The default
+    /// implementation walks each seed via [`Self::edges_for_node_dir`].
+    fn neighbors_weighted(
+        &self,
+        seed_ids: &[String],
+        dir: EdgeDirection,
+        relation: Option<&str>,
+    ) -> Result<Vec<(String, f64)>> {
+        let mut weights: std::collections::HashMap<String, f64> = std::collections::HashMap::new();
+        let seed_set: std::collections::HashSet<&str> =
+            seed_ids.iter().map(String::as_str).collect();
+        for seed in seed_ids {
+            for e in self.edges_for_node_dir(seed, dir, relation)? {
+                let other = if e.source == *seed {
+                    &e.target
+                } else {
+                    &e.source
+                };
+                if !seed_set.contains(other.as_str()) {
+                    *weights.entry(other.clone()).or_default() += e.weight;
+                }
+            }
+        }
+        let mut result: Vec<(String, f64)> = weights.into_iter().collect();
+        result.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        Ok(result)
+    }
+    /// BFS-traverse up to `depth` hops from `start_id`, returning related node
+    /// IDs (excluding the start), restricted by direction and an optional
+    /// relation. The default implementation hops via [`Self::neighbors_weighted`].
+    fn related_nodes_filtered(
+        &self,
+        start_id: &str,
+        depth: usize,
+        dir: EdgeDirection,
+        relation: Option<&str>,
+    ) -> Result<Vec<String>> {
+        if depth == 0 {
+            return Ok(vec![]);
+        }
+        let mut visited: std::collections::HashSet<String> = std::collections::HashSet::new();
+        visited.insert(start_id.to_string());
+        let mut frontier: Vec<String> = vec![start_id.to_string()];
+        for _ in 0..depth {
+            let mut next: Vec<String> = Vec::new();
+            for node in &frontier {
+                for (nb, _) in self.neighbors_weighted(std::slice::from_ref(node), dir, relation)? {
+                    if visited.insert(nb.clone()) {
+                        next.push(nb);
+                    }
+                }
+            }
+            if next.is_empty() {
+                break;
+            }
+            frontier = next;
+        }
+        visited.remove(start_id);
+        Ok(visited.into_iter().collect())
+    }
     /// Read edges where the given node is source or target.
     fn edges_for_node(&self, node_id: &str) -> Result<Vec<GraphEdge>>;
     /// Delete an edge by ID. Returns `true` if a row was removed.
@@ -174,6 +268,33 @@ impl GraphBackend for SqliteGraph {
     fn append_edge(&self, edge: &GraphEdge) -> Result<()> {
         let c = self.lock();
         append_edge(&c, edge)
+    }
+
+    fn append_edges(&self, edges: &[GraphEdge]) -> Result<()> {
+        let c = self.lock();
+        crate::graph::store::append_edges(&c, edges)
+    }
+
+    fn edges_for_node_dir(
+        &self,
+        node_id: &str,
+        dir: EdgeDirection,
+        relation: Option<&str>,
+    ) -> Result<Vec<GraphEdge>> {
+        let c = self.lock();
+        crate::graph::store::edges_for_node_dir(&c, node_id, dir, relation)
+    }
+
+    fn neighbors_weighted(
+        &self,
+        seed_ids: &[String],
+        dir: EdgeDirection,
+        relation: Option<&str>,
+    ) -> Result<Vec<(String, f64)>> {
+        let c = self.lock();
+        Ok(crate::graph::traversal::neighbors_weighted(
+            &c, seed_ids, dir, relation,
+        ))
     }
 
     fn edges_for_node(&self, node_id: &str) -> Result<Vec<GraphEdge>> {
@@ -306,5 +427,60 @@ mod tests {
             .unwrap();
         let related = backend.related_nodes("a", 2).unwrap();
         assert!(related.contains(&"b".to_string()));
+    }
+
+    /// Batch edge append + directional/relation-filtered lookups through the
+    /// trait (object-safe path), including the BFS `related_nodes_filtered`.
+    #[test]
+    fn dyn_backend_batch_and_filtered_edges() {
+        let backend: Box<dyn GraphBackend> = Box::new(SqliteGraph::open_in_memory().unwrap());
+        backend
+            .append_edges(&[
+                GraphEdge {
+                    id: "e1".into(),
+                    source: "a".into(),
+                    target: "b".into(),
+                    relation: "cites".into(),
+                    weight: 1.0,
+                    ts: "t".into(),
+                },
+                GraphEdge {
+                    id: "e2".into(),
+                    source: "c".into(),
+                    target: "a".into(),
+                    relation: "cites".into(),
+                    weight: 1.0,
+                    ts: "t".into(),
+                },
+                GraphEdge {
+                    id: "e3".into(),
+                    source: "a".into(),
+                    target: "d".into(),
+                    relation: "see_also".into(),
+                    weight: 1.0,
+                    ts: "t".into(),
+                },
+            ])
+            .unwrap();
+        // Out-edges of `a`: b, d.
+        assert_eq!(
+            backend
+                .edges_for_node_dir("a", EdgeDirection::Out, None)
+                .unwrap()
+                .len(),
+            2
+        );
+        // Out-only neighbors of `a` filtered to `cites`: only b (not c, which is in-edge).
+        let nbs = backend
+            .neighbors_weighted(&["a".to_string()], EdgeDirection::Out, Some("cites"))
+            .unwrap();
+        let ids: Vec<&str> = nbs.iter().map(|(id, _)| id.as_str()).collect();
+        assert_eq!(ids, vec!["b"]);
+        // BFS out-only depth 2 from `a`: reaches b and d.
+        let rel = backend
+            .related_nodes_filtered("a", 2, EdgeDirection::Out, None)
+            .unwrap();
+        assert!(rel.contains(&"b".to_string()));
+        assert!(rel.contains(&"d".to_string()));
     }
 }

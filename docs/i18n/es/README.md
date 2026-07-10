@@ -1,4 +1,4 @@
-<!-- Translated from README.md @ v0.18.0 (2026-07-10) -->
+<!-- Translated from README.md @ v0.19.0 (2026-07-11) -->
 <!-- If English README has changed since then, this translation may be outdated -->
 
 [English](../../README.md) | [한국어](../ko/README.md) | [日本語](../ja/README.md) | [简体中文](../zh-Hans/README.md) | [繁體中文](../zh-Hant/README.md) | **Español** | [Français](../fr/README.md) | [Deutsch](../de/README.md) | [Português](../pt/README.md) | [Русский](../ru/README.md) | [Italiano](../it/README.md)
@@ -89,28 +89,28 @@ Añade a tu `Cargo.toml`:
 
 ```toml
 [dependencies]
-llm-kernel = "0.18.0"
+llm-kernel = "0.19.0"
 ```
 
 La característica `provider` está habilitada por defecto. Para el cliente asíncrono:
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.18.0", features = ["client-async"] }
+llm-kernel = { version = "0.19.0", features = ["client-async"] }
 ```
 
 Para el grafo de conocimiento con wrappers asíncronos:
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.18.0", features = ["graph", "graph-async"] }
+llm-kernel = { version = "0.19.0", features = ["graph", "graph-async"] }
 ```
 
 Para embedding local (ONNX, sin clave API):
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.18.0", features = ["embedding-fastembed"] }
+llm-kernel = { version = "0.19.0", features = ["embedding-fastembed"] }
 ```
 
 ## Uso

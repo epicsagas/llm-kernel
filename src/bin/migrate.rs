@@ -118,9 +118,7 @@ fn write_target(
     for n in nodes {
         backend.upsert_node(n)?;
     }
-    for e in edges {
-        backend.append_edge(e)?;
-    }
+    backend.append_edges(edges)?;
     Ok(())
 }
 
