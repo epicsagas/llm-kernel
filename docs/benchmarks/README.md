@@ -5,7 +5,7 @@ different homes — the split exists because each needs a different fidelity and
 runs in a different place.
 
 > Related: issue #45 · ROADMAP v1.0.0 #3 · [graph.md](graph.md) ·
-> [korean-recall.md](korean-recall.md)
+> [korean-recall.md](korean-recall.md) · [scale.md](scale.md)
 
 ## Role split
 
@@ -49,6 +49,6 @@ jq '.median.point_estimate' \
 
 ## Baseline snapshots
 
-The measured numbers in [graph.md](graph.md) and [korean-recall.md](korean-recall.md)
-are snapshots from the reference machine (Apple Silicon) at a pinned commit —
+The measured numbers in [graph.md](graph.md), [korean-recall.md](korean-recall.md),
+and [scale.md](scale.md) are snapshots from the reference machine (Apple Silicon) at a pinned commit —
 **reproduction anchors, not CI gate values.** They are not compared in CI.

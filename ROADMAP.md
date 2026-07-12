@@ -8,9 +8,9 @@ llm-kernel development roadmap from v0.3.2 to v1.0.0.
 * **[Future Milestones Feasibility Study](docs/research/future_roadmap_evaluation.md)**
 * **[Graph Performance Maximization Strategy](docs/research/graph_performance_strategy.md)**
 
-> **Current phase: v0.18.0 ✅ released → v0.19.0 staged (general directed-graph backend, PR #66) — Next: v1.0.0 (axis B + external integration: klr citation graph + alcove backlinks)**
+> **Current phase: v0.18.0 ✅ released → v0.19.0 staged (general directed-graph backend, PR #66) — Next: v1.0.0 (external integration: klr citation graph + alcove backlinks)**
 >
-> v1.0.0 prerequisites (issue #45): **#1 API audit ✅, #2 examples (primary surface) ✅, #3 perf baselines + CI gates ✅, #4 semver ✅, #5 security ✅, #6 feature/platform docs ✅**; axes **D ✅ measured, E ✅ measured + WAL fix, A ✅**. Remaining: axis B scale characterization (10K–1M), external integration (v1.0.0 exit criterion).
+> v1.0.0 prerequisites (issue #45): **#1 API audit ✅, #2 examples (primary surface) ✅, #3 perf baselines + CI gates ✅, #4 semver ✅, #5 security ✅, #6 feature/platform docs ✅**; axes **A ✅, B ✅ measured (scale 10K–1M), D ✅ measured, E ✅ measured + WAL fix**. Remaining: **external integration only** (v1.0.0 exit criterion — klr citation graph + alcove backlinks).
 
 Each phase has a clear theme, concrete deliverables, and exit criteria.
 The library's core philosophy — zero-mandatory-dep composability with feature gates — is preserved throughout.

@@ -476,7 +476,7 @@ mod tests {
             weight: 1.0,
             ts: "2026-01-01T00:00:00Z".into(),
         };
-        append_edges(&conn, &[e.clone()]).unwrap();
+        append_edges(&conn, std::slice::from_ref(&e)).unwrap();
         // Same id (INSERT OR IGNORE) and same (source, target, relation) with a
         // different id (unique index) are both skipped.
         append_edges(

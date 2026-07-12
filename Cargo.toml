@@ -244,6 +244,11 @@ name = "concurrency_bench"
 harness = false
 required-features = ["graph-pool", "graph-async"]
 
+[[bench]]
+name = "scale_bench"
+harness = false
+required-features = ["graph"]
+
 [[bin]]
 name = "llm-kernel-eval"
 path = "src/bin/eval.rs"
