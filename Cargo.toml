@@ -66,6 +66,11 @@ graph-pg = ["graph", "dep:postgres", "dep:clap"]
 # postgres-native-tls — for Postgres servers requiring sslmode=require+.
 graph-pg-tls = ["graph-pg", "dep:postgres-native-tls", "dep:native-tls"]
 
+# Async PostgreSQL graph backend (SqlxPgGraph) over `sqlx::PgPool` — for
+# consumers (e.g. klr) that own an async pool and need transaction sharing.
+# Reuses the existing sqlx + async-trait deps (also pulled by pgvector / client-async).
+graph-pg-sqlx = ["graph", "dep:sqlx", "dep:async-trait"]
+
 # MCP server framework (JSON-RPC 2.0, stdio transport, async handlers)
 mcp = ["dep:serde_json", "dep:async-trait"]
 
@@ -176,7 +181,7 @@ eval-full = ["eval", "graph", "graph-cjk"]
 #   - embedding-fastembed-dynamic-linking: opt-in dynamic ONNX linking (see #50).
 #   - eval / eval-full: developer CLI tooling (the `llm-kernel-eval` binary),
 #     not part of the library surface. Enable explicitly to run the eval suite.
-full = ["provider", "discovery", "discovery-async", "client-async", "cache", "secrets", "store", "config", "graph", "graph-async", "graph-pool", "graph-cjk", "graph-pg", "graph-pg-tls", "mcp", "mcp-http", "tokens", "install", "search", "embedding", "embedding-openai", "embedding-fastembed", "embedding-fastembed-qwen3", "embedding-fastembed-nomic-moe", "vector-index", "qdrant", "elastic", "pgvector", "federation", "telemetry", "safety", "catalog-sync"]
+full = ["provider", "discovery", "discovery-async", "client-async", "cache", "secrets", "store", "config", "graph", "graph-async", "graph-pool", "graph-cjk", "graph-pg", "graph-pg-tls", "graph-pg-sqlx", "mcp", "mcp-http", "tokens", "install", "search", "embedding", "embedding-openai", "embedding-fastembed", "embedding-fastembed-qwen3", "embedding-fastembed-nomic-moe", "vector-index", "qdrant", "elastic", "pgvector", "federation", "telemetry", "safety", "catalog-sync"]
 
 [dependencies]
 # Always required
