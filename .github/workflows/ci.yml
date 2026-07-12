@@ -50,6 +50,7 @@ jobs:
           - "--no-default-features --features graph-pool"
           - "--no-default-features --features graph-cjk"
           - "--no-default-features --features graph-pg"
+          - "--no-default-features --features graph-pg-sqlx"
           - "--no-default-features --features mcp"
           - "--no-default-features --features mcp-http"
           - "--no-default-features --features tokens"
