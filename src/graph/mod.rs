@@ -77,6 +77,11 @@ pub mod cjk;
 #[cfg(feature = "graph-pg")]
 pub mod pg;
 
+/// Async PostgreSQL graph backend over `sqlx::PgPool` (feature `graph-pg-sqlx`) —
+/// for consumers (e.g. klr) that own an async pool and need transaction sharing.
+#[cfg(feature = "graph-pg-sqlx")]
+pub mod sqlx_pg;
+
 #[cfg(feature = "graph-async")]
 pub mod async_graph;
 
@@ -112,3 +117,6 @@ pub use cjk::{search_nodes_cjk, segment_cjk};
 
 #[cfg(feature = "graph-pg")]
 pub use pg::PgGraph;
+
+#[cfg(feature = "graph-pg-sqlx")]
+pub use sqlx_pg::SqlxPgGraph;

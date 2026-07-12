@@ -51,6 +51,7 @@ platform constraints per feature — v1.0.0 ROADMAP #6.
 | `graph-pool` | WAL multi-connection async pool — see [graph_concurrency.md](benchmarks/graph_concurrency.md) |
 | `graph-pg` | PostgreSQL `GraphBackend` (`PgGraph`); `from_client` adopts an external `postgres::Client`; optional table prefix (`connect_with_prefix`) for same-DB multi-graph coexistence |
 | `graph-pg-tls` | TLS for `PgGraph` connections |
+| `graph-pg-sqlx` | Async `SqlxPgGraph` over `sqlx::PgPool` — adopt an external async pool; `pool()` + `*_in_tx` for atomic multi-table transactions (e.g. klr prune) |
 
 ### Embeddings & vector backends
 | Feature | What it enables |
