@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-07-15
+
 ### Added
 - **graph** (`graph-pg-sqlx`): async `SqlxPgGraph` backend over `sqlx::PgPool` — for consumers (e.g. klr) that own an async pool and need transaction sharing that `PgGraph`'s sync `postgres::Client` cannot provide. Inherent async methods (`append_edges`, `edges_for_node_dir`, `neighbors_weighted`, `remove_edges_for_node`, node CRUD, `search_nodes`, `related_nodes`); `pool()` getter + `append_edges_in_tx` / `remove_edges_for_node_in_tx` for atomic multi-table prune. Non-breaking (`GraphBackend` / `PgGraph` untouched). Unblocks klr citation-graph integration (korean-law-rag#42).
 
