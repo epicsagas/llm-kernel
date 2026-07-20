@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **embedding** (`embedding-fastembed-qwen3`, `embedding-fastembed-nomic-moe`): CI build
+  broken by `fastembed 5.17.2 → 5.17.3` (#71), which bumped its transitive
+  `candle-core` to `0.11.0`. `Cargo.toml` still pinned `candle-core = "0.10"`, so
+  two crate versions coexisted in the dependency graph and the `from_hf(device, dtype)`
+  calls in `qwen3.rs` / `nomic_moe.rs` failed with `E0308` (expected `0.11.0`
+  `Device`/`DType`, found `0.10.2`). Bumped the direct dep to `candle-core = "0.11"`
+  to realign with fastembed (#74 CI failure).
+
 ## [0.20.0] - 2026-07-15
 
 ### Added
