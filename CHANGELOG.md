@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.20.1] - 2026-07-20
+
+### Added
+- **llm**: `OpenAiClient::from_key_with_base_url` and `AnthropicClient::from_key_with_base_url`
+  constructors — custom base URL + explicit API key + shared `reqwest::Client` in a
+  single call. Enables OpenAI-compatible providers (DeepSeek, Groq, Ollama, LM Studio,
+  custom gateways) and Anthropic-compatible proxies without the `ModelConfig` env-var
+  round-trip. Non-breaking; additive public API.
+
 ### Fixed
 - **embedding** (`embedding-fastembed-qwen3`, `embedding-fastembed-nomic-moe`): CI build
   broken by `fastembed 5.17.2 → 5.17.3` (#71), which bumped its transitive
