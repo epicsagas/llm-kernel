@@ -183,6 +183,25 @@ impl OpenAIClient {
             client,
         }
     }
+
+    /// Create from an explicit key, a custom base URL, and a shared `reqwest::Client`.
+    ///
+    /// Use this for OpenAI-compatible providers that are not the default OpenAI
+    /// endpoint (DeepSeek, Groq, Ollama, LM Studio, custom gateways, …) when you
+    /// already hold the key in memory and want to reuse a shared connection pool.
+    pub fn from_key_with_base_url(
+        model: impl Into<String>,
+        api_key: impl Into<String>,
+        base_url: impl Into<String>,
+        client: reqwest::Client,
+    ) -> Self {
+        Self {
+            api_key: api_key.into(),
+            model: model.into(),
+            base_url: base_url.into(),
+            client,
+        }
+    }
 }
 
 #[derive(serde::Serialize)]
@@ -582,6 +601,24 @@ impl AnthropicClient {
             api_key: api_key.into(),
             model: model.into(),
             base_url: "https://api.anthropic.com/v1".into(),
+            client,
+        }
+    }
+
+    /// Create from an explicit key, a custom base URL, and a shared `reqwest::Client`.
+    ///
+    /// Use this for Anthropic-compatible endpoints that are not the default
+    /// `api.anthropic.com` (self-hosted proxies, regional gateways, …).
+    pub fn from_key_with_base_url(
+        model: impl Into<String>,
+        api_key: impl Into<String>,
+        base_url: impl Into<String>,
+        client: reqwest::Client,
+    ) -> Self {
+        Self {
+            api_key: api_key.into(),
+            model: model.into(),
+            base_url: base_url.into(),
             client,
         }
     }
