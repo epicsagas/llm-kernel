@@ -8,7 +8,7 @@
 //!
 //! # Why a second PostgreSQL backend?
 //!
-//! Consumers that already own a `sqlx::PgPool` (notably klr's `klr`
+//! Consumers that already own a `sqlx::PgPool` (notably the `klr`
 //! citation graph) cannot share a pool or transaction with `PgGraph`, which is
 //! built on a synchronous `postgres::Client`. `SqlxPgGraph` lets such consumers
 //! adopt the llm-kernel graph on their own pool and — critically — **expose the
