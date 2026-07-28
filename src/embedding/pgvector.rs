@@ -39,6 +39,26 @@ fn vec_literal(v: &[f32]) -> String {
     s
 }
 
+/// Storage precision + HNSW tuning for [`PgVectorIndex`].
+///
+/// All fields default to pgvector's own defaults, so `PgVectorOpts::default()`
+/// is equivalent to [`PgVectorIndex::new`].
+#[derive(Debug, Clone, Default)]
+pub struct PgVectorOpts {
+    /// Store `halfvec` (float16) instead of `vector` (float32) — ~half the RAM.
+    pub half: bool,
+    /// HNSW `m` (edges per node). `None` → pgvector default (16). Higher `m`
+    /// raises recall and index size.
+    pub hnsw_m: Option<u32>,
+    /// HNSW `ef_construction` (build-time candidate list). `None` → default
+    /// (64). Higher values build a better graph, more slowly.
+    pub hnsw_ef_construction: Option<u32>,
+    /// `hnsw.ef_search` (query-time candidate list), applied to every pooled
+    /// connection. `None` → default (40). Raise it for higher recall on large
+    /// indexes; it is the main recall/latency knob at query time.
+    pub hnsw_ef_search: Option<u32>,
+}
+
 /// PostgreSQL vector index backed by the `pgvector` extension.
 ///
 /// All operations are async over a shared `PgPool` (MVCC, connection-pooled).
@@ -50,6 +70,8 @@ pub struct PgVectorIndex {
     dim: usize,
     /// `true` → `halfvec` (float16, ~half RAM, recall 손실 ~0). `false` → `vector` (float32).
     half: bool,
+    hnsw_m: Option<u32>,
+    hnsw_ef_construction: Option<u32>,
 }
 
 impl PgVectorIndex {
@@ -61,7 +83,7 @@ impl PgVectorIndex {
     /// full-precision `vector` (float32). For half-precision see
     /// [`new_halfvec`](Self::new_halfvec).
     pub async fn new(url: &str, table: &str, dim: usize) -> Result<Self> {
-        Self::connect(url, table, dim, false).await
+        Self::new_with_opts(url, table, dim, PgVectorOpts::default()).await
     }
 
     /// Half-precision variant — stores `halfvec` (float16): **~half the RAM** of
@@ -69,13 +91,44 @@ impl PgVectorIndex {
     /// `pgvector` extension ≥ 0.6 (`halfvec` type + `halfvec_cosine_ops`).
     /// `dim` ≤ 4000 (vs 2000 for `vector`).
     pub async fn new_halfvec(url: &str, table: &str, dim: usize) -> Result<Self> {
-        Self::connect(url, table, dim, true).await
+        Self::new_with_opts(
+            url,
+            table,
+            dim,
+            PgVectorOpts {
+                half: true,
+                ..Default::default()
+            },
+        )
+        .await
     }
 
-    async fn connect(url: &str, table: &str, dim: usize, half: bool) -> Result<Self> {
+    /// Full form — pick storage precision and HNSW tuning via [`PgVectorOpts`].
+    ///
+    /// `hnsw_m` / `hnsw_ef_construction` are applied to the `CREATE INDEX` (they
+    /// only affect a *newly* created index — an existing one keeps its build
+    /// parameters). `hnsw_ef_search` is applied to every pooled connection and
+    /// therefore takes effect immediately for queries.
+    pub async fn new_with_opts(
+        url: &str,
+        table: &str,
+        dim: usize,
+        opts: PgVectorOpts,
+    ) -> Result<Self> {
         validate_table_name(table)?;
-        let pool = PgPoolOptions::new()
-            .max_connections(8)
+        let mut pool_opts = PgPoolOptions::new().max_connections(8);
+        if let Some(ef) = opts.hnsw_ef_search {
+            // `ef` is a `u32`, so the interpolation has no injection surface.
+            pool_opts = pool_opts.after_connect(move |conn, _meta| {
+                Box::pin(async move {
+                    sqlx::query(&format!("SET hnsw.ef_search = {ef}"))
+                        .execute(conn)
+                        .await?;
+                    Ok(())
+                })
+            });
+        }
+        let pool = pool_opts
             .connect(url)
             .await
             .map_err(|e| KernelError::Embedding(format!("pgvector connect: {e}")))?;
@@ -83,7 +136,9 @@ impl PgVectorIndex {
             pool,
             table: table.to_string(),
             dim,
-            half,
+            half: opts.half,
+            hnsw_m: opts.hnsw_m,
+            hnsw_ef_construction: opts.hnsw_ef_construction,
         };
         idx.init_schema().await?;
         Ok(idx)
@@ -107,10 +162,11 @@ impl PgVectorIndex {
     /// + matching HNSW cosine index, per the active precision. Idempotent.
     async fn init_schema(&self) -> Result<()> {
         // Identifier is caller-controlled (not user input at runtime) and
-        // validated in `connect`, so `format!` is acceptable here. PG cannot bind
-        // identifiers. Callers pass a fixed, validated table name.
+        // validated in `new_with_opts`, so `format!` is acceptable here. PG cannot
+        // bind identifiers. Callers pass a fixed, validated table name.
         let ty = self.sql_type();
         let ops = self.ops_class();
+        let with = hnsw_with_clause(self.hnsw_m, self.hnsw_ef_construction);
         sqlx::query(&format!(
             "CREATE TABLE IF NOT EXISTS {} (id BIGINT PRIMARY KEY, vec {}({}) NOT NULL)",
             self.table, ty, self.dim
@@ -119,8 +175,8 @@ impl PgVectorIndex {
         .await
         .map_err(|e| KernelError::Embedding(format!("pgvector create table: {e}")))?;
         sqlx::query(&format!(
-            "CREATE INDEX IF NOT EXISTS idx_{}_vec ON {} USING hnsw (vec {})",
-            self.table, self.table, ops
+            "CREATE INDEX IF NOT EXISTS idx_{}_vec ON {} USING hnsw (vec {}){}",
+            self.table, self.table, ops, with
         ))
         .execute(&self.pool)
         .await
@@ -286,6 +342,24 @@ impl crate::embedding::AsyncVectorIndex for PgVectorIndex {
     }
 }
 
+/// ` WITH (m = …, ef_construction = …)` for the HNSW index, or `""` when both
+/// are unset (pgvector defaults: `m = 16`, `ef_construction = 64`). Values are
+/// `u32`, so the interpolation has no injection surface.
+fn hnsw_with_clause(m: Option<u32>, ef_construction: Option<u32>) -> String {
+    let mut parts: Vec<String> = Vec::new();
+    if let Some(m) = m {
+        parts.push(format!("m = {m}"));
+    }
+    if let Some(ef) = ef_construction {
+        parts.push(format!("ef_construction = {ef}"));
+    }
+    if parts.is_empty() {
+        String::new()
+    } else {
+        format!(" WITH ({})", parts.join(", "))
+    }
+}
+
 /// `u64` external ID → PG `BIGINT` (`i64`). IDs exceeding `i64::MAX` cannot
 /// be stored in a BIGINT column — reject rather than silently wrap.
 fn to_pg_id(id: u64) -> Result<i64> {
@@ -448,6 +522,31 @@ mod tests {
         assert!(validate_table_name("rm; DROP").is_err());
         assert!(validate_table_name("weird\"name").is_err());
         assert!(validate_table_name("sch.tbl").is_err());
+    }
+
+    #[test]
+    fn hnsw_with_clause_variants() {
+        assert_eq!(hnsw_with_clause(None, None), "");
+        assert_eq!(hnsw_with_clause(Some(32), None), " WITH (m = 32)");
+        assert_eq!(
+            hnsw_with_clause(None, Some(200)),
+            " WITH (ef_construction = 200)"
+        );
+        assert_eq!(
+            hnsw_with_clause(Some(32), Some(200)),
+            " WITH (m = 32, ef_construction = 200)"
+        );
+    }
+
+    /// `PgVectorOpts::default()` must stay behaviourally identical to `new`
+    /// (full precision, pgvector's own HNSW defaults).
+    #[test]
+    fn default_opts_are_full_precision_and_untuned() {
+        let o = PgVectorOpts::default();
+        assert!(!o.half);
+        assert!(o.hnsw_m.is_none());
+        assert!(o.hnsw_ef_construction.is_none());
+        assert!(o.hnsw_ef_search.is_none());
     }
 
     #[test]
