@@ -486,7 +486,13 @@ pub struct TokenUsage {
 }
 
 /// A single event in an LLM streaming response.
+///
+/// `#[non_exhaustive]`: new variants (e.g. reasoning/tool-call streaming) may be
+/// added in a minor release without breaking downstream `match` arms — external
+/// consumers must include a `_ =>` arm. Within this crate, exhaustive matching is
+/// still permitted.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum StreamEvent {
     /// Partial text content arrived.
     Delta {
@@ -494,8 +500,17 @@ pub enum StreamEvent {
         content: String,
     },
     /// Partial reasoning content arrived (GLM `delta.reasoning_content`,
-    /// Anthropic `thinking_delta`). Consumers may display or discard this;
-    /// the default `Delta` handler is unaffected.
+    /// Anthropic `thinking_delta`).
+    ///
+    /// **Streaming/reasoning asymmetry (important):** the non-streaming
+    /// `LLMClient::complete` path promotes reasoning into `content` when the
+    /// provider leaves `content` empty (notably GLM-4.7), so non-streaming callers
+    /// transparently receive the final answer. The streaming path does **not**
+    /// perform this promotion — it emits `ReasoningDelta` and `Delta` as separate
+    /// events and leaves accumulation to the consumer. For reasoning-only models
+    /// that put the answer in `reasoning_content` (GLM-4.7), streaming consumers
+    /// **must** accumulate both `ReasoningDelta` and `Delta` chunks to reconstruct
+    /// the full answer; accumulating `Delta` alone yields an empty result.
     ReasoningDelta {
         /// The partial reasoning chunk.
         content: String,

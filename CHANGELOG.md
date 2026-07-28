@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **llm**: reasoning-model support — `LLMResponse::reasoning` and `TokenUsage::reasoning_tokens`
+  fields, plus `StreamEvent::ReasoningDelta`. Parses `reasoning_content` (GLM-4.5+/z.ai),
+  its `reasoning` alias (DeepSeek-R1), Anthropic extended-thinking (`thinking`) blocks /
+  `thinking_delta` SSE, and `usage.completion_tokens_details.reasoning_tokens`. When a
+  provider leaves `content` empty and returns the final answer in `reasoning_content`
+  (GLM-4.7), `complete` promotes the reasoning into `content`; the original is preserved
+  in `LLMResponse::reasoning`. Streaming surfaces reasoning as separate `ReasoningDelta`
+  events — see that variant's docs for the consumer accumulation contract.
+  `#[serde(default)]` + `skip_serializing_if` keep cached responses backward-compatible.
+  `StreamEvent` is now `#[non_exhaustive]`.
+
 ## [0.20.1] - 2026-07-20
 
 ### Added

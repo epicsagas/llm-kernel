@@ -108,11 +108,26 @@ fn check_rate_limit(resp: &reqwest::Response) -> Result<()> {
 #[async_trait]
 pub trait LLMClient: Send + Sync {
     /// Send a chat completion request and return the full response.
+    ///
+    /// **Reasoning-model answer promotion (non-streaming only):** when a provider
+    /// returns the final answer in `reasoning_content` and leaves `content` empty
+    /// (notably GLM-4.7), `complete` promotes the reasoning into `content` so
+    /// downstream consumers transparently receive the answer. The original
+    /// reasoning is preserved in [`LLMResponse::reasoning`].
+    ///
+    /// This promotion is **not** applied by [`stream_complete`](Self::stream_complete),
+    /// which surfaces reasoning as separate [`StreamEvent::ReasoningDelta`] events —
+    /// see that variant's docs for the streaming accumulation contract.
     async fn complete(&self, request: LLMRequest) -> Result<LLMResponse>;
     /// Return the model name this client is configured to use.
     fn model_name(&self) -> &str;
 
     /// Stream a chat completion, yielding events as they arrive.
+    ///
+    /// Does **not** promote reasoning into a final `content` — see
+    /// [`StreamEvent::ReasoningDelta`] for why streaming consumers of
+    /// reasoning-only models (GLM-4.7) must accumulate both `ReasoningDelta` and
+    /// `Delta` to reconstruct the answer.
     async fn stream_complete(&self, request: LLMRequest) -> Result<LLMStream>;
 }
 
@@ -273,10 +288,18 @@ struct OpenAIFunctionCall {
     arguments: String,
 }
 
+/// Token usage reported by OpenAI-compatible providers.
+///
+/// All fields are `#[serde(default)]`: some providers (and partial/error
+/// responses) omit `usage` fields, and a missing field should not cause the
+/// whole response to fail parsing — `total_tokens` can be recomputed downstream.
 #[derive(serde::Deserialize)]
 struct OpenAIUsage {
+    #[serde(default)]
     prompt_tokens: u32,
+    #[serde(default)]
     completion_tokens: u32,
+    #[serde(default)]
     total_tokens: u32,
     /// OpenAI o1 / GLM-4.7 expose reasoning token counts here.
     #[serde(default)]
@@ -355,15 +378,7 @@ impl LLMClient for OpenAIClient {
             Some(c) => {
                 let raw_content = c.message.content.unwrap_or_default();
                 let reasoning = c.message.reasoning_content;
-                // Reasoning model promotion: GLM-4.7 leaves `content` empty/null and
-                // returns the final answer inside `reasoning_content`. When content is
-                // empty, promote reasoning so downstream json_extract can find the JSON.
-                // Preserve the original reasoning in LLMResponse.reasoning regardless.
-                let content = if raw_content.is_empty() {
-                    reasoning.clone().unwrap_or_default()
-                } else {
-                    raw_content
-                };
+                let content = promote_reasoning_into_content(raw_content, reasoning.as_deref());
                 let calls = c
                     .message
                     .tool_calls
@@ -383,9 +398,7 @@ impl LLMClient for OpenAIClient {
             prompt_tokens: u.prompt_tokens,
             completion_tokens: u.completion_tokens,
             total_tokens: u.total_tokens,
-            reasoning_tokens: u
-                .completion_tokens_details
-                .and_then(|d| d.reasoning_tokens),
+            reasoning_tokens: u.completion_tokens_details.and_then(|d| d.reasoning_tokens),
         });
 
         Ok(LLMResponse {
@@ -504,6 +517,34 @@ fn drain_sse_lines(buffer: &mut Vec<u8>, chunk: &[u8]) -> Vec<String> {
         lines.push(String::from_utf8_lossy(&line).trim_end().to_string());
     }
     lines
+}
+
+/// Decide the `content` exposed to consumers for a reasoning-model response.
+///
+/// # Two provider behaviors, one rule
+///
+/// - **GLM-4.7 (non-standard):** leaves `content` empty/null and returns the
+///   final answer inside `reasoning_content`. Promoting reasoning into `content`
+///   is required so downstream `json_extract` finds the JSON.
+/// - **Standard reasoning models (OpenAI o1, DeepSeek-R1):** put the final
+///   answer in `content` and the chain-of-thought in `reasoning_content`. When
+///   `content` is genuinely present it is preserved unchanged.
+///
+/// # Caveat — empty `content` on a standard model
+///
+/// The promotion triggers on *any* empty `content`. If a standard model ever
+/// returns an empty `content` together with reasoning (e.g. the model produced
+/// only chain-of-thought and no final answer, or a transport/parse glitch), this
+/// rule would surface the chain-of-thought as the answer. That is an acceptable
+/// trade-off: the alternative is an empty answer, which fails every downstream
+/// consumer the same way. The original reasoning is always preserved verbatim in
+/// [`LLMResponse::reasoning`], so callers can detect this case and reject it.
+fn promote_reasoning_into_content(raw_content: String, reasoning: Option<&str>) -> String {
+    if raw_content.is_empty() {
+        reasoning.unwrap_or_default().to_string()
+    } else {
+        raw_content
+    }
 }
 
 /// Parse an OpenAI streaming JSON chunk into a StreamEvent.
@@ -845,7 +886,11 @@ impl LLMClient for AnthropicClient {
 
         Ok(LLMResponse {
             content,
-            reasoning: if reasoning.is_empty() { None } else { Some(reasoning) },
+            reasoning: if reasoning.is_empty() {
+                None
+            } else {
+                Some(reasoning)
+            },
             model: chat_resp.model,
             usage: TokenUsage {
                 prompt_tokens: chat_resp.usage.input_tokens,
@@ -1193,13 +1238,21 @@ mod tests {
         let choice = resp.choices.into_iter().next().unwrap();
         assert!(choice.message.content.is_none());
         assert!(choice.message.reasoning_content.is_some());
-        assert_eq!(resp.usage.unwrap().completion_tokens_details.unwrap().reasoning_tokens, Some(3));
+        assert_eq!(
+            resp.usage
+                .unwrap()
+                .completion_tokens_details
+                .unwrap()
+                .reasoning_tokens,
+            Some(3)
+        );
     }
 
     #[test]
     fn openai_complete_promotes_reasoning_when_content_empty() {
         // complete() must promote reasoning_content into content when content is empty,
-        // so downstream json_extract finds the JSON. Original reasoning preserved.
+        // so downstream json_extract finds the JSON. Drives the *production* promotion
+        // helper (not a re-implementation) so the regression guard tracks real code.
         let raw = r#"{
             "id":"chatcmpl-1","created":1700000000,"model":"glm-4.7",
             "choices":[{"index":0,"message":{"role":"assistant","content":"",
@@ -1209,13 +1262,15 @@ mod tests {
         let first = resp.choices.into_iter().next().unwrap();
         let raw_content = first.message.content.unwrap_or_default();
         let reasoning = first.message.reasoning_content.clone();
-        let content = if raw_content.is_empty() {
-            reasoning.clone().unwrap_or_default()
-        } else {
-            raw_content
-        };
-        assert!(content.contains("\"rating\":\"Sell\""), "promoted content must contain JSON: {content}");
-        assert_eq!(reasoning.as_deref(), Some("사고 {\"rating\":\"Sell\",\"key_thesis\":\"약세\"}"));
+        let content = promote_reasoning_into_content(raw_content, reasoning.as_deref());
+        assert!(
+            content.contains("\"rating\":\"Sell\""),
+            "promoted content must contain JSON: {content}"
+        );
+        assert_eq!(
+            reasoning.as_deref(),
+            Some("사고 {\"rating\":\"Sell\",\"key_thesis\":\"약세\"}")
+        );
     }
 
     #[test]
@@ -1228,8 +1283,29 @@ mod tests {
         }"#;
         let resp: OpenAIChatResponse = serde_json::from_str(raw).unwrap();
         let first = resp.choices.into_iter().next().unwrap();
-        assert_eq!(first.message.content.as_deref(), Some("answer"));
-        assert_eq!(first.message.reasoning_content.as_deref(), Some("thought"));
+        let raw_content = first.message.content.clone().unwrap_or_default();
+        let reasoning = first.message.reasoning_content.as_deref();
+        let content = promote_reasoning_into_content(raw_content.clone(), reasoning);
+        assert_eq!(content, "answer");
+        assert_eq!(reasoning, Some("thought"));
+    }
+
+    #[test]
+    fn promote_reasoning_into_content_edge_cases() {
+        // #3 caveat: empty content + reasoning surfaces the reasoning as the answer
+        // (documented trade-off; original reasoning is the source of truth).
+        assert_eq!(
+            promote_reasoning_into_content(String::new(), Some("chain-of-thought")),
+            "chain-of-thought"
+        );
+        // content present wins regardless of reasoning.
+        assert_eq!(
+            promote_reasoning_into_content("ans".into(), Some("cot")),
+            "ans"
+        );
+        // both empty -> empty (no panic, no spurious content).
+        assert_eq!(promote_reasoning_into_content(String::new(), None), "");
+        assert_eq!(promote_reasoning_into_content("x".into(), None), "x");
     }
 
     #[test]
@@ -1237,7 +1313,10 @@ mod tests {
         // DeepSeek-R1 uses field name `reasoning` instead of `reasoning_content`.
         let raw = r#"{"model":"deepseek-r1","choices":[{"message":{"content":"ans","reasoning":"thought"}}]}"#;
         let resp: OpenAIChatResponse = serde_json::from_str(raw).unwrap();
-        assert_eq!(resp.choices[0].message.reasoning_content.as_deref(), Some("thought"));
+        assert_eq!(
+            resp.choices[0].message.reasoning_content.as_deref(),
+            Some("thought")
+        );
     }
 
     #[test]
