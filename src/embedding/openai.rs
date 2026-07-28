@@ -78,6 +78,29 @@ impl OpenAIEmbeddingClient {
             .map_err(|_| KernelError::Embedding("OPENAI_API_KEY not set".into()))?;
         Ok(Self::new_small(key))
     }
+
+    /// Build the `/v1/embeddings` request body.
+    ///
+    /// For Matryoshka-capable models (`text-embedding-3-*`) the configured
+    /// [`dim`](crate::embedding::EmbeddingProvider::dim) is sent as the
+    /// `dimensions` parameter, so the API returns an already-shortened and
+    /// renormalized vector. Without it the API always returns the model's
+    /// native width (1536 / 3072) and a shorter configured `dim` would
+    /// silently disagree with the vectors actually emitted.
+    fn request_body(&self, input: serde_json::Value) -> serde_json::Value {
+        let mut body = serde_json::json!({ "model": self.model, "input": input });
+        if supports_dimensions(&self.model) {
+            body["dimensions"] = serde_json::json!(self.dim);
+        }
+        body
+    }
+}
+
+/// Whether `model` accepts the `dimensions` request parameter (Matryoshka
+/// shortening). First-generation models such as `text-embedding-ada-002`
+/// reject the field, so it is only sent for the v3 family.
+fn supports_dimensions(model: &str) -> bool {
+    model.starts_with("text-embedding-3-")
 }
 
 use super::types::text_preview;
@@ -97,10 +120,7 @@ impl EmbeddingProvider for OpenAIEmbeddingClient {
             .build();
         let agent = ureq::Agent::new_with_config(config);
 
-        let body = serde_json::json!({
-            "model": self.model,
-            "input": text,
-        });
+        let body = self.request_body(serde_json::json!(text));
 
         let mut resp = agent
             .post("https://api.openai.com/v1/embeddings")
@@ -137,10 +157,7 @@ impl EmbeddingProvider for OpenAIEmbeddingClient {
             .build();
         let agent = ureq::Agent::new_with_config(config);
 
-        let body = serde_json::json!({
-            "model": self.model,
-            "input": texts,
-        });
+        let body = self.request_body(serde_json::json!(texts));
 
         let mut resp = agent
             .post("https://api.openai.com/v1/embeddings")
@@ -238,6 +255,39 @@ mod tests {
         let client = OpenAIEmbeddingClient::new_with_model("key", "text-embedding-3-small", 512);
         assert_eq!(client.dim(), 512);
         assert_eq!(client.name(), "text-embedding-3-small");
+    }
+
+    #[test]
+    fn request_body_sends_dimensions_for_v3() {
+        let client = OpenAIEmbeddingClient::new_with_model("key", "text-embedding-3-small", 512);
+        let body = client.request_body(serde_json::json!("hello"));
+        assert_eq!(body["model"], "text-embedding-3-small");
+        assert_eq!(body["input"], "hello");
+        assert_eq!(body["dimensions"], serde_json::json!(512));
+    }
+
+    #[test]
+    fn request_body_omits_dimensions_for_first_gen() {
+        // ada-002 rejects `dimensions` — the field must not be sent.
+        let client = OpenAIEmbeddingClient::new_with_model("key", "text-embedding-ada-002", 1536);
+        let body = client.request_body(serde_json::json!("hello"));
+        assert!(body.get("dimensions").is_none());
+    }
+
+    #[test]
+    fn request_body_carries_batch_input() {
+        let client = OpenAIEmbeddingClient::new_with_model("key", "text-embedding-3-large", 256);
+        let body = client.request_body(serde_json::json!(["a", "b"]));
+        assert_eq!(body["input"], serde_json::json!(["a", "b"]));
+        assert_eq!(body["dimensions"], serde_json::json!(256));
+    }
+
+    #[test]
+    fn supports_dimensions_matches_v3_family_only() {
+        assert!(supports_dimensions("text-embedding-3-small"));
+        assert!(supports_dimensions("text-embedding-3-large"));
+        assert!(!supports_dimensions("text-embedding-ada-002"));
+        assert!(!supports_dimensions("some-other-model"));
     }
 
     #[test]
