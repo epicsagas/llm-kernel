@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-07-28
+
+### ⚠️ Changed (breaking — minor on the 0.x track)
+- **llm**: this release adds new public surface (`LLMResponse::reasoning`,
+  `TokenUsage::reasoning_tokens`, `StreamEvent::ReasoningDelta`) and marks
+  `StreamEvent` `#[non_exhaustive]`. Per Rust semver these are breaking for
+  downstream crates: struct-literal construction of `LLMResponse`/`TokenUsage`
+  must add the new fields, exhaustive `match` on `StreamEvent` must add a `_`
+  arm, and `cargo-semver-checks` flags all three accordingly. Bump dependent
+  crates' version requirement to `0.21`. `#[serde(default)]` +
+  `skip_serializing_if` keep **serialized/cache** form backward-compatible, so
+  no migration is needed for cached responses — only source-level match/literal
+  sites need updating.
+
+### Added
+- **llm**: reasoning-model support — `LLMResponse::reasoning` and `TokenUsage::reasoning_tokens`
+  fields, plus `StreamEvent::ReasoningDelta`. Parses `reasoning_content` (GLM-4.5+/z.ai),
+  its `reasoning` alias (DeepSeek-R1), Anthropic extended-thinking (`thinking`) blocks /
+  `thinking_delta` SSE, and `usage.completion_tokens_details.reasoning_tokens`. When a
+  provider leaves `content` empty and returns the final answer in `reasoning_content`
+  (GLM-4.7), `complete` promotes the reasoning into `content`; the original is preserved
+  in `LLMResponse::reasoning`. Streaming surfaces reasoning as separate `ReasoningDelta`
+  events — see that variant's docs for the consumer accumulation contract.
+  `StreamEvent` is now `#[non_exhaustive]` so future variant additions stay non-breaking.
+
+### Fixed (review follow-up)
+- **llm**: extracted `promote_reasoning_into_content()` so the GLM-4.7 answer-promotion
+  logic is unit-tested directly (no test-side duplication of `complete()` logic);
+  documented the streaming/reasoning asymmetry on `LLMClient` and `ReasoningDelta`;
+  documented the GLM (non-standard) vs o1/DeepSeek-R1 (standard) promotion caveat; and
+  added `#[serde(default)]` to `OpenAIUsage` token fields so partial responses don't fail
+  parsing.
+
 ## [0.20.1] - 2026-07-20
 
 ### Added

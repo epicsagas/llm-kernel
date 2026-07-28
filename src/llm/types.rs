@@ -440,6 +440,14 @@ impl LLMRequestBuilder {
 pub struct LLMResponse {
     /// Generated text content.
     pub content: String,
+    /// Reasoning model's chain-of-thought (GLM-4.5+/z.ai, OpenAI o1, DeepSeek-R1).
+    ///
+    /// When the provider leaves `content` empty and returns the final answer in
+    /// `reasoning_content`, the client promotes the reasoning into `content` and
+    /// still preserves the original here. `None` for non-reasoning models and for
+    /// cache entries written before this field existed (serde default).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning: Option<String>,
     /// Model that produced this response.
     pub model: String,
     /// Token usage statistics.
@@ -471,14 +479,40 @@ pub struct TokenUsage {
     pub completion_tokens: u32,
     /// Total tokens (prompt + completion).
     pub total_tokens: u32,
+    /// Reasoning-only tokens (o1 / GLM-4.7 `completion_tokens_details.reasoning_tokens`).
+    /// `None` when the provider does not report it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning_tokens: Option<u32>,
 }
 
 /// A single event in an LLM streaming response.
+///
+/// `#[non_exhaustive]`: new variants (e.g. reasoning/tool-call streaming) may be
+/// added in a minor release without breaking downstream `match` arms — external
+/// consumers must include a `_ =>` arm. Within this crate, exhaustive matching is
+/// still permitted.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum StreamEvent {
     /// Partial text content arrived.
     Delta {
         /// The partial text chunk.
+        content: String,
+    },
+    /// Partial reasoning content arrived (GLM `delta.reasoning_content`,
+    /// Anthropic `thinking_delta`).
+    ///
+    /// **Streaming/reasoning asymmetry (important):** the non-streaming
+    /// `LLMClient::complete` path promotes reasoning into `content` when the
+    /// provider leaves `content` empty (notably GLM-4.7), so non-streaming callers
+    /// transparently receive the final answer. The streaming path does **not**
+    /// perform this promotion — it emits `ReasoningDelta` and `Delta` as separate
+    /// events and leaves accumulation to the consumer. For reasoning-only models
+    /// that put the answer in `reasoning_content` (GLM-4.7), streaming consumers
+    /// **must** accumulate both `ReasoningDelta` and `Delta` chunks to reconstruct
+    /// the full answer; accumulating `Delta` alone yields an empty result.
+    ReasoningDelta {
+        /// The partial reasoning chunk.
         content: String,
     },
     /// Final token usage statistics.
@@ -702,5 +736,22 @@ mod tests {
             ContentPart::text("world"),
         ]);
         assert_eq!(msg.text_content(), "hello world");
+    }
+
+    #[test]
+    fn llm_response_back_compat_without_reasoning_field() {
+        // Cache entries written before `reasoning` existed must still deserialize.
+        let json = r#"{"content":"hi","model":"m","usage":{"prompt_tokens":0,"completion_tokens":0,"total_tokens":0}}"#;
+        let r: LLMResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(r.content, "hi");
+        assert!(r.reasoning.is_none());
+    }
+
+    #[test]
+    fn token_usage_back_compat_without_reasoning_tokens() {
+        let json = r#"{"prompt_tokens":1,"completion_tokens":2,"total_tokens":3}"#;
+        let u: TokenUsage = serde_json::from_str(json).unwrap();
+        assert_eq!(u.total_tokens, 3);
+        assert!(u.reasoning_tokens.is_none());
     }
 }
