@@ -12,6 +12,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (float16) variant, ~half the RAM of `vector` with negligible recall loss for
   cosine similarity. Requires the `pgvector` extension ≥ 0.6 (`halfvec` type +
   `halfvec_cosine_ops`). `new` (float32 `vector`) is unchanged.
+- `embedding/bgem3`: `Bgem3Provider` — BGE-M3 joint embedding, returning a dense
+  vector and a learned-lexical `SparseVector` from a single pass (no second
+  model and no separate BM25 index). Input is sliced into capped runs because
+  fastembed's BGE-M3 graph always emits a ColBERT output and accumulates it per
+  call (~2 MB per 512-token chunk); the provider drops it immediately, keeping
+  bulk indexing memory flat. Optional `with_sparse_top_k` pruning for stores
+  that bound non-zero counts.
 - `embedding/sparse`: `SparseVector` — sparse (lexical) vector type for hybrid
   retrieval, kept index-sorted and zero-free, with `prune_top_k` to bound the
   non-zero count that pgvector will accept into an HNSW index.

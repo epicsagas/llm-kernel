@@ -25,6 +25,13 @@ pub mod fastembed;
 ))]
 pub mod lazy;
 
+/// BGE-M3 joint dense + sparse embedding (feature `embedding-fastembed`).
+#[cfg(any(
+    feature = "embedding-fastembed",
+    feature = "embedding-fastembed-dynamic-linking"
+))]
+pub mod bgem3;
+
 #[cfg(feature = "embedding-fastembed-qwen3")]
 pub mod qwen3;
 
@@ -66,6 +73,12 @@ pub use openai::OpenAIEmbeddingClient;
     feature = "embedding-fastembed-dynamic-linking"
 ))]
 pub use fastembed::FastembedProvider;
+
+#[cfg(any(
+    feature = "embedding-fastembed",
+    feature = "embedding-fastembed-dynamic-linking"
+))]
+pub use bgem3::{BGEM3_DENSE_DIM, BGEM3_VOCAB_SIZE, Bgem3Provider, JointEmbedding};
 
 #[cfg(any(
     feature = "embedding-fastembed",
