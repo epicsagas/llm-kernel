@@ -12,6 +12,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (float16) variant, ~half the RAM of `vector` with negligible recall loss for
   cosine similarity. Requires the `pgvector` extension ≥ 0.6 (`halfvec` type +
   `halfvec_cosine_ops`). `new` (float32 `vector`) is unchanged.
+- `embedding/sparse`: `SparseVector` — sparse (lexical) vector type for hybrid
+  retrieval, kept index-sorted and zero-free, with `prune_top_k` to bound the
+  non-zero count that pgvector will accept into an HNSW index.
+- `embedding/vector_index`: `Fusion` — `Rrf { k }` / `Weighted { weights }` over
+  `SearchHit` lists, the join point for dense + sparse hybrid search. RRF is
+  rank-only (safe across different score scales); weighted sums raw scores.
+- `embedding/pgvector`: `PgSparseVectorIndex` — `sparsevec(N)` storage with an
+  inner-product HNSW index (`sparsevec_ip_ops`), mirroring `PgVectorIndex`'s
+  add/search/remove/`remove_in_tx` surface. Requires pgvector ≥ 0.7.
 - `embedding/pgvector`: `PgVectorOpts` + `PgVectorIndex::new_with_opts` — HNSW
   tuning. `m` / `ef_construction` are applied to `CREATE INDEX` (new indexes
   only); `hnsw.ef_search` — the main query-time recall/latency knob — is set on
