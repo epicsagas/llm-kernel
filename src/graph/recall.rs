@@ -8,8 +8,8 @@ use crate::error::{KernelError, Result};
 
 use super::algo::{CsrGraph, pagerank_default};
 use super::lifecycle::{parse_iso_to_secs, touch_nodes};
-use super::search::search_nodes;
-use super::store::edges_among;
+use super::search::search_nodes_hybrid;
+use super::store::{edges_among, read_node};
 use super::types::{NODE_COLUMNS, ScoredNode, escape_like};
 
 /// Weight applied to recency in the composite relevance score.
@@ -39,10 +39,12 @@ pub fn smart_recall(
         .unwrap_or_default()
         .as_secs();
 
-    // Gather FTS matches if hint is provided
+    // Gather lexical matches if hint is provided.
+    // Uses the hybrid path so short CJK hints (which the trigram tokenizer cannot
+    // match) still contribute — see `search_nodes_hybrid`.
     let fts_ids: HashSet<String> = if let Some(h) = hint {
         if !h.is_empty() {
-            search_nodes(conn, h, limit * 4)?
+            search_nodes_hybrid(conn, h, limit * 4)?
                 .into_iter()
                 .map(|n| n.id.clone())
                 .collect()
@@ -52,6 +54,14 @@ pub fn smart_recall(
     } else {
         Default::default()
     };
+
+    // A non-empty hint that matched nothing means nothing is relevant. Returning
+    // the globally-most-important nodes instead (what the candidate query below
+    // does on its own) makes recall answer every query with *something*, which
+    // then gets injected into an LLM prompt as if it were relevant context.
+    if hint.is_some_and(|h| !h.is_empty()) && fts_ids.is_empty() {
+        return Ok(Vec::new());
+    }
 
     // Fetch candidate nodes (broad set)
     let candidate_limit = (limit * 4).max(40) as i64;
@@ -72,10 +82,30 @@ pub fn smart_recall(
         .prepare(&sql)
         .map_err(|e| KernelError::Store(e.to_string()))?;
     let refs: Vec<&dyn rusqlite::ToSql> = param_vals.iter().map(|b| b.as_ref()).collect();
-    let candidates: Vec<super::types::GraphNode> = stmt
+    let mut candidates: Vec<super::types::GraphNode> = stmt
         .query_map(refs.as_slice(), super::types::row_to_node)
         .map(|rows| rows.filter_map(|r| r.ok()).collect())
         .unwrap_or_default();
+
+    // With a hint, lexical relevance gates the result set. The candidate query
+    // above is ordered by importance, so a matching-but-unimportant node could
+    // fall outside it entirely while an unrelated-but-important one ranked top —
+    // the reason `W_FTS` was effectively unreachable on larger graphs.
+    if !fts_ids.is_empty() {
+        candidates.retain(|n| fts_ids.contains(&n.id));
+        // Pull in matches the importance-ordered window missed.
+        let present: HashSet<&str> = candidates.iter().map(|n| n.id.as_str()).collect();
+        let missing: Vec<String> = fts_ids
+            .iter()
+            .filter(|id| !present.contains(id.as_str()))
+            .cloned()
+            .collect();
+        for id in missing {
+            if let Ok(Some(node)) = read_node(conn, &id) {
+                candidates.push(node);
+            }
+        }
+    }
 
     // Score each candidate
     let mut scored: Vec<ScoredNode> = candidates

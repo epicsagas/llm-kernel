@@ -6,25 +6,67 @@ use crate::error::{KernelError, Result};
 
 use super::types::{GraphNode, NODE_COLUMNS_PREFIXED, escape_like, row_to_node};
 
-/// Search nodes using FTS5 MATCH. Results ranked by importance DESC.
+/// Quote a raw user string as a single FTS5 phrase literal.
+///
+/// Callers pass free-form text (search boxes, LLM-generated hints). Handing that
+/// straight to `MATCH` lets `"`, `*`, `NEAR`, `-` and friends be parsed as query
+/// syntax — a stray quote turns the whole recall into a syntax error. Wrapping in
+/// double quotes (with `"` doubled) makes the input an opaque phrase.
+fn fts_phrase(query: &str) -> String {
+    format!("\"{}\"", query.replace('"', "\"\""))
+}
+
+/// Search nodes using FTS5 MATCH, ranked by BM25 relevance then importance.
+///
+/// The query is escaped as a phrase literal, so arbitrary user text is safe.
+/// A malformed-query error is degraded to an empty result rather than an `Err`:
+/// full-text is one signal among several in [`smart_recall`], and a bad hint must
+/// not take down the whole recall.
 pub fn search_nodes(conn: &Connection, query: &str, limit: usize) -> Result<Vec<GraphNode>> {
     let sql = format!(
         "SELECT {NODE_COLUMNS_PREFIXED}
          FROM nodes n
          JOIN nodes_fts ON n.rowid = nodes_fts.rowid
          WHERE nodes_fts MATCH ?1
-         ORDER BY n.importance DESC
+         ORDER BY bm25(nodes_fts), n.importance DESC
          LIMIT ?2"
     );
     let mut stmt = conn
         .prepare(&sql)
         .map_err(|e| KernelError::Store(e.to_string()))?;
-    let nodes: Vec<GraphNode> = stmt
-        .query_map(params![query, limit as i64], row_to_node)
-        .map_err(|e| KernelError::Store(e.to_string()))?
-        .filter_map(|r| r.ok())
-        .collect();
-    Ok(nodes)
+    let rows = match stmt.query_map(params![fts_phrase(query), limit as i64], row_to_node) {
+        Ok(rows) => rows,
+        // Malformed FTS5 expression — treat as "no lexical matches".
+        Err(_) => return Ok(Vec::new()),
+    };
+    Ok(rows.filter_map(|r| r.ok()).collect())
+}
+
+/// Search nodes across every available lexical backend, de-duplicated by id.
+///
+/// FTS5's `trigram` tokenizer cannot match queries shorter than three
+/// characters, which silently breaks most CJK lookups (a 2-syllable Korean query
+/// like `"매수"` returns nothing even when many nodes contain it). With the
+/// `graph-cjk` feature the substring path in [`search_nodes_cjk`] covers exactly
+/// that gap, so the union is strictly better than either source alone:
+/// FTS contributes ranked multi-character hits, CJK contributes short and
+/// mid-word ones.
+///
+/// FTS results keep their BM25 order and come first; CJK-only hits follow.
+/// Without `graph-cjk` this is exactly [`search_nodes`].
+pub fn search_nodes_hybrid(conn: &Connection, query: &str, limit: usize) -> Result<Vec<GraphNode>> {
+    let mut out = search_nodes(conn, query, limit)?;
+
+    #[cfg(feature = "graph-cjk")]
+    {
+        use std::collections::HashSet;
+        let seen: HashSet<String> = out.iter().map(|n| n.id.clone()).collect();
+        let cjk = super::cjk::search_nodes_cjk(conn, query, limit)?;
+        out.extend(cjk.into_iter().filter(|n| !seen.contains(&n.id)));
+        out.truncate(limit);
+    }
+
+    Ok(out)
 }
 
 /// Dynamic filter query: filter by tag, node_type, and/or project.
@@ -171,5 +213,54 @@ mod tests {
         upsert_node(&conn, &n1).unwrap();
         let results = query_nodes(&conn, None, None, Some("my%"), 10).unwrap();
         assert!(results.is_empty());
+    }
+
+    #[test]
+    fn fts_query_with_quotes_does_not_error() {
+        // A raw `"` used to be parsed as FTS5 syntax and blew up the whole recall.
+        let conn = mem_db();
+        upsert_node(&conn, &test_node("n1", "quoted", "body", vec![])).unwrap();
+        assert!(search_nodes(&conn, "say \"hello\"", 10).is_ok());
+        assert!(search_nodes(&conn, "trailing *", 10).is_ok());
+        assert!(search_nodes(&conn, "NEAR OR AND", 10).is_ok());
+    }
+
+    #[cfg(feature = "graph-cjk")]
+    #[test]
+    fn hybrid_matches_short_korean_that_trigram_misses() {
+        // Regression baseline from the TradingAgentOS KB: a 2-syllable Korean
+        // query is invisible to the trigram tokenizer but present in the corpus.
+        let conn = mem_db();
+        upsert_node(
+            &conn,
+            &test_node("d1", "SK하이닉스 판정", "매수 의견을 유지한다", vec!["hold"]),
+        )
+        .unwrap();
+
+        // trigram alone: no hit for the 2-char query.
+        assert!(search_nodes(&conn, "매수", 10).unwrap().is_empty());
+        // hybrid: CJK substring path finds it.
+        assert_eq!(search_nodes_hybrid(&conn, "매수", 10).unwrap().len(), 1);
+        assert_eq!(search_nodes_hybrid(&conn, "SK", 10).unwrap().len(), 1);
+    }
+
+    #[cfg(feature = "graph-cjk")]
+    #[test]
+    fn hybrid_negative_control_absent_term_stays_empty() {
+        // Guards against a "LIKE matches anything" regression: a term that is
+        // genuinely not in the corpus must still return nothing.
+        let conn = mem_db();
+        upsert_node(&conn, &test_node("d1", "SK하이닉스", "매수 의견", vec![])).unwrap();
+        assert!(search_nodes_hybrid(&conn, "반도체", 10).unwrap().is_empty());
+        assert!(search_nodes_hybrid(&conn, "존재하지않는단어", 10).unwrap().is_empty());
+    }
+
+    #[cfg(feature = "graph-cjk")]
+    #[test]
+    fn hybrid_dedups_nodes_found_by_both_paths() {
+        let conn = mem_db();
+        upsert_node(&conn, &test_node("d1", "삼성전자", "반도체 실적", vec![])).unwrap();
+        // "삼성전자" is long enough for trigram AND matches the CJK substring path.
+        assert_eq!(search_nodes_hybrid(&conn, "삼성전자", 10).unwrap().len(), 1);
     }
 }

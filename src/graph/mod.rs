@@ -102,7 +102,7 @@ pub use dedup::{find_duplicate, upsert_node_dedup};
 pub use lifecycle::{compute_stats, decay_importance, tag_stale_nodes, touch_node, touch_nodes};
 pub use recall::smart_recall;
 pub use schema::{GRAPH_SCHEMA_VERSION, init_graph_schema, migrate_graph, schema_version};
-pub use search::{query_nodes, search_nodes};
+pub use search::{query_nodes, search_nodes, search_nodes_hybrid};
 pub use store::{
     append_edge, delete_edge, delete_node, read_edges, read_node, read_nodes, upsert_node,
 };
