@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `embedding/pgvector`: `PgVectorIndex::new_halfvec` — half-precision `halfvec`
+  (float16) variant, ~half the RAM of `vector` with negligible recall loss for
+  cosine similarity. Requires the `pgvector` extension ≥ 0.6 (`halfvec` type +
+  `halfvec_cosine_ops`). `new` (float32 `vector`) is unchanged.
+
 ## [0.21.0] - 2026-07-28
 
 ### ⚠️ Changed (breaking — minor on the 0.x track)

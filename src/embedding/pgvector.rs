@@ -2,9 +2,13 @@
 //!
 //! `PgVectorIndex` implements [`AsyncVectorIndex`] over a `sqlx::PgPool`,
 //! mirroring `qdrant`/`elastic` (async remote vector backend). Vectors live in
-//! a `{table}(id BIGINT PK, vec vector)` relation; search uses the cosine
+//! a `{table}(id BIGINT PK, vec <type>)` relation; search uses the cosine
 //! distance operator `<=>`. Requires `CREATE EXTENSION vector` in the target DB
 //! (the table + HNSW index are created automatically by [`PgVectorIndex::new`]).
+//!
+//! Two precisions: [`new`](PgVectorIndex::new) → `vector` (float32, dim ≤ 2000),
+//! [`new_halfvec`](PgVectorIndex::new_halfvec) → `halfvec` (float16, ~half RAM,
+//! dim ≤ 4000; needs pgvector ≥ 0.6).
 
 use async_trait::async_trait;
 use sqlx::PgPool;
@@ -38,11 +42,14 @@ fn vec_literal(v: &[f32]) -> String {
 /// PostgreSQL vector index backed by the `pgvector` extension.
 ///
 /// All operations are async over a shared `PgPool` (MVCC, connection-pooled).
-/// The relation named `table` holds `(id BIGINT PK, vec vector(N))` rows.
+/// The relation named `table` holds `(id BIGINT PK, vec <type>(N))` rows where
+/// `<type>` is `vector` (float32) or `halfvec` (float16) per the `half` flag.
 pub struct PgVectorIndex {
     pool: PgPool,
     table: String,
     dim: usize,
+    /// `true` → `halfvec` (float16, ~half RAM, recall 손실 ~0). `false` → `vector` (float32).
+    half: bool,
 }
 
 impl PgVectorIndex {
@@ -50,8 +57,22 @@ impl PgVectorIndex {
     /// vector table + HNSW cosine index if missing, and return a ready index.
     ///
     /// `dim` is enforced by the fixed `vector(dim)` column; vectors whose
-    /// length differs from `dim` are rejected by pgvector on insert.
+    /// length differs from `dim` are rejected by pgvector on insert. Uses
+    /// full-precision `vector` (float32). For half-precision see
+    /// [`new_halfvec`](Self::new_halfvec).
     pub async fn new(url: &str, table: &str, dim: usize) -> Result<Self> {
+        Self::connect(url, table, dim, false).await
+    }
+
+    /// Half-precision variant — stores `halfvec` (float16): **~half the RAM** of
+    /// `vector` with negligible recall loss for cosine similarity. Requires the
+    /// `pgvector` extension ≥ 0.6 (`halfvec` type + `halfvec_cosine_ops`).
+    /// `dim` ≤ 4000 (vs 2000 for `vector`).
+    pub async fn new_halfvec(url: &str, table: &str, dim: usize) -> Result<Self> {
+        Self::connect(url, table, dim, true).await
+    }
+
+    async fn connect(url: &str, table: &str, dim: usize, half: bool) -> Result<Self> {
         validate_table_name(table)?;
         let pool = PgPoolOptions::new()
             .max_connections(8)
@@ -62,27 +83,44 @@ impl PgVectorIndex {
             pool,
             table: table.to_string(),
             dim,
+            half,
         };
         idx.init_schema().await?;
         Ok(idx)
     }
 
-    /// `CREATE TABLE IF NOT EXISTS {table} (id BIGINT PK, vec vector)` + HNSW
-    /// cosine index. Idempotent.
+    /// SQL vector type name for the active precision (`vector` | `halfvec`).
+    fn sql_type(&self) -> &'static str {
+        if self.half { "halfvec" } else { "vector" }
+    }
+
+    /// HNSW ops class for the active precision.
+    fn ops_class(&self) -> &'static str {
+        if self.half {
+            "halfvec_cosine_ops"
+        } else {
+            "vector_cosine_ops"
+        }
+    }
+
+    /// `CREATE TABLE IF NOT EXISTS {table} (id BIGINT PK, vec {vector|halfvec}(N))`
+    /// + matching HNSW cosine index, per the active precision. Idempotent.
     async fn init_schema(&self) -> Result<()> {
         // Identifier is caller-controlled (not user input at runtime) and
-        // validated in `new`, so `format!` is acceptable here. PG cannot bind
+        // validated in `connect`, so `format!` is acceptable here. PG cannot bind
         // identifiers. Callers pass a fixed, validated table name.
+        let ty = self.sql_type();
+        let ops = self.ops_class();
         sqlx::query(&format!(
-            "CREATE TABLE IF NOT EXISTS {} (id BIGINT PRIMARY KEY, vec vector({}) NOT NULL)",
-            self.table, self.dim
+            "CREATE TABLE IF NOT EXISTS {} (id BIGINT PRIMARY KEY, vec {}({}) NOT NULL)",
+            self.table, ty, self.dim
         ))
         .execute(&self.pool)
         .await
         .map_err(|e| KernelError::Embedding(format!("pgvector create table: {e}")))?;
         sqlx::query(&format!(
-            "CREATE INDEX IF NOT EXISTS idx_{}_vec ON {} USING hnsw (vec vector_cosine_ops)",
-            self.table, self.table
+            "CREATE INDEX IF NOT EXISTS idx_{}_vec ON {} USING hnsw (vec {})",
+            self.table, self.table, ops
         ))
         .execute(&self.pool)
         .await
@@ -153,7 +191,9 @@ impl crate::embedding::AsyncVectorIndex for PgVectorIndex {
             q.push_bind(id);
             q.push(", ");
             q.push_bind(vec_literal(v));
-            q.push("::vector)");
+            q.push("::");
+            q.push(self.sql_type());
+            q.push(")");
         }
         q.push(" ON CONFLICT (id) DO UPDATE SET vec = EXCLUDED.vec");
         q.build()
@@ -178,9 +218,10 @@ impl crate::embedding::AsyncVectorIndex for PgVectorIndex {
 
     async fn search(&self, query: &[f32], k: usize) -> Result<Vec<SearchHit>> {
         let q = vec_literal(query);
+        let ty = self.sql_type();
         // cosine distance <=> : 0 (동일) .. 2 (반대). score = 1 - distance.
         let rows: Vec<ScoreRow> = sqlx::query_as(&format!(
-            "SELECT id, 1 - (vec <=> $1::vector) AS score FROM {} ORDER BY vec <=> $1::vector LIMIT $2",
+            "SELECT id, 1 - (vec <=> $1::{ty}) AS score FROM {} ORDER BY vec <=> $1::{ty} LIMIT $2",
             self.table
         ))
         .bind(q)
@@ -207,13 +248,14 @@ impl crate::embedding::AsyncVectorIndex for PgVectorIndex {
             return Ok(Vec::new());
         }
         let q = vec_literal(query);
+        let ty = self.sql_type();
         let allow: Vec<i64> = allowlist
             .iter()
             .map(|&i| to_pg_id(i))
             .collect::<Result<_>>()?;
         let rows: Vec<ScoreRow> = sqlx::query_as(&format!(
-            "SELECT id, 1 - (vec <=> $1::vector) AS score FROM {} WHERE id = ANY($2) \
-             ORDER BY vec <=> $1::vector LIMIT $3",
+            "SELECT id, 1 - (vec <=> $1::{ty}) AS score FROM {} WHERE id = ANY($2) \
+             ORDER BY vec <=> $1::{ty} LIMIT $3",
             self.table
         ))
         .bind(q)
@@ -309,6 +351,43 @@ mod tests {
             .unwrap();
         assert_eq!(hits.len(), 1);
         assert_ne!(hits[0].id, 10);
+
+        idx.remove(&[10]).await.unwrap();
+        assert_eq!(idx.len().await.unwrap(), 2);
+
+        // cleanup
+        sqlx::query(&format!("DROP TABLE IF EXISTS {}", table))
+            .execute(&idx.pool)
+            .await
+            .ok();
+    }
+
+    /// halfvec(float16) 변형 라운드트립 — `new_halfvec` 로 halfvec 컬럼/인덱스 생성 후
+    /// add/search/remove 가 float32 경로와 동일하게 동작하는지. pgvector ≥ 0.6 필요.
+    #[tokio::test]
+    async fn roundtrip_halfvec() {
+        let Some(url) = pg_url() else {
+            eprintln!("skip pgvector halfvec test: LLMKERNEL_PG_URL unset");
+            return;
+        };
+        let table = format!("lk_test_hv_{}", line!());
+        let idx = PgVectorIndex::new_halfvec(&url, &table, 3)
+            .await
+            .expect("new_halfvec");
+
+        let vecs = vec![
+            vec![1.0, 0.0, 0.0],
+            vec![0.0, 1.0, 0.0],
+            vec![0.0, 0.0, 1.0],
+        ];
+        let ids = vec![10u64, 20, 30];
+        idx.add(&vecs, &ids).await.expect("add");
+        assert_eq!(idx.len().await.unwrap(), 3);
+
+        // nearest to [1,0,0] → id 10 (halfvec cosine 도 동일 순위)
+        let hits = idx.search(&[1.0, 0.0, 0.0], 1).await.unwrap();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].id, 10);
 
         idx.remove(&[10]).await.unwrap();
         assert_eq!(idx.len().await.unwrap(), 2);
