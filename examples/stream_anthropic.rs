@@ -41,6 +41,10 @@ async fn main() {
     loop {
         match Pin::new(&mut stream).poll_next(&mut cx) {
             Poll::Ready(Some(Ok(StreamEvent::Delta { content }))) => print!("{}", content),
+            // Extended-thinking deltas arrive separately from the answer text.
+            Poll::Ready(Some(Ok(StreamEvent::ReasoningDelta { content }))) => {
+                eprint!("\x1b[2m{}\x1b[0m", content)
+            }
             Poll::Ready(Some(Ok(StreamEvent::Usage(usage)))) => {
                 println!(
                     "\n--- {} in / {} out tokens ---",
@@ -52,6 +56,8 @@ async fn main() {
                 eprintln!("\nError: {}", e);
                 break;
             }
+            // `StreamEvent` is #[non_exhaustive]: new variants must not break this example.
+            Poll::Ready(Some(Ok(_))) => {}
             Poll::Pending => tokio::task::yield_now().await,
         }
     }

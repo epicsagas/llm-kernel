@@ -43,7 +43,7 @@
 
 ### v0.16.1 (2026-07-08)
 
-- **embedding** (`pgvector`): `pgvector::Vector` sqlx `Type` bind conflict (surfaced in `korean-law-rag`) — bind as a string literal (`[1,2,3]::vector`) instead of a typed `Vector`
+- **embedding** (`pgvector`): `pgvector::Vector` sqlx `Type` bind conflict (surfaced in `klr`) — bind as a string literal (`[1,2,3]::vector`) instead of a typed `Vector`
 
 ### v0.16.0 (2026-07-08)
 

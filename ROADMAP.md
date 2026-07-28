@@ -277,7 +277,7 @@ Third async remote vector backend, cost-aware client routing, and an MSRV/build-
 
 ### v0.16.1 — pgvector Bind Fix ✅
 
-Patch: `pgvector::Vector` sqlx `Type` bind conflict (surfaced in the `korean-law-rag` environment) — bind the vector as a string literal (`[1,2,3]::vector`) instead of a typed `Vector` to sidestep the sqlx `Type` mismatch.
+Patch: `pgvector::Vector` sqlx `Type` bind conflict (surfaced in the `klr` environment) — bind the vector as a string literal (`[1,2,3]::vector`) instead of a typed `Vector` to sidestep the sqlx `Type` mismatch.
 
 ---
 
