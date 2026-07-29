@@ -23,8 +23,6 @@ pub const W_FTS: f64 = 0.20;
 /// Weight applied to graph-neighbor boost in the composite relevance score.
 pub const W_GRAPH: f64 = 0.10;
 
-/// Smart recall: return nodes ranked by composite relevance.
-///
 /// Structured recall options.
 ///
 /// `#[non_exhaustive]` + `Default` lets callers add filters without breaking
@@ -45,10 +43,13 @@ pub struct RecallOptions {
     pub since: Option<String>,
     /// Result cap.
     pub limit: usize,
-    /// Whether to increment `access_count` on retrieved nodes. Default `true`
-    /// for backward compatibility; callers using recall for LLM context (not
-    /// user browsing) pass `false` to avoid turning reads into writes and
-    /// skewing the access signal.
+    /// Whether to increment `access_count` on retrieved nodes.
+    ///
+    /// Defaults to `false` (via `#[derive(Default)]`). The [`legacy`](Self::legacy)
+    /// constructor sets this to `true` for backward compatibility with the old
+    /// `smart_recall(project, hint, limit)` signature. New callers building
+    /// `RecallOptions` directly get read-only recall by default — pass `true`
+    /// explicitly to opt into mutation.
     pub touch: bool,
 }
 

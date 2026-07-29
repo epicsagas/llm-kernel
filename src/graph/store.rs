@@ -93,6 +93,10 @@ pub fn read_nodes(conn: &Connection, ids: &[&str]) -> Result<Vec<GraphNode>> {
 /// `remove_edges_for_node` existed but was never called here. The transaction
 /// keeps the node deletion and edge cleanup atomic.
 pub fn delete_node(conn: &Connection, id: &str) -> Result<bool> {
+    // `unchecked_transaction` is used instead of `transaction` because the
+    // function signature takes `&Connection` (not `&mut`). This is safe: in the
+    // async pool (`AsyncPoolGraph::with_conn`) the semaphore guarantees exclusive
+    // access, and in sync call sites no other statements are open on `conn`.
     let tx = conn
         .unchecked_transaction()
         .map_err(|e| KernelError::Store(e.to_string()))?;

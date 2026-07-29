@@ -137,7 +137,7 @@ pub enum NodeOrder {
 ///
 /// `#[non_exhaustive]` + `Default` lets callers add filters in future releases
 /// without breaking struct-literal construction (`NodeQuery { limit: 50, ..Default::default() }`).
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 #[non_exhaustive]
 pub struct NodeQuery {
     /// Tag exact-match (CSV membership test). Use for `symbol`-scoped queries.
@@ -152,10 +152,25 @@ pub struct NodeQuery {
     pub until: Option<String>,
     /// Result ordering.
     pub order_by: NodeOrder,
-    /// Max rows. Capped at 200 to bound work.
+    /// Max rows. Capped at 200 to bound work. Defaults to 50.
     pub limit: usize,
     /// Skip this many rows.
     pub offset: usize,
+}
+
+impl Default for NodeQuery {
+    fn default() -> Self {
+        Self {
+            tag: None,
+            node_type: None,
+            project: None,
+            since: None,
+            until: None,
+            order_by: NodeOrder::default(),
+            limit: 50,
+            offset: 0,
+        }
+    }
 }
 
 impl NodeQuery {
@@ -171,8 +186,8 @@ impl NodeQuery {
 
 /// Dynamic filter query: tag, node_type, project, time range, paging, ordering.
 ///
-/// `limit` is capped at 200 (vs `query_nodes`' 200) but supports `offset` for
-/// true paging without materializing the full table client-side.
+/// `limit` is capped at 200 server-side but supports `offset` for true paging
+/// without materializing the full table client-side.
 pub fn query_nodes_ex(conn: &Connection, q: &NodeQuery) -> Result<Vec<GraphNode>> {
     let limit = q.limit.min(200) as i64;
     let offset = q.offset as i64;

@@ -26,7 +26,7 @@ pub fn rrf_fuse_weighted(
     weights: &[f32],
     k: u32,
 ) -> Vec<SearchResult> {
-    debug_assert_eq!(
+    assert_eq!(
         result_sets.len(),
         weights.len(),
         "rrf_fuse_weighted: result_sets and weights length must match"
@@ -126,5 +126,47 @@ mod tests {
         let doc3_score = fused.iter().find(|r| r.id == "doc3").unwrap().score;
         let doc1_score = fused.iter().find(|r| r.id == "doc1").unwrap().score;
         assert!(doc1_score > doc3_score);
+    }
+
+    #[test]
+    fn weighted_higher_weight_dominates() {
+        // "a" ranks first only in set 0, "b" ranks first only in set 1.
+        // With weights [2.0, 0.5], set 0 contributes 4× more per rank position,
+        // so "a" must outscore "b".
+        let lexical = make_results(&[("a", 0.9), ("b", 0.3)]);
+        let vector = make_results(&[("b", 0.95), ("a", 0.2)]);
+
+        let fused = rrf_fuse_weighted(&[lexical, vector], &[2.0, 0.5], 60);
+        assert_eq!(fused.len(), 2);
+
+        let a_score = fused.iter().find(|r| r.id == "a").unwrap().score;
+        let b_score = fused.iter().find(|r| r.id == "b").unwrap().score;
+        // a: 2.0/61 + 0.5/62,  b: 2.0/62 + 0.5/61
+        assert!(
+            a_score > b_score,
+            "higher-weighted source must dominate: a={a_score}, b={b_score}"
+        );
+    }
+
+    #[test]
+    fn weighted_uniform_matches_rrf_fuse() {
+        let a = make_results(&[("x", 1.0), ("y", 0.5)]);
+        let b = make_results(&[("y", 0.9), ("z", 0.4)]);
+
+        let plain = rrf_fuse(&[a.clone(), b.clone()], 60);
+        let weighted = rrf_fuse_weighted(&[a, b], &[1.0, 1.0], 60);
+
+        assert_eq!(plain.len(), weighted.len());
+        for (p, w) in plain.iter().zip(weighted.iter()) {
+            assert_eq!(p.id, w.id);
+            assert!((p.score - w.score).abs() < 1e-9);
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "result_sets and weights length must match")]
+    fn weighted_length_mismatch_panics() {
+        let a = make_results(&[("x", 1.0)]);
+        rrf_fuse_weighted(&[a], &[1.0, 2.0], 60);
     }
 }

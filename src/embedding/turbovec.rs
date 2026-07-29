@@ -280,7 +280,7 @@ impl VectorIndex for TurbovecIndex {
 /// Stored as `vectors.meta.json` next to the index file. Consumers compare these
 /// on load to decide whether a rebuild is needed (e.g. a prefix-policy change
 /// with the same `dim`).
-#[derive(serde::Serialize, serde::Deserialize, Clone)]
+#[derive(Debug, serde::Serialize, serde::Deserialize, Clone)]
 pub struct IndexMeta {
     /// Embedding dimensionality (must match the model).
     pub dim: usize,
