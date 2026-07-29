@@ -25,15 +25,63 @@ pub const W_GRAPH: f64 = 0.10;
 
 /// Smart recall: return nodes ranked by composite relevance.
 ///
+/// Structured recall options.
+///
+/// `#[non_exhaustive]` + `Default` lets callers add filters without breaking
+/// struct-literal construction. `tags_any` is the intended symbol-scoped path:
+/// TradingAgentOS stores the symbol as a tag on every node.
+#[derive(Debug, Clone, Default)]
+#[non_exhaustive]
+pub struct RecallOptions {
+    /// Project scope.
+    pub project: Option<String>,
+    /// Free-text hint (lexical match). `None`/empty ⇒ pure structural recall.
+    pub hint: Option<String>,
+    /// Restrict to these node types (e.g. `["decision"]`).
+    pub node_types: Vec<String>,
+    /// Match any of these tags (OR). Use for symbol-scoped recall.
+    pub tags_any: Vec<String>,
+    /// `created >=` (ISO8601).
+    pub since: Option<String>,
+    /// Result cap.
+    pub limit: usize,
+    /// Whether to increment `access_count` on retrieved nodes. Default `true`
+    /// for backward compatibility; callers using recall for LLM context (not
+    /// user browsing) pass `false` to avoid turning reads into writes and
+    /// skewing the access signal.
+    pub touch: bool,
+}
+
+impl RecallOptions {
+    /// Backward-compatible defaults matching the old `smart_recall(project, hint, limit)`.
+    pub fn legacy(project: Option<&str>, hint: Option<&str>, limit: usize) -> Self {
+        Self {
+            project: project.map(str::to_string),
+            hint: hint.map(str::to_string),
+            limit,
+            touch: true,
+            ..Default::default()
+        }
+    }
+}
+
 /// Scoring: `recency(20%) + importance(35%) + access_freq(15%) + FTS(20%) + graph_boost(10%)`
 ///
-/// Stale nodes (tagged "stale") are excluded. Retrieved nodes have their access_count incremented.
+/// Stale nodes (tagged "stale") are excluded. Retrieved nodes have their
+/// access_count incremented unless `touch` is false.
 pub fn smart_recall(
     conn: &Connection,
     project: Option<&str>,
     hint: Option<&str>,
     limit: usize,
 ) -> Result<Vec<ScoredNode>> {
+    smart_recall_with(conn, &RecallOptions::legacy(project, hint, limit))
+}
+
+/// Structured recall — see [`RecallOptions`].
+pub fn smart_recall_with(conn: &Connection, opts: &RecallOptions) -> Result<Vec<ScoredNode>> {
+    let limit = opts.limit;
+    let hint = opts.hint.as_deref();
     let now_secs = std::time::SystemTime::now()
         .duration_since(std::time::SystemTime::UNIX_EPOCH)
         .unwrap_or_default()
@@ -65,11 +113,34 @@ pub fn smart_recall(
 
     // Fetch candidate nodes (broad set)
     let candidate_limit = (limit * 4).max(40) as i64;
-    let mut conditions: Vec<&str> = vec!["',' || tags || ',' NOT LIKE '%,stale,%'"];
+    let mut conditions: Vec<String> = vec!["',' || tags || ',' NOT LIKE '%,stale,%'".to_string()];
     let mut param_vals: Vec<Box<dyn rusqlite::ToSql>> = vec![];
-    if let Some(p) = project {
-        conditions.push("(',' || projects || ',' LIKE '%,' || ? || ',%' ESCAPE '\\')");
+    if let Some(p) = &opts.project {
+        conditions.push("(',' || projects || ',' LIKE '%,' || ? || ',%' ESCAPE '\\')".to_string());
         param_vals.push(Box::new(escape_like(p)));
+    }
+    if !opts.node_types.is_empty() {
+        let placeholders = vec!["?"; opts.node_types.len()].join(",");
+        conditions.push(format!("type IN ({placeholders})"));
+        for nt in &opts.node_types {
+            param_vals.push(Box::new(nt.clone()));
+        }
+    }
+    if !opts.tags_any.is_empty() {
+        // OR each requested tag against the tags CSV (e.g. symbol-scoped recall).
+        let tag_clauses: Vec<String> = opts
+            .tags_any
+            .iter()
+            .map(|_| "',' || tags || ',' LIKE '%,' || ? || ',%' ESCAPE '\\'".to_string())
+            .collect();
+        conditions.push(format!("({})", tag_clauses.join(" OR ")));
+        for t in &opts.tags_any {
+            param_vals.push(Box::new(escape_like(t)));
+        }
+    }
+    if let Some(s) = &opts.since {
+        conditions.push("created >= ?".to_string());
+        param_vals.push(Box::new(s.clone()));
     }
     let where_clause = format!("WHERE {}", conditions.join(" AND "));
     let sql = format!(
@@ -165,9 +236,11 @@ pub fn smart_recall(
         });
     }
 
-    // Touch retrieved nodes
-    let ids: Vec<String> = scored.iter().map(|sn| sn.node.id.clone()).collect();
-    touch_nodes(conn, &ids);
+    // Touch retrieved nodes (gated — LLM-context recall should not mutate state).
+    if opts.touch {
+        let ids: Vec<String> = scored.iter().map(|sn| sn.node.id.clone()).collect();
+        touch_nodes(conn, &ids);
+    }
 
     Ok(scored)
 }

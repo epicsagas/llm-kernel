@@ -26,6 +26,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   First-generation models (`text-embedding-ada-002`) still omit the field, which
   they reject.
 
+## [0.22.0] - 2026-07-28
+
+### Fixed
+- **graph**: `upsert_node` (SQLite) now uses `ON CONFLICT DO UPDATE` instead of
+  `INSERT OR REPLACE`, preserving `created`, `access_count`, and `accessed_at`
+  on re-insert of a fixed-id node. Brings SQLite to parity with the Postgres
+  backend (`sqlx_pg.rs`), which already did `ON CONFLICT`.
+- **graph**: `delete_node` now removes the node's edges in the same transaction
+  (`remove_edges_for_node`), preventing orphan edges.
+- **graph** (`smart_recall`): a hint that matches nothing lexically now returns
+  an empty result instead of the globally-most-important nodes — recall no
+  longer answers every query with *something* and injects it as if relevant.
+- **graph** (`smart_recall`): matching nodes are force-included in the candidate
+  set even when they fall outside the importance-ordered window, so `W_FTS` is
+  no longer unreachable on larger graphs.
+- **graph** (`search_nodes`): the query is escaped as an FTS5 phrase literal, so
+  a stray `"`, `*`, or `NEAR` in user/LLM text no longer crashes the whole
+  recall. Malformed expressions degrade to empty results, not `Err`. Ranking
+  now uses `bm25()` instead of discarding the FTS rank.
+- **embedding**: `add_with_ids` failures are tagged (`add failed[duplicate_id]`
+  vs `add failed[backend]`) so consumers can distinguish a routine re-ingest
+  from a real backend failure without brittle full-string matching.
+
+### Added
+- **graph**: `search_nodes_hybrid` — FTS ∪ CJK substring union (de-duped by id),
+  so short CJK queries invisible to the trigram tokenizer are found. Falls back
+  to `search_nodes` without the `graph-cjk` feature.
+- **graph**: `NodeQuery`/`NodeOrder`/`query_nodes_ex` — structured node query
+  with paging, time range (`since`/`until`), and ordering. Exposed on
+  `AsyncPoolGraph::query_nodes_ex`. The old `query_nodes` is preserved as a shim.
+- **graph**: `RecallOptions`/`smart_recall_with` — structured recall with
+  `node_types`, `tags_any` (symbol scope), `since`, and `touch` gating (LLM-
+  context recall need not mutate `access_count`). Exposed on
+  `AsyncPoolGraph::smart_recall_with`.
+- **embedding**: `EmbeddingProvider::embed_document(s)` default methods.
+  `FastembedProvider` overrides them to use the model's `doc_prefix` (E5
+  `passage:`) for corpus text, while `embed` keeps the query prefix — fixing an
+  asymmetric-model mismatch where documents were embedded with the query prefix.
+- **embedding**: `TurbovecIndex::with_meta` / `meta` / `IndexMeta` — the index
+  sidecar now carries `model_id`, `prefix_policy`, and `schema_version`
+  (`#[serde(default)]`-compatible with old sidecars) so consumers can detect a
+  rebuild need beyond `dim` (e.g. a prefix-policy change).
+- **search**: `rrf_fuse_weighted` — per-source weights. `rrf_fuse` delegates to it.
+
 ## [0.21.0] - 2026-07-28
 
 ### ⚠️ Changed (breaking — minor on the 0.x track)

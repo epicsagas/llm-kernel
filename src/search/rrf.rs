@@ -10,15 +10,34 @@ use crate::search::types::SearchResult;
 /// Fuse multiple ranked result lists using Reciprocal Rank Fusion.
 ///
 /// `k` is the RRF constant (typically 60). Higher values smooth the
-/// contribution of top-ranked results.
+/// contribution of top-ranked results. Each set contributes equally (weight 1.0).
 pub fn rrf_fuse(result_sets: &[Vec<SearchResult>], k: u32) -> Vec<SearchResult> {
+    let weights = vec![1.0_f32; result_sets.len()];
+    rrf_fuse_weighted(result_sets, &weights, k)
+}
+
+/// Weighted RRF — each result set multiplies its rank contribution by `weight`.
+///
+/// `weights` length must equal `result_sets` length. Lets a caller emphasize one
+/// source (e.g. lexical) over another (e.g. vector) without dropping the rank
+/// signal. `weights=[1.0; n]` reduces to [`rrf_fuse`].
+pub fn rrf_fuse_weighted(
+    result_sets: &[Vec<SearchResult>],
+    weights: &[f32],
+    k: u32,
+) -> Vec<SearchResult> {
+    debug_assert_eq!(
+        result_sets.len(),
+        weights.len(),
+        "rrf_fuse_weighted: result_sets and weights length must match"
+    );
     let mut scores: HashMap<String, f32> = HashMap::new();
     let mut texts: HashMap<String, String> = HashMap::new();
 
-    for results in result_sets {
+    for (results, weight) in result_sets.iter().zip(weights.iter().copied()) {
         for (rank, result) in results.iter().enumerate() {
             let entry = scores.entry(result.id.clone()).or_insert(0.0);
-            *entry += 1.0 / (k as f32 + rank as f32 + 1.0);
+            *entry += weight * (1.0 / (k as f32 + rank as f32 + 1.0));
             texts
                 .entry(result.id.clone())
                 .or_insert_with(|| result.text.clone());

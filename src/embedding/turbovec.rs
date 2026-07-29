@@ -14,6 +14,9 @@ pub struct TurbovecIndex {
     inner: turbovec::IdMapIndex,
     dim: usize,
     bit_width: u8,
+    /// Persisted model/policy metadata. `None` for in-memory indices created
+    /// without it, or for loaded indices whose meta predates these fields.
+    meta: Option<IndexMeta>,
 }
 
 impl std::fmt::Debug for TurbovecIndex {
@@ -44,7 +47,34 @@ impl TurbovecIndex {
             inner,
             dim,
             bit_width,
+            meta: None,
         })
+    }
+
+    /// Create with model/policy metadata so it persists on [`save`](VectorIndex::save).
+    /// Consumers compare these on load to decide whether a rebuild is needed
+    /// (e.g. a prefix-policy change with the same `dim`).
+    pub fn with_meta(
+        dim: usize,
+        bit_width: u8,
+        model_id: Option<String>,
+        prefix_policy: Option<String>,
+        schema_version: Option<u32>,
+    ) -> Result<Self> {
+        let mut idx = Self::new(dim, bit_width)?;
+        idx.meta = Some(IndexMeta {
+            dim,
+            bit_width,
+            model_id,
+            prefix_policy,
+            schema_version,
+        });
+        Ok(idx)
+    }
+
+    /// Persisted metadata (model id, prefix policy, schema version), if any.
+    pub fn meta(&self) -> Option<&IndexMeta> {
+        self.meta.as_ref()
     }
 
     /// Quantization bit width (2 or 4).
@@ -95,6 +125,7 @@ impl TurbovecIndex {
             inner,
             dim: meta.dim,
             bit_width: meta.bit_width,
+            meta: Some(meta),
         })
     }
 
@@ -145,7 +176,17 @@ impl VectorIndex for TurbovecIndex {
         let flat: Vec<f32> = vectors.iter().flat_map(|v| v.iter().copied()).collect();
         self.inner
             .add_with_ids_2d(&flat, self.dim, ids)
-            .map_err(|e| KernelError::Embedding(format!("add failed: {e}")))?;
+            .map_err(|e| {
+                // Tag the failure kind so consumers can distinguish "id already
+                // present" (a routine re-ingest, not data loss) from a real
+                // backend failure, without brittle full-string matching.
+                let kind = if e.to_string().contains("already present") {
+                    "duplicate_id"
+                } else {
+                    "backend"
+                };
+                KernelError::Embedding(format!("add failed[{kind}]: {e}"))
+            })?;
         Ok(())
     }
 
@@ -208,10 +249,13 @@ impl VectorIndex for TurbovecIndex {
             .write(&tmp_index)
             .map_err(|e| KernelError::Embedding(format!("failed to write vector index: {e}")))?;
 
-        let meta = IndexMeta {
+        let meta = self.meta.clone().unwrap_or(IndexMeta {
             dim: self.dim,
             bit_width: self.bit_width,
-        };
+            model_id: None,
+            prefix_policy: None,
+            schema_version: None,
+        });
         let json = serde_json::to_string_pretty(&meta).map_err(KernelError::embedding)?;
         std::fs::write(&tmp_meta, &json)?;
 
@@ -231,10 +275,30 @@ impl VectorIndex for TurbovecIndex {
     }
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
-struct IndexMeta {
-    dim: usize,
-    bit_width: u8,
+/// Persisted vector-index metadata sidecar.
+///
+/// Stored as `vectors.meta.json` next to the index file. Consumers compare these
+/// on load to decide whether a rebuild is needed (e.g. a prefix-policy change
+/// with the same `dim`).
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
+pub struct IndexMeta {
+    /// Embedding dimensionality (must match the model).
+    pub dim: usize,
+    /// Quantization bit width (2 or 4).
+    pub bit_width: u8,
+    /// Model identifier (e.g. "intfloat/multilingual-e5-small"). `None` on
+    /// indices written before this field existed — consumers treat that as
+    /// "unknown, rebuild" so a prefix/policy change forces a rebuild even when
+    /// `dim` is unchanged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_id: Option<String>,
+    /// Embedding policy tag (e.g. "e5-query-doc-v1"). Lets callers detect that
+    /// the index was built with a different prefix scheme without bumping dim.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prefix_policy: Option<String>,
+    /// Caller-defined schema version for the vector store layout (chunking etc.).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub schema_version: Option<u32>,
 }
 
 #[cfg(test)]

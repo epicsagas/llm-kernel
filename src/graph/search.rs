@@ -119,6 +119,114 @@ pub fn query_nodes(
     Ok(nodes)
 }
 
+/// Ordering for [`query_nodes_ex`].
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum NodeOrder {
+    /// `created DESC` — newest first. Activates `idx_nodes_created`.
+    #[default]
+    CreatedDesc,
+    /// `created ASC` — oldest first (timeline reconstruction).
+    CreatedAsc,
+    /// `updated DESC`.
+    UpdatedDesc,
+    /// `importance DESC`.
+    ImportanceDesc,
+}
+
+/// Structured node query with paging, time range, and ordering.
+///
+/// `#[non_exhaustive]` + `Default` lets callers add filters in future releases
+/// without breaking struct-literal construction (`NodeQuery { limit: 50, ..Default::default() }`).
+#[derive(Debug, Clone, Default)]
+#[non_exhaustive]
+pub struct NodeQuery {
+    /// Tag exact-match (CSV membership test). Use for `symbol`-scoped queries.
+    pub tag: Option<String>,
+    /// Node type filter (`decision`, `stock`, ...).
+    pub node_type: Option<String>,
+    /// Project scope filter.
+    pub project: Option<String>,
+    /// `created >=` (RFC3339/ISO8601). Uses `idx_nodes_created`.
+    pub since: Option<String>,
+    /// `created <` (RFC3339/ISO8601).
+    pub until: Option<String>,
+    /// Result ordering.
+    pub order_by: NodeOrder,
+    /// Max rows. Capped at 200 to bound work.
+    pub limit: usize,
+    /// Skip this many rows.
+    pub offset: usize,
+}
+
+impl NodeQuery {
+    fn order_clause(&self) -> &'static str {
+        match self.order_by {
+            NodeOrder::CreatedDesc => "created DESC",
+            NodeOrder::CreatedAsc => "created ASC",
+            NodeOrder::UpdatedDesc => "updated DESC",
+            NodeOrder::ImportanceDesc => "importance DESC",
+        }
+    }
+}
+
+/// Dynamic filter query: tag, node_type, project, time range, paging, ordering.
+///
+/// `limit` is capped at 200 (vs `query_nodes`' 200) but supports `offset` for
+/// true paging without materializing the full table client-side.
+pub fn query_nodes_ex(conn: &Connection, q: &NodeQuery) -> Result<Vec<GraphNode>> {
+    let limit = q.limit.min(200) as i64;
+    let offset = q.offset as i64;
+
+    let mut condition_strs: Vec<&str> = vec![];
+    let mut param_vals: Vec<Box<dyn rusqlite::ToSql>> = vec![];
+
+    if let Some(t) = &q.tag {
+        condition_strs.push("(',' || tags || ',' LIKE '%,' || ? || ',%' ESCAPE '\\')");
+        param_vals.push(Box::new(escape_like(t)));
+    }
+    if let Some(nt) = &q.node_type {
+        condition_strs.push("type = ?");
+        param_vals.push(Box::new(nt.clone()));
+    }
+    if let Some(p) = &q.project {
+        condition_strs.push("(',' || projects || ',' LIKE '%,' || ? || ',%' ESCAPE '\\')");
+        param_vals.push(Box::new(escape_like(p)));
+    }
+    if let Some(s) = &q.since {
+        condition_strs.push("created >= ?");
+        param_vals.push(Box::new(s.clone()));
+    }
+    if let Some(u) = &q.until {
+        condition_strs.push("created < ?");
+        param_vals.push(Box::new(u.clone()));
+    }
+
+    let where_clause = if condition_strs.is_empty() {
+        String::new()
+    } else {
+        format!("WHERE {}", condition_strs.join(" AND "))
+    };
+    let order = q.order_clause();
+    let node_columns = super::types::NODE_COLUMNS;
+    let sql = format!(
+        "SELECT {node_columns} FROM nodes {where_clause} ORDER BY {order} LIMIT ? OFFSET ?"
+    );
+
+    param_vals.push(Box::new(limit));
+    param_vals.push(Box::new(offset));
+
+    let mut stmt = conn
+        .prepare(&sql)
+        .map_err(|e| KernelError::Store(e.to_string()))?;
+    let refs: Vec<&dyn rusqlite::ToSql> = param_vals.iter().map(|b| b.as_ref()).collect();
+    let nodes: Vec<GraphNode> = stmt
+        .query_map(refs.as_slice(), row_to_node)
+        .map_err(|e| KernelError::Store(e.to_string()))?
+        .filter_map(|r| r.ok())
+        .collect();
+    Ok(nodes)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
