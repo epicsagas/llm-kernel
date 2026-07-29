@@ -126,8 +126,29 @@ impl EmbeddingProvider for FastembedProvider {
     }
 
     fn embed(&self, text: &str) -> Result<EmbeddingResult> {
-        let owned = match self.model.query_prefix() {
-            Some(prefix) => format!("{prefix}{text}"),
+        self.embed_with_prefix(text, self.model.query_prefix())
+    }
+
+    fn embed_document(&self, text: &str) -> Result<EmbeddingResult> {
+        // Asymmetric models (E5/BGE) train with a passage prefix for corpus text.
+        // query_prefix() is correct for queries; doc_prefix() is correct here.
+        self.embed_with_prefix(text, self.model.doc_prefix())
+    }
+
+    fn embed_batch(&self, texts: &[&str]) -> Result<Vec<EmbeddingResult>> {
+        self.embed_batch_with_prefix(texts, self.model.query_prefix())
+    }
+
+    fn embed_documents(&self, texts: &[&str]) -> Result<Vec<EmbeddingResult>> {
+        self.embed_batch_with_prefix(texts, self.model.doc_prefix())
+    }
+}
+
+impl FastembedProvider {
+    /// Single-text embed with a caller-chosen prefix (query vs document).
+    fn embed_with_prefix(&self, text: &str, prefix: Option<&str>) -> Result<EmbeddingResult> {
+        let owned = match prefix {
+            Some(p) => format!("{p}{text}"),
             None => text.to_string(),
         };
         let mut te = self
@@ -148,11 +169,15 @@ impl EmbeddingProvider for FastembedProvider {
         })
     }
 
-    fn embed_batch(&self, texts: &[&str]) -> Result<Vec<EmbeddingResult>> {
+    /// Batch embed with a caller-chosen prefix (query vs document).
+    fn embed_batch_with_prefix(
+        &self,
+        texts: &[&str],
+        prefix: Option<&str>,
+    ) -> Result<Vec<EmbeddingResult>> {
         if texts.is_empty() {
             return Ok(vec![]);
         }
-        let prefix = self.model.query_prefix();
         let prepared: Vec<String> = texts
             .iter()
             .map(|t| match prefix {
