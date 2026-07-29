@@ -20,7 +20,7 @@ fn fts_phrase(query: &str) -> String {
 ///
 /// The query is escaped as a phrase literal, so arbitrary user text is safe.
 /// A malformed-query error is degraded to an empty result rather than an `Err`:
-/// full-text is one signal among several in [`smart_recall`], and a bad hint must
+/// full-text is one signal among several in [`crate::graph::recall::smart_recall`], and a bad hint must
 /// not take down the whole recall.
 pub fn search_nodes(conn: &Connection, query: &str, limit: usize) -> Result<Vec<GraphNode>> {
     let sql = format!(
@@ -47,7 +47,7 @@ pub fn search_nodes(conn: &Connection, query: &str, limit: usize) -> Result<Vec<
 /// FTS5's `trigram` tokenizer cannot match queries shorter than three
 /// characters, which silently breaks most CJK lookups (a 2-syllable Korean query
 /// like `"매수"` returns nothing even when many nodes contain it). With the
-/// `graph-cjk` feature the substring path in [`search_nodes_cjk`] covers exactly
+/// `graph-cjk` feature the substring path in [`crate::graph::cjk::search_nodes_cjk`] covers exactly
 /// that gap, so the union is strictly better than either source alone:
 /// FTS contributes ranked multi-character hits, CJK contributes short and
 /// mid-word ones.
@@ -341,7 +341,12 @@ mod tests {
         let conn = mem_db();
         upsert_node(
             &conn,
-            &test_node("d1", "SK하이닉스 판정", "매수 의견을 유지한다", vec!["hold"]),
+            &test_node(
+                "d1",
+                "SK하이닉스 판정",
+                "매수 의견을 유지한다",
+                vec!["hold"],
+            ),
         )
         .unwrap();
 
@@ -360,7 +365,11 @@ mod tests {
         let conn = mem_db();
         upsert_node(&conn, &test_node("d1", "SK하이닉스", "매수 의견", vec![])).unwrap();
         assert!(search_nodes_hybrid(&conn, "반도체", 10).unwrap().is_empty());
-        assert!(search_nodes_hybrid(&conn, "존재하지않는단어", 10).unwrap().is_empty());
+        assert!(
+            search_nodes_hybrid(&conn, "존재하지않는단어", 10)
+                .unwrap()
+                .is_empty()
+        );
     }
 
     #[cfg(feature = "graph-cjk")]

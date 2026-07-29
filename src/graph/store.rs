@@ -93,7 +93,9 @@ pub fn read_nodes(conn: &Connection, ids: &[&str]) -> Result<Vec<GraphNode>> {
 /// `remove_edges_for_node` existed but was never called here. The transaction
 /// keeps the node deletion and edge cleanup atomic.
 pub fn delete_node(conn: &Connection, id: &str) -> Result<bool> {
-    let tx = conn.unchecked_transaction().map_err(|e| KernelError::Store(e.to_string()))?;
+    let tx = conn
+        .unchecked_transaction()
+        .map_err(|e| KernelError::Store(e.to_string()))?;
     remove_edges_for_node(&tx, id)?;
     let changed = tx
         .execute("DELETE FROM nodes WHERE id = ?1", params![id])
