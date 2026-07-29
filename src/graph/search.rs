@@ -52,27 +52,23 @@ pub fn search_nodes(conn: &Connection, query: &str, limit: usize) -> Result<Vec<
 /// FTS contributes ranked multi-character hits, CJK contributes short and
 /// mid-word ones.
 ///
-/// FTS results keep their BM25 order and come first; CJK-only hits follow. The
-/// CJK path is gated on FTS *under-filling* the limit: when FTS already has a
-/// full result set it has the strongest lexical signal (BM25-ranked multi-char
-/// matches), and a CJK substring scan can only add duplicates or weaker hits —
-/// so it is skipped. When FTS is thin or empty (the short-query case trigram
-/// drops entirely), CJK is exactly what recovers the missing matches.
-///
+/// FTS results keep their BM25 order and come first; CJK-only hits follow.
 /// Without `graph-cjk` this is exactly [`search_nodes`].
 pub fn search_nodes_hybrid(conn: &Connection, query: &str, limit: usize) -> Result<Vec<GraphNode>> {
     let mut out = search_nodes(conn, query, limit)?;
 
     #[cfg(feature = "graph-cjk")]
-    if out.len() < limit {
-        // FTS under-filled the limit — the trigram tokenizer likely dropped the
-        // short CJK query entirely. Run the substring path to recover those
-        // matches rather than returning a partial/empty result.
+    {
+        // The CJK substring path always runs: FTS and CJK match different query
+        // shapes (trigram needs ≥3 chars; CJK covers short and mid-word hits),
+        // so an FTS-only result can be non-empty yet still miss the CJK-only
+        // matches. De-dup by id and keep FTS's BM25 order first.
         use std::collections::HashSet;
         let seen: HashSet<String> = out.iter().map(|n| n.id.clone()).collect();
-        let cjk = super::cjk::search_nodes_cjk(conn, query, limit)?;
-        // Filter out FTS duplicates first so `seen` can drop before we mutate `out`.
-        let fresh: Vec<GraphNode> = cjk.into_iter().filter(|n| !seen.contains(&n.id)).collect();
+        let fresh: Vec<GraphNode> = super::cjk::search_nodes_cjk(conn, query, limit)?
+            .into_iter()
+            .filter(|n| !seen.contains(&n.id))
+            .collect();
         out.extend(fresh);
         out.truncate(limit);
     }
