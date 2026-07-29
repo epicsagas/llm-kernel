@@ -31,26 +31,22 @@ pub fn rrf_fuse_weighted(
         weights.len(),
         "rrf_fuse_weighted: result_sets and weights length must match"
     );
-    let mut scores: HashMap<String, f32> = HashMap::new();
-    let mut texts: HashMap<String, String> = HashMap::new();
+    // One map (not two) keyed by id: avoids a second lookup + `remove` per doc
+    // on the build path. `text` is taken from the first sighting of each id.
+    let mut agg: HashMap<String, (f32, String)> = HashMap::new();
 
     for (results, weight) in result_sets.iter().zip(weights.iter().copied()) {
         for (rank, result) in results.iter().enumerate() {
-            let entry = scores.entry(result.id.clone()).or_insert(0.0);
-            *entry += weight * (1.0 / (k as f32 + rank as f32 + 1.0));
-            texts
+            let entry = agg
                 .entry(result.id.clone())
-                .or_insert_with(|| result.text.clone());
+                .or_insert_with(|| (0.0, result.text.clone()));
+            entry.0 += weight * (1.0 / (k as f32 + rank as f32 + 1.0));
         }
     }
 
-    let mut fused: Vec<SearchResult> = scores
+    let mut fused: Vec<SearchResult> = agg
         .into_iter()
-        .map(|(id, score)| SearchResult {
-            text: texts.remove(&id).unwrap_or_default(),
-            id,
-            score,
-        })
+        .map(|(id, (score, text))| SearchResult { text, id, score })
         .collect();
 
     fused.sort_by(|a, b| {

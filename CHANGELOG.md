@@ -25,6 +25,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   actually emitted and failed on insert into a `vector(512)` column.
   First-generation models (`text-embedding-ada-002`) still omit the field, which
   they reject.
+- `graph/recall`: FTS-window recovery now uses a single batched `read_nodes`
+  query instead of a per-id `read_node` loop (N+1), and re-applies the
+  `RecallOptions` scope filters (`project`, `node_types`, `tags_any`, `since`,
+  `stale`) to recovered nodes. Previously a recovered node was read with no
+  `WHERE` clause, so an FTS hit outside the requested scope (e.g. a generic node
+  mentioning a symbol when `tags_any` scopes to that symbol) leaked into results.
+- `embedding/pgvector`: `PgVectorIndex::add` chunks the INSERT at 16k vectors per
+  round. A single INSERT binds 2 params per vector, so >~32k vectors overflowed
+  PostgreSQL's `u16::MAX` bound-parameter limit (65535).
+- `graph/search`: `search_nodes_hybrid` now runs the CJK substring path only when
+  FTS under-fills the limit. When FTS already returns a full BM25-ranked set the
+  CJK scan could only add duplicates or weaker hits, so it is skipped — the
+  short-CJK recovery case (trigram drops the query entirely) is unaffected.
+- `search/rrf`: `rrf_fuse_weighted` uses one `HashMap` (id → (score, text))
+  instead of two, removing a per-doc `remove` lookup on the build path.
+
+### Changed
+- `graph/search` + `graph/recall`: added unit tests for `query_nodes_ex` paging /
+  time-range / tag filters and for the recall FTS-recovery scope isolation
+  (AC1 coverage).
 
 ## [0.22.0] - 2026-07-28
 

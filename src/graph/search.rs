@@ -52,17 +52,28 @@ pub fn search_nodes(conn: &Connection, query: &str, limit: usize) -> Result<Vec<
 /// FTS contributes ranked multi-character hits, CJK contributes short and
 /// mid-word ones.
 ///
-/// FTS results keep their BM25 order and come first; CJK-only hits follow.
+/// FTS results keep their BM25 order and come first; CJK-only hits follow. The
+/// CJK path is gated on FTS *under-filling* the limit: when FTS already has a
+/// full result set it has the strongest lexical signal (BM25-ranked multi-char
+/// matches), and a CJK substring scan can only add duplicates or weaker hits —
+/// so it is skipped. When FTS is thin or empty (the short-query case trigram
+/// drops entirely), CJK is exactly what recovers the missing matches.
+///
 /// Without `graph-cjk` this is exactly [`search_nodes`].
 pub fn search_nodes_hybrid(conn: &Connection, query: &str, limit: usize) -> Result<Vec<GraphNode>> {
     let mut out = search_nodes(conn, query, limit)?;
 
     #[cfg(feature = "graph-cjk")]
-    {
+    if out.len() < limit {
+        // FTS under-filled the limit — the trigram tokenizer likely dropped the
+        // short CJK query entirely. Run the substring path to recover those
+        // matches rather than returning a partial/empty result.
         use std::collections::HashSet;
         let seen: HashSet<String> = out.iter().map(|n| n.id.clone()).collect();
         let cjk = super::cjk::search_nodes_cjk(conn, query, limit)?;
-        out.extend(cjk.into_iter().filter(|n| !seen.contains(&n.id)));
+        // Filter out FTS duplicates first so `seen` can drop before we mutate `out`.
+        let fresh: Vec<GraphNode> = cjk.into_iter().filter(|n| !seen.contains(&n.id)).collect();
+        out.extend(fresh);
         out.truncate(limit);
     }
 
@@ -394,5 +405,147 @@ mod tests {
         upsert_node(&conn, &test_node("d1", "삼성전자", "반도체 실적", vec![])).unwrap();
         // "삼성전자" is long enough for trigram AND matches the CJK substring path.
         assert_eq!(search_nodes_hybrid(&conn, "삼성전자", 10).unwrap().len(), 1);
+    }
+
+    // ── query_nodes_ex (NodeQuery) coverage ───────────────────────────────
+    // AC1: the paging/time-range/tag paths of query_nodes_ex had no direct
+    // tests — only the legacy query_nodes tag tests existed. These exercise the
+    // new structured API directly.
+
+    fn test_node_dated(id: &str, created: &str, tags: Vec<&str>) -> GraphNode {
+        GraphNode {
+            id: id.to_string(),
+            node_type: "concept".to_string(),
+            title: id.to_string(),
+            body: String::new(),
+            tags: tags.into_iter().map(|s| s.to_string()).collect(),
+            projects: vec![],
+            agents: vec![],
+            created: created.to_string(),
+            updated: created.to_string(),
+            importance: 0.7,
+            access_count: 0,
+            accessed_at: String::new(),
+        }
+    }
+
+    #[test]
+    fn query_ex_paginates_with_offset() {
+        let conn = mem_db();
+        // 5 nodes, ordered by created DESC by default.
+        for i in 1..=5 {
+            upsert_node(
+                &conn,
+                &test_node_dated(&format!("n{i}"), &format!("2026-01-0{i}T00:00:00Z"), vec![]),
+            )
+            .unwrap();
+        }
+        let page1 = query_nodes_ex(
+            &conn,
+            &NodeQuery {
+                limit: 2,
+                offset: 0,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let page2 = query_nodes_ex(
+            &conn,
+            &NodeQuery {
+                limit: 2,
+                offset: 2,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(page1.len(), 2);
+        assert_eq!(page2.len(), 2);
+        // created DESC → n5..n1; page1 = {n5,n4}, page2 = {n3,n2}, no overlap.
+        let p1: Vec<&str> = page1.iter().map(|n| n.id.as_str()).collect();
+        let p2: Vec<&str> = page2.iter().map(|n| n.id.as_str()).collect();
+        assert_eq!(p1, vec!["n5", "n4"]);
+        assert_eq!(p2, vec!["n3", "n2"]);
+        assert!(p1.iter().all(|id| !p2.contains(id)));
+    }
+
+    #[test]
+    fn query_ex_filters_by_time_range() {
+        let conn = mem_db();
+        upsert_node(
+            &conn,
+            &test_node_dated("old", "2025-06-01T00:00:00Z", vec![]),
+        )
+        .unwrap();
+        upsert_node(
+            &conn,
+            &test_node_dated("mid", "2026-01-01T00:00:00Z", vec![]),
+        )
+        .unwrap();
+        upsert_node(
+            &conn,
+            &test_node_dated("new", "2026-06-01T00:00:00Z", vec![]),
+        )
+        .unwrap();
+
+        let in_window = query_nodes_ex(
+            &conn,
+            &NodeQuery {
+                since: Some("2026-01-01T00:00:00Z".to_string()),
+                until: Some("2026-06-01T00:00:00Z".to_string()),
+                limit: 50,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let ids: Vec<&str> = in_window.iter().map(|n| n.id.as_str()).collect();
+        // since is inclusive (>=), until exclusive (<): only "mid" qualifies.
+        assert_eq!(ids, vec!["mid"]);
+    }
+
+    #[test]
+    fn query_ex_filters_by_tag() {
+        let conn = mem_db();
+        upsert_node(
+            &conn,
+            &test_node_dated("n1", "2026-01-01T00:00:00Z", vec!["AAPL"]),
+        )
+        .unwrap();
+        upsert_node(
+            &conn,
+            &test_node_dated("n2", "2026-01-02T00:00:00Z", vec!["MSFT"]),
+        )
+        .unwrap();
+        let results = query_nodes_ex(
+            &conn,
+            &NodeQuery {
+                tag: Some("AAPL".to_string()),
+                limit: 50,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let ids: Vec<&str> = results.iter().map(|n| n.id.as_str()).collect();
+        assert_eq!(ids, vec!["n1"]);
+    }
+
+    #[test]
+    fn query_ex_respects_limit_cap() {
+        let conn = mem_db();
+        upsert_node(
+            &conn,
+            &test_node_dated("n1", "2026-01-01T00:00:00Z", vec![]),
+        )
+        .unwrap();
+        // Request 10_000 rows — server-side cap must clamp to 200.
+        let results = query_nodes_ex(
+            &conn,
+            &NodeQuery {
+                limit: 10_000,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert!(results.len() <= 200);
+        assert_eq!(results.len(), 1); // only one node exists
     }
 }

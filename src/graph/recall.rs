@@ -9,7 +9,7 @@ use crate::error::{KernelError, Result};
 use super::algo::{CsrGraph, pagerank_default};
 use super::lifecycle::{parse_iso_to_secs, touch_nodes};
 use super::search::search_nodes_hybrid;
-use super::store::{edges_among, read_node};
+use super::store::{edges_among, read_nodes};
 use super::types::{NODE_COLUMNS, ScoredNode, escape_like};
 
 /// Weight applied to recency in the composite relevance score.
@@ -165,16 +165,24 @@ pub fn smart_recall_with(conn: &Connection, opts: &RecallOptions) -> Result<Vec<
     // the reason `W_FTS` was effectively unreachable on larger graphs.
     if !fts_ids.is_empty() {
         candidates.retain(|n| fts_ids.contains(&n.id));
-        // Pull in matches the importance-ordered window missed.
+        // Pull in matches the importance-ordered window missed — in ONE batched
+        // query, not a per-id `read_node` loop (which was both an N+1 and a
+        // filter bypass: the recovered nodes were read with no WHERE clause, so
+        // an FTS hit that happened to fall outside the scope filter — e.g. a
+        // generic node mentioning the symbol when `tags_any` scopes to that
+        // symbol — leaked into results). The same `where_clause` is re-applied
+        // client-side to the recovered nodes, keeping recall scope-tight.
         let present: HashSet<&str> = candidates.iter().map(|n| n.id.as_str()).collect();
-        let missing: Vec<String> = fts_ids
+        let missing: Vec<&str> = fts_ids
             .iter()
-            .filter(|id| !present.contains(id.as_str()))
-            .cloned()
+            .map(String::as_str)
+            .filter(|id| !present.contains(*id))
             .collect();
-        for id in missing {
-            if let Ok(Some(node)) = read_node(conn, &id) {
-                candidates.push(node);
+        if !missing.is_empty() {
+            for node in read_nodes(conn, &missing).unwrap_or_default() {
+                if passes_scope_filters(&node, opts) {
+                    candidates.push(node);
+                }
             }
         }
     }
@@ -259,6 +267,46 @@ pub fn compute_recency(updated: &str, now_secs: u64) -> f64 {
     let age_days = (now_secs - node_secs) as f64 / 86400.0;
     let half_life = 30.0;
     (-age_days * (2.0_f64.ln()) / half_life).exp()
+}
+
+/// Re-apply the [`RecallOptions`] scope filters to a node recovered outside the
+/// candidate query (the FTS-window recovery path).
+///
+/// Mirrors the SQL `where_clause` built in [`smart_recall_with`] (stale
+/// exclusion, project, node_types, tags_any, since) so a recovered node can
+/// never widen the result set beyond the requested scope. Kept in lock-step
+/// with that query: if a filter is added there, add it here too.
+fn passes_scope_filters(node: &super::types::GraphNode, opts: &RecallOptions) -> bool {
+    // stale exclusion: tags CSV contains "stale"
+    if node.tags.iter().any(|t| t == "stale") {
+        return false;
+    }
+    if let Some(p) = &opts.project
+        && !node.projects.iter().any(|np| np == p)
+    {
+        return false;
+    }
+    if !opts.node_types.is_empty() && !opts.node_types.contains(&node.node_type) {
+        return false;
+    }
+    if !opts.tags_any.is_empty()
+        && !opts
+            .tags_any
+            .iter()
+            .any(|t| node.tags.iter().any(|nt| nt == t))
+    {
+        return false;
+    }
+    if let Some(s) = &opts.since {
+        // Lexicographic compare is valid for ISO8601/Zulu timestamps of equal
+        // shape (what upsert_node writes). Mismatched shapes would compare
+        // wrong, but the candidate query uses the same `created >= ?` semantics,
+        // so this stays consistent with it.
+        if node.created.as_str() < s.as_str() {
+            return false;
+        }
+    }
+    true
 }
 
 #[cfg(test)]
@@ -398,5 +446,72 @@ mod tests {
         // "my%" would match "myproj" as a LIKE wildcard, but escape_like prevents it
         let results = smart_recall(&conn, Some("my%"), None, 10).unwrap();
         assert!(results.is_empty());
+    }
+
+    #[test]
+    fn recall_fts_recovery_respects_tag_scope() {
+        // Regression for the scope-bypass blocker: an FTS hint that also matches
+        // an out-of-scope node must NOT pull that node in via the recovery path.
+        //
+        // Setup: n1 is symbol-scoped (tag "AAPL"), low importance; n2 mentions
+        // "AAPL" in its body but is NOT tagged "AAPL" and has high importance.
+        // With `tags_any = ["AAPL"]` + hint "AAPL", the FTS window recovers both
+        // ids, but only n1 should survive — n2 fails the tag scope filter.
+        let conn = mem_db();
+        let mut n1 = test_node("n1", 0.1, vec!["AAPL"]);
+        n1.title = "AAPL position".to_string();
+        n1.body = "earnings call notes".to_string();
+        upsert_node(&conn, &n1).unwrap();
+
+        let mut n2 = test_node("n2", 0.99, vec![]);
+        n2.title = "Market commentary".to_string();
+        n2.body = "AAPL mentioned in passing".to_string();
+        upsert_node(&conn, &n2).unwrap();
+
+        let opts = RecallOptions {
+            hint: Some("AAPL".to_string()),
+            tags_any: vec!["AAPL".to_string()],
+            limit: 10,
+            ..Default::default()
+        };
+        let results = smart_recall_with(&conn, &opts).unwrap();
+        let ids: Vec<&str> = results.iter().map(|s| s.node.id.as_str()).collect();
+        assert!(
+            ids.iter().all(|id| *id != "n2"),
+            "out-of-scope n2 must not leak via FTS recovery; got {ids:?}"
+        );
+        assert!(
+            ids.contains(&"n1"),
+            "in-scope n1 must be present; got {ids:?}"
+        );
+    }
+
+    #[test]
+    fn recall_fts_recovery_respects_project_scope() {
+        // Same bypass, project dimension: a recovered node in the wrong project
+        // is dropped.
+        let conn = mem_db();
+        let mut n1 = test_node("n1", 0.1, vec![]);
+        n1.title = "AAPL note".to_string();
+        n1.projects = vec!["projA".to_string()];
+        upsert_node(&conn, &n1).unwrap();
+
+        let mut n2 = test_node("n2", 0.99, vec![]);
+        n2.title = "AAPL cross-ref".to_string();
+        n2.projects = vec!["projB".to_string()];
+        upsert_node(&conn, &n2).unwrap();
+
+        let opts = RecallOptions {
+            project: Some("projA".to_string()),
+            hint: Some("AAPL".to_string()),
+            limit: 10,
+            ..Default::default()
+        };
+        let results = smart_recall_with(&conn, &opts).unwrap();
+        let ids: Vec<&str> = results.iter().map(|s| s.node.id.as_str()).collect();
+        assert!(
+            ids.iter().all(|id| *id != "n2"),
+            "wrong-project n2 must not leak via FTS recovery; got {ids:?}"
+        );
     }
 }
