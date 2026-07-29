@@ -34,10 +34,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `embedding/pgvector`: `PgVectorIndex::add` chunks the INSERT at 16k vectors per
   round. A single INSERT binds 2 params per vector, so >~32k vectors overflowed
   PostgreSQL's `u16::MAX` bound-parameter limit (65535).
-- `graph/search`: `search_nodes_hybrid` now runs the CJK substring path only when
-  FTS under-fills the limit. When FTS already returns a full BM25-ranked set the
-  CJK scan could only add duplicates or weaker hits, so it is skipped — the
-  short-CJK recovery case (trigram drops the query entirely) is unaffected.
+- `graph/search`: `search_nodes_hybrid` always runs the CJK substring path and
+  unions it with the FTS results, de-duplicated by id (FTS BM25 order first, then
+  CJK-only hits). FTS and CJK match different query shapes — trigram needs ≥3
+  chars while CJK covers short and mid-word hits — so an FTS-only result can be
+  non-empty yet still miss CJK-only matches. The short-CJK recovery case
+  (trigram drops the query entirely) is covered.
 - `search/rrf`: `rrf_fuse_weighted` uses one `HashMap` (id → (score, text))
   instead of two, removing a per-doc `remove` lookup on the build path.
 
