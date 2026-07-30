@@ -26,6 +26,11 @@ impl SparseVector {
     /// Zero weights are dropped and the remaining elements are sorted by index.
     /// Returns `None` when the two slices disagree in length — a mismatch means
     /// the caller lost the pairing and silently truncating would corrupt scores.
+    ///
+    /// Both `+0.0` and `-0.0` are dropped: `v != 0.0` is `false` for both
+    /// (`-0.0 == 0.0` per IEEE-754), so a signed zero cannot sneak through and
+    /// later tie-break against a genuinely nonzero weight in
+    /// [`prune_top_k`](Self::prune_top_k).
     pub fn new(indices: Vec<u32>, values: Vec<f32>) -> Option<Self> {
         if indices.len() != values.len() {
             return None;
@@ -33,6 +38,7 @@ impl SparseVector {
         let mut pairs: Vec<(u32, f32)> = indices
             .into_iter()
             .zip(values)
+            // `!= 0.0` admits neither +0.0 nor -0.0 (IEEE-754: -0.0 == 0.0).
             .filter(|(_, v)| *v != 0.0)
             .collect();
         pairs.sort_unstable_by_key(|(i, _)| *i);
@@ -107,6 +113,16 @@ mod tests {
         assert_eq!(sv.values(), &[0.9, 0.2]);
         assert_eq!(sv.nnz(), 2);
         assert!(!sv.is_empty());
+    }
+
+    #[test]
+    fn new_drops_signed_zero() {
+        // IEEE-754 makes `-0.0 == 0.0`, so `!= 0.0` filters the signed zero
+        // just like the unsigned one. A signed zero carries no weight and would
+        // otherwise tie-break against a real near-zero value in `prune_top_k`.
+        let sv = SparseVector::new(vec![1, 2], vec![-0.0, 0.5]).unwrap();
+        assert_eq!(sv.indices(), &[2]);
+        assert_eq!(sv.values(), &[0.5]);
     }
 
     #[test]

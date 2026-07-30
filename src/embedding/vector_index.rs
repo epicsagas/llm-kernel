@@ -48,6 +48,23 @@ impl PartialOrd for SearchHit {
 /// similarity measures (cosine vs inner product) or wildly different scales;
 /// [`Weighted`](Fusion::Weighted) sums raw scores and therefore assumes the
 /// branches are already on a shared scale.
+///
+/// # Which to use for dense + sparse
+///
+/// A dense branch scores by **cosine similarity** (range roughly `0.0`–`1.0`)
+/// while a learned-lexical sparse branch scores by **inner product** (BGE-M3
+/// sparse weights commonly sum to the tens or hundreds). Their scales do not
+/// agree, so fusing them with [`Weighted`](Fusion::Weighted) directly lets the
+/// sparse branch dominate regardless of the chosen weights. Prefer
+/// [`Rrf`](Fusion::Rrf) when the branches disagree on scale — it is the
+/// default for exactly this reason. If you need [`Weighted`](Fusion::Weighted),
+/// **normalize each branch to a shared scale first** (e.g. min-max to `[0,1]`,
+/// or softmax over the branch's scores).
+///
+/// Scores are carried in [`SearchHit`] as `f32`. Inner-product scores are large
+/// enough that the `f64 → f32` narrowing in the backends can lose precision in
+/// the low digits; this does not affect [`Rrf`](Fusion::Rrf) (rank-only) but is
+/// a further reason to normalize before [`Weighted`](Fusion::Weighted).
 #[derive(Debug, Clone, PartialEq)]
 pub enum Fusion {
     /// Reciprocal Rank Fusion: `score(d) = Σ 1 / (k + rank_i(d))` over the
@@ -60,6 +77,10 @@ pub enum Fusion {
     },
     /// Convex combination of raw scores, one weight per input list. A list
     /// that does not contain a hit contributes nothing for it.
+    ///
+    /// **All input lists must share a score scale.** Do not fuse a cosine
+    /// branch with a raw inner-product branch without normalizing first — see
+    /// the type-level docs and [`Rrf`](Fusion::Rrf) for the scale-safe option.
     Weighted {
         /// One weight per input list, in the same order as the lists passed to
         /// [`fuse`](Fusion::fuse).
@@ -69,6 +90,10 @@ pub enum Fusion {
 
 impl Fusion {
     /// Reciprocal Rank Fusion with the conventional `k = 60`.
+    ///
+    /// This is the recommended default for hybrid dense + sparse retrieval:
+    /// being rank-only, it is unaffected by the mismatched score scales of
+    /// cosine and inner product. See the [`Fusion`] type docs.
     pub fn rrf() -> Self {
         Fusion::Rrf { k: 60 }
     }

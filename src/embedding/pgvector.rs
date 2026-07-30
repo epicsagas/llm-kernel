@@ -277,8 +277,12 @@ impl crate::embedding::AsyncVectorIndex for PgVectorIndex {
         let q = vec_literal(query);
         let ty = self.sql_type();
         // cosine distance <=> : 0 (동일) .. 2 (반대). score = 1 - distance.
+        // `ORDER BY ..., id` keeps ties deterministic so the per-branch rank order
+        // that RRF feeds on is stable across branches (pgvector's own tie order
+        // is otherwise index-scan dependent and unstable).
         let rows: Vec<ScoreRow> = sqlx::query_as(&format!(
-            "SELECT id, 1 - (vec <=> $1::{ty}) AS score FROM {} ORDER BY vec <=> $1::{ty} LIMIT $2",
+            "SELECT id, 1 - (vec <=> $1::{ty}) AS score FROM {} \
+             ORDER BY vec <=> $1::{ty}, id LIMIT $2",
             self.table
         ))
         .bind(q)
@@ -312,7 +316,7 @@ impl crate::embedding::AsyncVectorIndex for PgVectorIndex {
             .collect::<Result<_>>()?;
         let rows: Vec<ScoreRow> = sqlx::query_as(&format!(
             "SELECT id, 1 - (vec <=> $1::{ty}) AS score FROM {} WHERE id = ANY($2) \
-             ORDER BY vec <=> $1::{ty} LIMIT $3",
+             ORDER BY vec <=> $1::{ty}, id LIMIT $3",
             self.table
         ))
         .bind(q)
@@ -347,6 +351,12 @@ impl crate::embedding::AsyncVectorIndex for PgVectorIndex {
 ///
 /// pgvector's text form uses **1-based** indices while models emit 0-based
 /// vocabulary positions, so every index is shifted by one on the way out.
+///
+/// Weights use `f32::to_string`, which yields the shortest string that
+/// round-trips back to the same `f32` (Rust's `Display` guarantee). pgvector
+/// parses the literal as `float8` (f64), so no extra precision is lost in
+/// transit beyond what `f32` already discards. The same holds for dense
+/// [`vec_literal`].
 fn sparse_literal(v: &SparseVector, dim: usize) -> String {
     let mut s = String::from("{");
     for (n, (idx, val)) in v.indices().iter().zip(v.values()).enumerate() {
@@ -467,10 +477,11 @@ impl PgSparseVectorIndex {
         }
         let q = sparse_literal(query, self.dim);
         // `<#>` yields the *negative* inner product, so ascending order is most
-        // similar first; negate it back into a positive similarity score.
+        // similar first; negate it back into a positive similarity score. The
+        // `id` tie-break mirrors the dense index so RRF sees stable ranks.
         let rows: Vec<ScoreRow> = sqlx::query_as(&format!(
             "SELECT id, -(vec <#> $1::sparsevec) AS score FROM {} \
-             ORDER BY vec <#> $1::sparsevec LIMIT $2",
+             ORDER BY vec <#> $1::sparsevec, id LIMIT $2",
             self.table
         ))
         .bind(q)
@@ -504,7 +515,7 @@ impl PgSparseVectorIndex {
             .collect::<Result<_>>()?;
         let rows: Vec<ScoreRow> = sqlx::query_as(&format!(
             "SELECT id, -(vec <#> $1::sparsevec) AS score FROM {} WHERE id = ANY($2) \
-             ORDER BY vec <#> $1::sparsevec LIMIT $3",
+             ORDER BY vec <#> $1::sparsevec, id LIMIT $3",
             self.table
         ))
         .bind(q)

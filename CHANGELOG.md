@@ -41,6 +41,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   actually emitted and failed on insert into a `vector(512)` column.
   First-generation models (`text-embedding-ada-002`) still omit the field, which
   they reject.
+- `embedding/pgvector`: dense and sparse `search`/`search_filtered` now carry an
+  `ORDER BY …, id` tie-break, so equal-distance/equal-inner-product rows resolve
+  to a stable order. Without it the per-branch rank order that RRF feeds on was
+  index-scan dependent and could drift between the dense and sparse branches.
+- `embedding/vector_index`: `Fusion` docs now call out that dense cosine and
+  sparse inner-product scores disagree on scale, so `Weighted` must not combine
+  them raw — normalize first, or use `Rrf` (the scale-safe default). Also notes
+  the `f64 → f32` score narrowing as a further reason to normalize.
+- `embedding/sparse`: documented that `SparseVector::new` drops both `+0.0` and
+  `-0.0` (`-0.0 == 0.0` per IEEE-754), and added a regression test for the
+  signed-zero case.
 
 ## [0.21.0] - 2026-07-28
 
