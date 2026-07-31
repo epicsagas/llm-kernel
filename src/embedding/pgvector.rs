@@ -15,6 +15,7 @@ use sqlx::PgPool;
 use sqlx::QueryBuilder;
 use sqlx::postgres::PgPoolOptions;
 
+use crate::embedding::sparse::SparseVector;
 use crate::embedding::vector_index::SearchHit;
 use crate::error::{KernelError, Result};
 
@@ -288,8 +289,12 @@ impl crate::embedding::AsyncVectorIndex for PgVectorIndex {
         let q = vec_literal(query);
         let ty = self.sql_type();
         // cosine distance <=> : 0 (동일) .. 2 (반대). score = 1 - distance.
+        // `ORDER BY ..., id` keeps ties deterministic so the per-branch rank order
+        // that RRF feeds on is stable across branches (pgvector's own tie order
+        // is otherwise index-scan dependent and unstable).
         let rows: Vec<ScoreRow> = sqlx::query_as(&format!(
-            "SELECT id, 1 - (vec <=> $1::{ty}) AS score FROM {} ORDER BY vec <=> $1::{ty} LIMIT $2",
+            "SELECT id, 1 - (vec <=> $1::{ty}) AS score FROM {} \
+             ORDER BY vec <=> $1::{ty}, id LIMIT $2",
             self.table
         ))
         .bind(q)
@@ -323,7 +328,7 @@ impl crate::embedding::AsyncVectorIndex for PgVectorIndex {
             .collect::<Result<_>>()?;
         let rows: Vec<ScoreRow> = sqlx::query_as(&format!(
             "SELECT id, 1 - (vec <=> $1::{ty}) AS score FROM {} WHERE id = ANY($2) \
-             ORDER BY vec <=> $1::{ty} LIMIT $3",
+             ORDER BY vec <=> $1::{ty}, id LIMIT $3",
             self.table
         ))
         .bind(q)
@@ -351,6 +356,237 @@ impl crate::embedding::AsyncVectorIndex for PgVectorIndex {
 
     fn dim(&self) -> usize {
         self.dim
+    }
+}
+
+/// `SparseVector` → pgvector `sparsevec` literal `{i:v,…}/dim`.
+///
+/// pgvector's text form uses **1-based** indices while models emit 0-based
+/// vocabulary positions, so every index is shifted by one on the way out.
+///
+/// Weights use `f32::to_string`, which yields the shortest string that
+/// round-trips back to the same `f32` (Rust's `Display` guarantee). pgvector
+/// parses the literal as `float8` (f64), so no extra precision is lost in
+/// transit beyond what `f32` already discards. The same holds for dense
+/// [`vec_literal`].
+fn sparse_literal(v: &SparseVector, dim: usize) -> String {
+    let mut s = String::from("{");
+    for (n, (idx, val)) in v.indices().iter().zip(v.values()).enumerate() {
+        if n > 0 {
+            s.push(',');
+        }
+        s.push_str(&(u64::from(*idx) + 1).to_string());
+        s.push(':');
+        s.push_str(&val.to_string());
+    }
+    s.push('}');
+    s.push('/');
+    s.push_str(&dim.to_string());
+    s
+}
+
+/// PostgreSQL **sparse** vector index — the lexical half of hybrid retrieval.
+///
+/// Stores `sparsevec(N)` rows (`N` = vocabulary size, e.g. 250 002 for BGE-M3's
+/// XLM-R vocabulary) and ranks by inner product, which is how learned-lexical
+/// weights (BGE-M3 sparse, SPLADE) are scored. Deliberately *not* an
+/// [`AsyncVectorIndex`](crate::embedding::AsyncVectorIndex) — that trait speaks
+/// dense `Vec<f32>`. Pair it with a [`PgVectorIndex`] and combine the two
+/// result lists with [`Fusion`](crate::embedding::Fusion).
+///
+/// Requires the `pgvector` extension ≥ 0.7 (`sparsevec` + `sparsevec_ip_ops`).
+/// pgvector caps the number of non-zero elements it will index, so prune long
+/// lexical vectors with [`SparseVector::prune_top_k`] before inserting.
+pub struct PgSparseVectorIndex {
+    pool: PgPool,
+    table: String,
+    dim: usize,
+}
+
+impl PgSparseVectorIndex {
+    /// Connect and create the `sparsevec` table + HNSW inner-product index.
+    ///
+    /// `dim` is the vocabulary size and is enforced by the `sparsevec(dim)`
+    /// column; vectors carrying an index ≥ `dim` are rejected on insert.
+    pub async fn new(url: &str, table: &str, dim: usize) -> Result<Self> {
+        validate_table_name(table)?;
+        let pool = PgPoolOptions::new()
+            .max_connections(8)
+            .connect(url)
+            .await
+            .map_err(|e| KernelError::Embedding(format!("pgvector sparse connect: {e}")))?;
+        let idx = Self {
+            pool,
+            table: table.to_string(),
+            dim,
+        };
+        sqlx::query(&format!(
+            "CREATE TABLE IF NOT EXISTS {} (id BIGINT PRIMARY KEY, vec sparsevec({}) NOT NULL)",
+            idx.table, idx.dim
+        ))
+        .execute(&idx.pool)
+        .await
+        .map_err(|e| KernelError::Embedding(format!("pgvector sparse create table: {e}")))?;
+        sqlx::query(&format!(
+            "CREATE INDEX IF NOT EXISTS idx_{}_vec ON {} USING hnsw (vec sparsevec_ip_ops)",
+            idx.table, idx.table
+        ))
+        .execute(&idx.pool)
+        .await
+        .map_err(|e| KernelError::Embedding(format!("pgvector sparse hnsw index: {e}")))?;
+        Ok(idx)
+    }
+
+    /// Vocabulary size of the indexed vectors.
+    pub fn dim(&self) -> usize {
+        self.dim
+    }
+
+    /// Underlying connection pool — see [`PgVectorIndex::pool`].
+    pub fn pool(&self) -> &PgPool {
+        &self.pool
+    }
+
+    /// Upsert sparse vectors by external ID.
+    pub async fn add(&self, vectors: &[SparseVector], ids: &[u64]) -> Result<()> {
+        if vectors.len() != ids.len() {
+            return Err(KernelError::Embedding(format!(
+                "vectors.len() ({}) must equal ids.len() ({})",
+                vectors.len(),
+                ids.len()
+            )));
+        }
+        if vectors.is_empty() {
+            return Ok(());
+        }
+        let pg_ids: Vec<i64> = ids.iter().map(|&id| to_pg_id(id)).collect::<Result<_>>()?;
+        let mut q = QueryBuilder::new("INSERT INTO ");
+        q.push(self.table.as_str());
+        q.push(" (id, vec) VALUES ");
+        for (i, (v, &id)) in vectors.iter().zip(pg_ids.iter()).enumerate() {
+            if i > 0 {
+                q.push(", ");
+            }
+            q.push("(");
+            q.push_bind(id);
+            q.push(", ");
+            q.push_bind(sparse_literal(v, self.dim));
+            q.push("::sparsevec)");
+        }
+        q.push(" ON CONFLICT (id) DO UPDATE SET vec = EXCLUDED.vec");
+        q.build()
+            .execute(&self.pool)
+            .await
+            .map_err(|e| KernelError::Embedding(format!("pgvector sparse add: {e}")))?;
+        Ok(())
+    }
+
+    /// Top-`k` by inner product. An empty query matches nothing by definition
+    /// (its inner product with every row is zero), so it short-circuits.
+    pub async fn search(&self, query: &SparseVector, k: usize) -> Result<Vec<SearchHit>> {
+        if query.is_empty() {
+            return Ok(Vec::new());
+        }
+        let q = sparse_literal(query, self.dim);
+        // `<#>` yields the *negative* inner product, so ascending order is most
+        // similar first; negate it back into a positive similarity score. The
+        // `id` tie-break mirrors the dense index so RRF sees stable ranks.
+        let rows: Vec<ScoreRow> = sqlx::query_as(&format!(
+            "SELECT id, -(vec <#> $1::sparsevec) AS score FROM {} \
+             ORDER BY vec <#> $1::sparsevec, id LIMIT $2",
+            self.table
+        ))
+        .bind(q)
+        .bind(k as i64)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| KernelError::Embedding(format!("pgvector sparse search: {e}")))?;
+        Ok(rows
+            .into_iter()
+            .map(|r| SearchHit {
+                id: r.id as u64,
+                score: r.score as f32,
+            })
+            .collect())
+    }
+
+    /// Top-`k` by inner product, restricted to `allowlist`.
+    pub async fn search_filtered(
+        &self,
+        query: &SparseVector,
+        k: usize,
+        allowlist: &[u64],
+    ) -> Result<Vec<SearchHit>> {
+        if query.is_empty() || allowlist.is_empty() {
+            return Ok(Vec::new());
+        }
+        let q = sparse_literal(query, self.dim);
+        let allow: Vec<i64> = allowlist
+            .iter()
+            .map(|&i| to_pg_id(i))
+            .collect::<Result<_>>()?;
+        let rows: Vec<ScoreRow> = sqlx::query_as(&format!(
+            "SELECT id, -(vec <#> $1::sparsevec) AS score FROM {} WHERE id = ANY($2) \
+             ORDER BY vec <#> $1::sparsevec, id LIMIT $3",
+            self.table
+        ))
+        .bind(q)
+        .bind(&allow)
+        .bind(k as i64)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| KernelError::Embedding(format!("pgvector sparse search_filtered: {e}")))?;
+        Ok(rows
+            .into_iter()
+            .map(|r| SearchHit {
+                id: r.id as u64,
+                score: r.score as f32,
+            })
+            .collect())
+    }
+
+    /// Remove vectors by external ID.
+    pub async fn remove(&self, ids: &[u64]) -> Result<()> {
+        if ids.is_empty() {
+            return Ok(());
+        }
+        let ids: Vec<i64> = ids.iter().map(|&i| to_pg_id(i)).collect::<Result<_>>()?;
+        sqlx::query(&format!("DELETE FROM {} WHERE id = ANY($1)", self.table))
+            .bind(&ids)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| KernelError::Embedding(format!("pgvector sparse remove: {e}")))?;
+        Ok(())
+    }
+
+    /// Remove within a caller-provided transaction — see
+    /// [`PgVectorIndex::remove_in_tx`]. Lets a dense index, a sparse index and
+    /// the caller's own tables be pruned atomically together.
+    pub async fn remove_in_tx(&self, tx: &mut sqlx::PgConnection, ids: &[u64]) -> Result<()> {
+        if ids.is_empty() {
+            return Ok(());
+        }
+        let ids: Vec<i64> = ids.iter().map(|&i| to_pg_id(i)).collect::<Result<_>>()?;
+        sqlx::query(&format!("DELETE FROM {} WHERE id = ANY($1)", self.table))
+            .bind(&ids)
+            .execute(tx)
+            .await
+            .map_err(|e| KernelError::Embedding(format!("pgvector sparse remove_in_tx: {e}")))?;
+        Ok(())
+    }
+
+    /// Number of stored vectors.
+    pub async fn len(&self) -> Result<usize> {
+        let n: i64 = sqlx::query_scalar(&format!("SELECT count(*) FROM {}", self.table))
+            .fetch_one(&self.pool)
+            .await
+            .map_err(|e| KernelError::Embedding(format!("pgvector sparse len: {e}")))?;
+        Ok(n as usize)
+    }
+
+    /// Whether the index holds no vectors.
+    pub async fn is_empty(&self) -> Result<bool> {
+        Ok(self.len().await? == 0)
     }
 }
 
@@ -534,6 +770,54 @@ mod tests {
         assert!(validate_table_name("rm; DROP").is_err());
         assert!(validate_table_name("weird\"name").is_err());
         assert!(validate_table_name("sch.tbl").is_err());
+    }
+
+    /// pgvector's `sparsevec` text form is 1-based; model indices are 0-based.
+    #[test]
+    fn sparse_literal_is_one_based() {
+        let sv = SparseVector::new(vec![0, 2], vec![0.5, 0.25]).unwrap();
+        assert_eq!(sparse_literal(&sv, 5), "{1:0.5,3:0.25}/5");
+    }
+
+    #[test]
+    fn sparse_literal_handles_empty() {
+        assert_eq!(sparse_literal(&SparseVector::default(), 5), "{}/5");
+    }
+
+    /// Sparse index roundtrip: inner-product ranking, empty-query
+    /// short-circuit, and delete. Requires pgvector ≥ 0.7 for `sparsevec`.
+    #[tokio::test]
+    async fn roundtrip_sparse() {
+        let Some(url) = pg_url() else {
+            eprintln!("skip pgvector sparse test: LLMKERNEL_PG_URL unset");
+            return;
+        };
+        let table = format!("lk_test_sp_{}", line!());
+        let idx = PgSparseVectorIndex::new(&url, &table, 10)
+            .await
+            .expect("new sparse");
+
+        let a = SparseVector::new(vec![0, 3], vec![1.0, 0.5]).unwrap();
+        let b = SparseVector::new(vec![3, 7], vec![0.5, 1.0]).unwrap();
+        idx.add(&[a.clone(), b], &[10, 20]).await.expect("add");
+        assert_eq!(idx.len().await.unwrap(), 2);
+
+        // Querying with `a` itself must rank id 10 first (largest dot product).
+        let hits = idx.search(&a, 1).await.unwrap();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].id, 10);
+
+        // An all-zero query has zero inner product with everything.
+        let empty = idx.search(&SparseVector::default(), 5).await.unwrap();
+        assert!(empty.is_empty());
+
+        idx.remove(&[10]).await.unwrap();
+        assert_eq!(idx.len().await.unwrap(), 1);
+
+        sqlx::query(&format!("DROP TABLE IF EXISTS {}", table))
+            .execute(idx.pool())
+            .await
+            .ok();
     }
 
     #[test]

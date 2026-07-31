@@ -12,6 +12,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (float16) variant, ~half the RAM of `vector` with negligible recall loss for
   cosine similarity. Requires the `pgvector` extension ≥ 0.6 (`halfvec` type +
   `halfvec_cosine_ops`). `new` (float32 `vector`) is unchanged.
+- `embedding/bgem3`: `Bgem3Provider` — BGE-M3 joint embedding, returning a dense
+  vector and a learned-lexical `SparseVector` from a single pass (no second
+  model and no separate BM25 index). Input is sliced into capped runs because
+  fastembed's BGE-M3 graph always emits a ColBERT output and accumulates it per
+  call (~2 MB per 512-token chunk); the provider drops it immediately, keeping
+  bulk indexing memory flat. Optional `with_sparse_top_k` pruning for stores
+  that bound non-zero counts.
+- `embedding/sparse`: `SparseVector` — sparse (lexical) vector type for hybrid
+  retrieval, kept index-sorted and zero-free, with `prune_top_k` to bound the
+  non-zero count that pgvector will accept into an HNSW index.
+- `embedding/vector_index`: `Fusion` — `Rrf { k }` / `Weighted { weights }` over
+  `SearchHit` lists, the join point for dense + sparse hybrid search. RRF is
+  rank-only (safe across different score scales); weighted sums raw scores.
+- `embedding/pgvector`: `PgSparseVectorIndex` — `sparsevec(N)` storage with an
+  inner-product HNSW index (`sparsevec_ip_ops`), mirroring `PgVectorIndex`'s
+  add/search/remove/`remove_in_tx` surface. Requires pgvector ≥ 0.7.
 - `embedding/pgvector`: `PgVectorOpts` + `PgVectorIndex::new_with_opts` — HNSW
   tuning. `m` / `ef_construction` are applied to `CREATE INDEX` (new indexes
   only); `hnsw.ef_search` — the main query-time recall/latency knob — is set on
@@ -25,6 +41,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   actually emitted and failed on insert into a `vector(512)` column.
   First-generation models (`text-embedding-ada-002`) still omit the field, which
   they reject.
+- `embedding/pgvector`: dense and sparse `search`/`search_filtered` now carry an
+  `ORDER BY …, id` tie-break, so equal-distance/equal-inner-product rows resolve
+  to a stable order. Without it the per-branch rank order that RRF feeds on was
+  index-scan dependent and could drift between the dense and sparse branches.
+- `embedding/vector_index`: `Fusion` docs now call out that dense cosine and
+  sparse inner-product scores disagree on scale, so `Weighted` must not combine
+  them raw — normalize first, or use `Rrf` (the scale-safe default). Also notes
+  the `f64 → f32` score narrowing as a further reason to normalize.
+- `embedding/sparse`: documented that `SparseVector::new` drops both `+0.0` and
+  `-0.0` (`-0.0 == 0.0` per IEEE-754), and added a regression test for the
+  signed-zero case.
 - `graph/recall`: FTS-window recovery now uses a single batched `read_nodes`
   query instead of a per-id `read_node` loop (N+1), and re-applies the
   `RecallOptions` scope filters (`project`, `node_types`, `tags_any`, `since`,

@@ -335,6 +335,24 @@ Extends `GraphBackend` from an AI-memory-recall layer into a **general directed-
 
 ---
 
+### v0.23.0 — Hybrid Retrieval ✅ (staged, PR #80 + #81; v0.22.0 shipped as the graph release, so this lands as 0.23.0)
+
+Makes **dense + lexical hybrid retrieval** a first-class path, and cuts the RAM a large index needs. Driven by a Korean-law RAG workload (~3.4M chunks, BGE-M3 1024-dim) where dense-only search misses exact statute references and the whole index has to fit an always-on box. Everything is additive — `PgVectorIndex::new` and existing call sites are untouched (`semver-checks` green).
+
+| # | Deliverable | Scope | Key Files |
+|---|-------------|-------|-----------|
+| 1 | `PgVectorIndex::new_halfvec` — `halfvec` (float16) storage: ~half the RAM of `vector` at negligible cosine recall loss (pgvector ≥ 0.6) | S | `src/embedding/pgvector.rs` |
+| 2 | `PgVectorOpts` + `new_with_opts` — HNSW `m` / `ef_construction` at index creation, plus `hnsw.ef_search` on every pooled connection (the query-time recall/latency knob, previously unreachable) | M | `src/embedding/pgvector.rs` |
+| 3 | Send the `dimensions` parameter for `text-embedding-3-*` — a configured `dim` was metadata only, so Matryoshka shortening silently disagreed with the vectors actually emitted | S | `src/embedding/openai.rs` |
+| 4 | `SparseVector` — index-sorted, zero-free lexical vector with `prune_top_k` to bound the non-zero count pgvector will index | S | `src/embedding/sparse.rs` |
+| 5 | `Fusion` — `Rrf { k }` / `Weighted { weights }` over `SearchHit`, switchable at runtime; rank-based RRF stays valid across mismatched score scales (cosine vs inner product) | S | `src/embedding/vector_index.rs` |
+| 6 | `PgSparseVectorIndex` — `sparsevec(N)` + `sparsevec_ip_ops` HNSW, mirroring the dense index surface (pgvector ≥ 0.7) | M | `src/embedding/pgvector.rs` |
+| 7 | `Bgem3Provider` — BGE-M3 joint dense + sparse from one pass; input is sliced into capped runs because fastembed always emits *and accumulates* a ColBERT output (~2 MB per 512-token chunk), which would otherwise exhaust memory on bulk indexing | M | `src/embedding/bgem3.rs` |
+
+**Exit criteria:** `new()` behaviour unchanged (`PgVectorOpts::default()` reproduces the old path); fusion lives in `embedding` rather than coupling the `pgvector` feature to `search` (whose `SearchResult` is `String`-keyed with a text payload); live pgvector tests self-skip without `LLMKERNEL_PG_URL`; ORDER BY clauses carry an `id` tie-break so RRF ranks are deterministic across branches; `Fusion::Weighted` documents that dense cosine and sparse inner-product scores must be normalized to a shared scale before use. **Deferred:** multi-vector / parent-document retrieval, token-level output for late chunking, reranker fine-tuning hooks, and a `PgSparseVectorOpts` exposing `hnsw.ef_search` (the sparse HNSW recall/latency knob, currently unreachable unlike the dense index) — all only needed once a precision-critical (B2B) tier exists.
+
+---
+
 ### v1.0.0 — Production Readiness
 
 API stability guarantee. Once shipped, all public types and signatures are locked under semver.

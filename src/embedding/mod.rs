@@ -25,6 +25,13 @@ pub mod fastembed;
 ))]
 pub mod lazy;
 
+/// BGE-M3 joint dense + sparse embedding (feature `embedding-fastembed`).
+#[cfg(any(
+    feature = "embedding-fastembed",
+    feature = "embedding-fastembed-dynamic-linking"
+))]
+pub mod bgem3;
+
 #[cfg(feature = "embedding-fastembed-qwen3")]
 pub mod qwen3;
 
@@ -33,6 +40,9 @@ pub mod nomic_moe;
 
 /// Vector index trait and types (zero dependencies).
 pub mod vector_index;
+
+/// Sparse (lexical) vectors for hybrid retrieval (zero dependencies).
+pub mod sparse;
 
 /// Async vector index trait for remote/shared backends (needs `async_trait`).
 pub mod async_vector_index;
@@ -68,6 +78,12 @@ pub use fastembed::FastembedProvider;
     feature = "embedding-fastembed",
     feature = "embedding-fastembed-dynamic-linking"
 ))]
+pub use bgem3::{BGEM3_DENSE_DIM, BGEM3_VOCAB_SIZE, Bgem3Provider, JointEmbedding};
+
+#[cfg(any(
+    feature = "embedding-fastembed",
+    feature = "embedding-fastembed-dynamic-linking"
+))]
 pub use lazy::{EmbeddingCache, LazyFastembedProvider, LazyOpts, ModelState, is_model_cached};
 
 #[cfg(feature = "embedding-fastembed-qwen3")]
@@ -86,7 +102,8 @@ pub use nomic_moe::NomicMoeProvider;
 pub use ort;
 
 pub use async_vector_index::AsyncVectorIndex;
-pub use vector_index::{SearchHit, VectorIndex};
+pub use sparse::SparseVector;
+pub use vector_index::{Fusion, SearchHit, VectorIndex};
 
 #[cfg(feature = "qdrant")]
 pub use qdrant::QdrantVectorIndex;
@@ -95,7 +112,7 @@ pub use qdrant::QdrantVectorIndex;
 pub use elastic::ElasticsearchVectorIndex;
 
 #[cfg(feature = "pgvector")]
-pub use pgvector::{PgVectorIndex, PgVectorOpts};
+pub use pgvector::{PgSparseVectorIndex, PgVectorIndex, PgVectorOpts};
 
 #[cfg(feature = "vector-index")]
 pub use turbovec::{IndexMeta, TurbovecIndex};
