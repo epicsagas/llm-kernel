@@ -115,4 +115,4 @@ pub use elastic::ElasticsearchVectorIndex;
 pub use pgvector::{PgSparseVectorIndex, PgVectorIndex, PgVectorOpts};
 
 #[cfg(feature = "vector-index")]
-pub use turbovec::TurbovecIndex;
+pub use turbovec::{IndexMeta, TurbovecIndex};

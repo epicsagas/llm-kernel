@@ -28,7 +28,7 @@ pub mod types;
 pub use federation::{FusionStrategy, federate_results};
 pub use fusion::{combmnz_fuse, normalize_minmax, weighted_sum_fuse};
 pub use provider::{KeywordIndex, SearchProvider};
-pub use rrf::rrf_fuse;
+pub use rrf::{rrf_fuse, rrf_fuse_weighted};
 pub use types::SearchResult;
 
 #[cfg(feature = "federation")]

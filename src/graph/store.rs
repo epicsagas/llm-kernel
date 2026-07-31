@@ -8,12 +8,38 @@ use super::types::{EdgeDirection, GraphEdge, GraphNode, NODE_COLUMNS, join_csv, 
 
 // ── Node CRUD ─────────────────────────────────────────
 
-/// Insert or replace a node.
+/// Insert or update a node, preserving first-creation and access telemetry.
+///
+/// Uses `ON CONFLICT ... DO UPDATE` rather than `INSERT OR REPLACE` so that
+/// re-inserting a fixed-id node (e.g. an identity/stock node touched on every
+/// analysis) does not destroy `created`, `access_count`, or `accessed_at`.
+/// `INSERT OR REPLACE` is DELETE+INSERT in SQLite, which zeroes the access
+/// counters and rewrites the creation timestamp on every write — diverging from
+/// the Postgres backend (`sqlx_pg.rs`), which already does `ON CONFLICT`. This
+/// brings SQLite to parity.
+///
+/// - `created`: first-write wins (`nodes.created` is kept).
+/// - `access_count`/`accessed_at`: the caller's value never *lowers* an existing
+///   one (`MAX(...)`), so an import restoring a higher count is honored while a
+///   routine `access_count: 0` write is a no-op on update.
 pub fn upsert_node(conn: &Connection, node: &GraphNode) -> Result<()> {
     conn.execute(
-        "INSERT OR REPLACE INTO nodes
-         (id, type, title, tags, projects, agents, created, updated, body, importance, access_count, accessed_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+        "INSERT INTO nodes
+            (id, type, title, tags, projects, agents, created, updated, body,
+             importance, access_count, accessed_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+         ON CONFLICT(id) DO UPDATE SET
+            type = excluded.type,
+            title = excluded.title,
+            tags = excluded.tags,
+            projects = excluded.projects,
+            agents = excluded.agents,
+            updated = excluded.updated,
+            body = excluded.body,
+            importance = excluded.importance,
+            created      = nodes.created,
+            access_count = MAX(nodes.access_count, excluded.access_count),
+            accessed_at  = MAX(nodes.accessed_at, excluded.accessed_at)",
         params![
             node.id,
             node.node_type,
@@ -61,11 +87,24 @@ pub fn read_nodes(conn: &Connection, ids: &[&str]) -> Result<Vec<GraphNode>> {
     Ok(nodes)
 }
 
-/// Delete a node by ID. Returns whether a row was deleted.
+/// Delete a node by ID, removing its edges first in the same transaction.
+///
+/// Previously this deleted only the node row and left dangling edges behind —
+/// `remove_edges_for_node` existed but was never called here. The transaction
+/// keeps the node deletion and edge cleanup atomic.
 pub fn delete_node(conn: &Connection, id: &str) -> Result<bool> {
-    let changed = conn
+    // `unchecked_transaction` is used instead of `transaction` because the
+    // function signature takes `&Connection` (not `&mut`). This is safe: in the
+    // async pool (`AsyncPoolGraph::with_conn`) the semaphore guarantees exclusive
+    // access, and in sync call sites no other statements are open on `conn`.
+    let tx = conn
+        .unchecked_transaction()
+        .map_err(|e| KernelError::Store(e.to_string()))?;
+    remove_edges_for_node(&tx, id)?;
+    let changed = tx
         .execute("DELETE FROM nodes WHERE id = ?1", params![id])
         .map_err(|e| KernelError::Store(e.to_string()))?;
+    tx.commit().map_err(|e| KernelError::Store(e.to_string()))?;
     Ok(changed > 0)
 }
 
@@ -355,6 +394,56 @@ mod tests {
         upsert_node(&conn, &test_node("n1")).unwrap();
         assert!(delete_node(&conn, "n1").unwrap());
         assert!(!delete_node(&conn, "n1").unwrap());
+    }
+
+    /// Regression: upsert must not destroy `created`/`access_count`. The old
+    /// `INSERT OR REPLACE` zeroed these on every re-insert of a fixed-id node.
+    #[test]
+    fn upsert_preserves_created_and_access_on_conflict() {
+        let conn = mem_db();
+        let mut n = test_node("fixed");
+        n.created = "2026-01-01T00:00:00Z".to_string();
+        n.access_count = 42;
+        upsert_node(&conn, &n).unwrap();
+
+        // Re-insert the same id with a fresh timestamp and zeroed access count.
+        let mut again = test_node("fixed");
+        again.created = "2026-12-31T00:00:00Z".to_string();
+        again.updated = "2026-12-31T00:00:00Z".to_string();
+        again.access_count = 0;
+        upsert_node(&conn, &again).unwrap();
+
+        let got = read_node(&conn, "fixed").unwrap().unwrap();
+        assert_eq!(got.created, "2026-01-01T00:00:00Z", "created must persist");
+        assert_eq!(
+            got.access_count, 42,
+            "access_count must not be zeroed on re-upsert"
+        );
+        assert_eq!(got.updated, "2026-12-31T00:00:00Z", "updated must refresh");
+    }
+
+    /// Regression: deleting a node must also drop its edges (no orphans).
+    #[test]
+    fn delete_node_removes_edges() {
+        let conn = mem_db();
+        upsert_node(&conn, &test_node("a")).unwrap();
+        upsert_node(&conn, &test_node("b")).unwrap();
+        append_edge(
+            &conn,
+            &GraphEdge {
+                id: "e1".into(),
+                source: "a".into(),
+                target: "b".into(),
+                relation: "rel".into(),
+                weight: 1.0,
+                ts: "2026-01-01T00:00:00Z".into(),
+            },
+        )
+        .unwrap();
+
+        assert!(delete_node(&conn, "a").unwrap());
+        let edges = edges_for_node(&conn, "a").unwrap();
+        assert!(edges.is_empty(), "orphan edges remain: {edges:?}");
     }
 
     #[test]

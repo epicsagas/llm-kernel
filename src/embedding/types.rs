@@ -73,7 +73,20 @@ pub trait EmbeddingProvider: Send + Sync {
     fn dim(&self) -> usize;
 
     /// Embed a single text string.
+    ///
+    /// For asymmetric models (E5, BGE) this applies the **query** prefix — use
+    /// it for search queries. Use [`embed_document`](Self::embed_document) for
+    /// corpus/passage text so the query/passage asymmetry the model was trained
+    /// with is respected.
     fn embed(&self, text: &str) -> Result<EmbeddingResult>;
+
+    /// Embed a single **document/passage** text.
+    ///
+    /// Default delegates to [`embed`](Self::embed); providers whose model has a
+    /// distinct passage prefix override this so corpus text gets the right prefix.
+    fn embed_document(&self, text: &str) -> Result<EmbeddingResult> {
+        self.embed(text)
+    }
 
     /// Embed multiple texts in batch.
     ///
@@ -83,6 +96,14 @@ pub trait EmbeddingProvider: Send + Sync {
     /// [`embed`](Self::embed) individually and collect results manually.
     fn embed_batch(&self, texts: &[&str]) -> Result<Vec<EmbeddingResult>> {
         texts.iter().map(|t| self.embed(t)).collect()
+    }
+
+    /// Embed multiple **documents/passages** in batch.
+    ///
+    /// Default delegates to [`embed_batch`](Self::embed_batch); asymmetric
+    /// providers override to apply the passage prefix.
+    fn embed_documents(&self, texts: &[&str]) -> Result<Vec<EmbeddingResult>> {
+        self.embed_batch(texts)
     }
 
     /// Provider name for display.

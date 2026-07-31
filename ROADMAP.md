@@ -335,7 +335,7 @@ Extends `GraphBackend` from an AI-memory-recall layer into a **general directed-
 
 ---
 
-### v0.22.0 — Hybrid Retrieval ✅ (staged, PR #80 + #81)
+### v0.23.0 — Hybrid Retrieval ✅ (staged, PR #80 + #81; v0.22.0 shipped as the graph release, so this lands as 0.23.0)
 
 Makes **dense + lexical hybrid retrieval** a first-class path, and cuts the RAM a large index needs. Driven by a Korean-law RAG workload (~3.4M chunks, BGE-M3 1024-dim) where dense-only search misses exact statute references and the whole index has to fit an always-on box. Everything is additive — `PgVectorIndex::new` and existing call sites are untouched (`semver-checks` green).
 

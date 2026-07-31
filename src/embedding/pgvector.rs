@@ -232,31 +232,43 @@ impl crate::embedding::AsyncVectorIndex for PgVectorIndex {
         }
         // Map u64 → i64 up front: pgvector stores BIGINT (i64), so values
         // above i64::MAX cannot be represented and must be rejected rather
-        // than silently wrapped. Single batched INSERT → one round trip.
+        // than silently wrapped.
         let pg_ids: Vec<i64> = ids.iter().map(|&id| to_pg_id(id)).collect::<Result<_>>()?;
-        let mut q = QueryBuilder::new("INSERT INTO ");
-        q.push(self.table.as_str());
-        q.push(" (id, vec) VALUES ");
-        // pgvector `vec` 컬럼은 text 리터럴 입력 시 `::vector` 캐스트가 필수다.
-        // `push_values` 는 값별 캐스트를 붙일 수 없어 수동으로 VALUES 튜플을 조립한다
-        // (캐스트 누락 시 "column vec is of type vector but expression is of type text").
-        for (i, (v, &id)) in vectors.iter().zip(pg_ids.iter()).enumerate() {
-            if i > 0 {
+
+        // Each row binds 2 params (id, vec literal). PostgreSQL caps bound
+        // parameters at u16::MAX (65535), so a single INSERT over ~32k vectors
+        // overflows it. Chunk well under the limit; each chunk is its own
+        // round trip but shares one prepared-statement shape.
+        const ROWS_PER_CHUNK: usize = 16_000;
+        for chunk in vectors
+            .chunks(ROWS_PER_CHUNK)
+            .zip(pg_ids.chunks(ROWS_PER_CHUNK))
+        {
+            let (chunk_vecs, chunk_ids) = chunk;
+            let mut q = QueryBuilder::new("INSERT INTO ");
+            q.push(self.table.as_str());
+            q.push(" (id, vec) VALUES ");
+            // pgvector `vec` 컬럼은 text 리터럴 입력 시 `::vector` 캐스트가 필수다.
+            // `push_values` 는 값별 캐스트를 붙일 수 없어 수동으로 VALUES 튜플을 조립한다
+            // (캐스트 누락 시 "column vec is of type vector but expression is of type text").
+            for (i, (v, &id)) in chunk_vecs.iter().zip(chunk_ids.iter()).enumerate() {
+                if i > 0 {
+                    q.push(", ");
+                }
+                q.push("(");
+                q.push_bind(id);
                 q.push(", ");
+                q.push_bind(vec_literal(v));
+                q.push("::");
+                q.push(self.sql_type());
+                q.push(")");
             }
-            q.push("(");
-            q.push_bind(id);
-            q.push(", ");
-            q.push_bind(vec_literal(v));
-            q.push("::");
-            q.push(self.sql_type());
-            q.push(")");
+            q.push(" ON CONFLICT (id) DO UPDATE SET vec = EXCLUDED.vec");
+            q.build()
+                .execute(&self.pool)
+                .await
+                .map_err(|e| KernelError::Embedding(format!("pgvector add: {e}")))?;
         }
-        q.push(" ON CONFLICT (id) DO UPDATE SET vec = EXCLUDED.vec");
-        q.build()
-            .execute(&self.pool)
-            .await
-            .map_err(|e| KernelError::Embedding(format!("pgvector add: {e}")))?;
         Ok(())
     }
 

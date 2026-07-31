@@ -246,6 +246,13 @@ impl AsyncPoolGraph {
             .await
     }
 
+    /// Structured node query — paging, time range, ordering — at the SQL level.
+    /// Prefer this over `read_nodes` for anything that filters or paginates.
+    pub async fn query_nodes_ex(&self, q: crate::graph::NodeQuery) -> Result<Vec<GraphNode>> {
+        self.with_conn(move |c| crate::graph::search::query_nodes_ex(c, &q))
+            .await
+    }
+
     /// Delete a node by ID. Returns `true` if a row was deleted.
     pub async fn delete_node(&self, id: impl Into<String>) -> Result<bool> {
         let id = id.into();
@@ -338,6 +345,15 @@ impl AsyncPoolGraph {
             crate::graph::recall::smart_recall(c, project.as_deref(), hint.as_deref(), limit)
         })
         .await
+    }
+
+    /// Structured recall — node-type / tag / time filters + touch gating.
+    pub async fn smart_recall_with(
+        &self,
+        opts: crate::graph::RecallOptions,
+    ) -> Result<Vec<ScoredNode>> {
+        self.with_conn(move |c| crate::graph::recall::smart_recall_with(c, &opts))
+            .await
     }
 
     // ── Stats ───────────────────────────────────────
