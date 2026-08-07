@@ -175,13 +175,19 @@ fn origin_allowed(headers: &HeaderMap) -> bool {
     if origin == "null" {
         return false;
     }
-    // Only loopback origins may drive a local MCP server.
+    // Only loopback origins may drive a local MCP server. Parse the host
+    // bracket-aware: an IPv6 origin is `http://[::1]:3000`, where a naive
+    // `split(':').next()` yields "[" and rejects a legitimate loopback.
     origin
         .split_once("://")
-        .map(|(_, host_port)| host_port.split(':').next().unwrap_or(""))
-        .is_some_and(|host| {
-            host == "localhost" || host == "127.0.0.1" || host == "[::1]" || host == "::1"
+        .map(|(_, host_port)| {
+            if let Some(rest) = host_port.strip_prefix('[') {
+                rest.split(']').next().unwrap_or("") // "::1" (no brackets)
+            } else {
+                host_port.split(':').next().unwrap_or("")
+            }
         })
+        .is_some_and(|host| host == "localhost" || host == "127.0.0.1" || host == "::1")
 }
 
 fn forbidden_response(id: Option<Value>) -> Json<Value> {
@@ -350,6 +356,13 @@ mod tests {
         // Suffix trickery must not pass.
         h.insert("origin", "https://localhost.evil.com".parse().unwrap());
         assert!(!origin_allowed(&h));
+        // IPv6 loopback — a naive `split(':')` would see "[" and reject it.
+        h.insert("origin", "http://[::1]:3000".parse().unwrap());
+        assert!(origin_allowed(&h), "IPv6 loopback must pass: {h:?}");
+        h.insert("origin", "http://[::1]".parse().unwrap());
+        assert!(origin_allowed(&h), "IPv6 loopback (no port) must pass");
+        h.insert("origin", "http://[fe80::1]:3000".parse().unwrap());
+        assert!(!origin_allowed(&h), "non-loopback IPv6 must be rejected");
     }
 
     #[tokio::test]
