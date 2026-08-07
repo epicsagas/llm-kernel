@@ -6,15 +6,21 @@ use crate::error::{KernelError, Result};
 /// Write data to a file atomically using a temp file + rename.
 ///
 /// On Unix, sets the file mode to `mode` (e.g. `0o600` for secrets).
-pub(crate) fn write_atomic(path: &str, data: &[u8], mode: u32) -> Result<()> {
-    let target = Path::new(path);
-    let parent = target
-        .parent()
-        .ok_or_else(|| KernelError::Vault(format!("path has no parent directory: {path}")))?;
+pub(crate) fn write_atomic(path: impl AsRef<Path>, data: &[u8], mode: u32) -> Result<()> {
+    let target = path.as_ref();
+    let parent = target.parent().ok_or_else(|| {
+        KernelError::Vault(format!(
+            "path has no parent directory: {}",
+            target.display()
+        ))
+    })?;
     std::fs::create_dir_all(parent)?;
 
     let mut tmp = tempfile::NamedTempFile::new_in(parent)?;
     tmp.write_all(data)?;
+    // Flush data blocks before the rename lands — a crash between rename and
+    // writeback would otherwise replace the old file with a truncated one.
+    tmp.as_file().sync_all()?;
 
     #[cfg(unix)]
     {

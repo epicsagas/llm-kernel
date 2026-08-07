@@ -15,9 +15,17 @@ fn constant_time_eq(a: &str, b: &str) -> bool {
 }
 
 /// Bearer token authenticator for MCP HTTP transport.
-#[derive(Debug)]
 pub struct BearerAuth {
     token: String,
+}
+
+/// Deriving `Debug` would print the token into logs and panic messages.
+impl std::fmt::Debug for BearerAuth {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("BearerAuth")
+            .field("token", &"<redacted>")
+            .finish()
+    }
 }
 
 impl BearerAuth {
@@ -28,40 +36,33 @@ impl BearerAuth {
         }
     }
 
-    /// Generate a random bearer token.
+    /// Generate a random bearer token (128 bits of OS entropy, hex-encoded).
     ///
-    /// # Security Note
+    /// Uses the OS CSPRNG via `getrandom`. If the OS entropy source is
+    /// unavailable the call fails rather than falling back to a guessable
+    /// token — see [`BearerAuth::try_generate`].
     ///
-    /// Uses xorshift PRNG seeded from system time + atomic counter.
-    /// This is **not** cryptographically secure — tokens are predictable
-    /// if the seed can be guessed. Suitable for local MCP server auth
-    /// (localhost-only transport). For production/remote servers, use
-    /// externally generated tokens via [`BearerAuth::new`].
+    /// # Panics
+    ///
+    /// Panics if the OS entropy source is unavailable. Use
+    /// [`BearerAuth::try_generate`] to handle that case, or
+    /// [`BearerAuth::new`] to supply an externally generated token.
     pub fn generate() -> Self {
-        use std::sync::atomic::{AtomicU64, Ordering};
-        use std::time::{SystemTime, UNIX_EPOCH};
+        Self::try_generate().expect("OS entropy source unavailable")
+    }
 
-        static COUNTER: AtomicU64 = AtomicU64::new(0);
-        let time = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos() as u64;
-        let counter = COUNTER.fetch_add(1, Ordering::Relaxed);
-        // Simple xorshift for a hex token — no external rand dep.
-        let mut s = time.wrapping_add(counter).wrapping_add(0x9e3779b97f4a7c15);
+    /// Fallible [`BearerAuth::generate`] — never falls back to a weak token.
+    pub fn try_generate() -> crate::error::Result<Self> {
+        let mut bytes = [0u8; 16];
+        getrandom::fill(&mut bytes).map_err(|e| {
+            crate::error::KernelError::Config(format!("failed to read OS entropy for token: {e}"))
+        })?;
         let mut token = String::with_capacity(32);
-        for _ in 0..32 {
-            s ^= s << 13;
-            s ^= s >> 7;
-            s ^= s << 17;
-            let nibble = (s & 0xF) as u8;
-            token.push(if nibble < 10 {
-                b'0' + nibble
-            } else {
-                b'a' + nibble - 10
-            } as char);
+        for b in bytes {
+            use std::fmt::Write;
+            let _ = write!(token, "{b:02x}");
         }
-        Self { token }
+        Ok(Self { token })
     }
 
     /// Validate a bearer token from an Authorization header.
@@ -115,5 +116,12 @@ mod tests {
         let a = BearerAuth::generate();
         let b = BearerAuth::generate();
         assert_ne!(a.token(), b.token());
+    }
+
+    #[test]
+    fn debug_never_prints_token() {
+        let auth = BearerAuth::new("super-secret-token");
+        let dbg = format!("{auth:?}");
+        assert!(!dbg.contains("super-secret-token"), "{dbg}");
     }
 }

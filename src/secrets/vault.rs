@@ -2,6 +2,8 @@ use std::collections::HashMap;
 use std::ops::{Deref, DerefMut};
 use std::path::Path;
 
+use zeroize::Zeroize;
+
 use crate::error::{KernelError, Result};
 
 use super::atomic::write_atomic;
@@ -10,8 +12,42 @@ use super::atomic::write_atomic;
 ///
 /// Wraps a `HashMap<String, String>` with typed methods for load/save/normalize,
 /// keeping the ergonomics of a map via `Deref`/`DerefMut`.
-#[derive(Debug, Clone, Default)]
+///
+/// # Security model
+///
+/// Values are stored **in plaintext**, in a file written `0o600` (owner-only)
+/// via an atomic temp-file rename. This protects against other local users
+/// and against torn writes; it does **not** protect against an attacker who
+/// already runs as this user, nor against disk forensics. It is not an OS
+/// keychain — do not describe it as one. For stronger guarantees, hold the
+/// key in an OS keychain and pass it in rather than persisting it here.
+///
+/// Values are zeroized on drop and after the serialized body is written, so
+/// they do not linger in freed heap pages. This is best-effort: `DerefMut`
+/// and `IntoIterator` let copies escape, and those are the caller's to wipe.
+#[derive(Clone, Default)]
 pub struct SecretVault(HashMap<String, String>);
+
+/// Wipe every value when the vault goes away, so credentials do not linger
+/// in freed heap pages (core dumps, swap). Best-effort: `DerefMut` lets a
+/// caller clone a value out, and that copy is theirs to manage.
+impl Drop for SecretVault {
+    fn drop(&mut self) {
+        for value in self.0.values_mut() {
+            value.zeroize();
+        }
+    }
+}
+
+/// Deriving `Debug` would print every secret verbatim into logs and panic
+/// messages — show only the key names.
+impl std::fmt::Debug for SecretVault {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut keys: Vec<&str> = self.0.keys().map(String::as_str).collect();
+        keys.sort_unstable();
+        f.debug_tuple("SecretVault").field(&keys).finish()
+    }
+}
 
 impl SecretVault {
     /// Create an empty vault with no credentials loaded.
@@ -40,9 +76,17 @@ impl SecretVault {
         raw.split(|&b| b == b'\n')
             .enumerate()
             .filter(|(_, line)| {
-                let text = std::str::from_utf8(line).unwrap_or("");
-                let trimmed = text.trim();
-                !trimmed.is_empty() && !trimmed.starts_with('#')
+                // Invalid UTF-8 must NOT be filtered out here: treating it as
+                // an empty line would silently drop the entry, and the next
+                // persist_to would erase it from disk for good. Let it reach
+                // the fold and error there.
+                match std::str::from_utf8(line) {
+                    Ok(text) => {
+                        let trimmed = text.trim();
+                        !trimmed.is_empty() && !trimmed.starts_with('#')
+                    }
+                    Err(_) => true,
+                }
             })
             .try_fold(Self::empty(), |mut acc, (i, line)| {
                 let text = std::str::from_utf8(line)
@@ -71,16 +115,30 @@ impl SecretVault {
             std::fs::create_dir_all(parent)?;
         }
 
-        let body = self
+        // A key that cannot be written must fail loudly: silently skipping it
+        // makes `insert(...); persist_to(...)` report success while the
+        // credential never reaches disk.
+        if let Some(bad) = self.0.keys().find(|k| !is_valid_env_key(k)) {
+            return Err(KernelError::Vault(format!(
+                "cannot persist invalid secret key {bad:?} (expected [A-Z_][A-Z0-9_]*)"
+            )));
+        }
+
+        let mut body = self
             .0
             .keys()
-            .filter(|k| is_valid_env_key(k))
             .collect::<std::collections::BTreeSet<_>>()
             .iter()
             .map(|k| format!("{}={}\n", k, encode_for_shell(&self.0[*k])))
             .collect::<String>();
 
-        write_atomic(&p.to_string_lossy(), body.as_bytes(), 0o600)?;
+        // Pass the Path itself — a lossy string conversion would silently
+        // write to a DIFFERENT file on a non-UTF-8 path.
+        let result = write_atomic(p, body.as_bytes(), 0o600);
+        // `body` is a full plaintext copy of every secret; wipe it before the
+        // allocation goes back to the heap (readable in a core dump or swap).
+        Zeroize::zeroize(&mut body);
+        result?;
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
@@ -125,8 +183,11 @@ impl From<HashMap<String, String>> for SecretVault {
 impl IntoIterator for SecretVault {
     type Item = (String, String);
     type IntoIter = std::collections::hash_map::IntoIter<String, String>;
-    fn into_iter(self) -> Self::IntoIter {
-        self.0.into_iter()
+    /// Takes the map out so the `Drop` impl (which zeroizes) can still run —
+    /// moving a field out of a `Drop` type is not allowed. The values handed
+    /// to the caller are theirs to wipe.
+    fn into_iter(mut self) -> Self::IntoIter {
+        std::mem::take(&mut self.0).into_iter()
     }
 }
 
@@ -138,12 +199,21 @@ impl<'a> IntoIterator for &'a SecretVault {
     }
 }
 
-/// Mask a credential for display, showing only first/last 4 chars.
+/// Mask a credential for display, showing only first/last 4 characters.
+///
+/// Counts characters, not bytes: byte slicing at fixed offsets panics on any
+/// multi-byte credential, and this runs on error/log paths where a panic is
+/// the worst possible outcome.
 pub fn redact_credential(value: &str) -> String {
-    match value.len() {
+    let count = value.chars().count();
+    match count {
         0 => String::new(),
         1..=8 => "****".to_owned(),
-        _ => format!("{}****{}", &value[..4], &value[value.len() - 4..]),
+        _ => {
+            let head: String = value.chars().take(4).collect();
+            let tail: String = value.chars().skip(count - 4).collect();
+            format!("{head}****{tail}")
+        }
     }
 }
 
@@ -165,7 +235,9 @@ fn decode_shell_value(value: &str) -> Result<String> {
         Some(b'\'') if b.last() == Some(&b'\'') && b.len() >= 2 => {
             Ok(value[1..value.len() - 1].to_owned())
         }
-        Some(b'$') if b.get(1) == Some(&b'\'') && b.last() == Some(&b'\'') => {
+        // len >= 3 so the opening `$'` and the closing `'` are distinct bytes
+        // — the bare string `$'` would otherwise slice [2..1] and panic.
+        Some(b'$') if b.len() >= 3 && b.get(1) == Some(&b'\'') && b.last() == Some(&b'\'') => {
             unescape_ansi(&value[2..value.len() - 1])
         }
         Some(b'"') if b.last() == Some(&b'"') && b.len() >= 2 => {
@@ -176,20 +248,22 @@ fn decode_shell_value(value: &str) -> Result<String> {
 }
 
 fn unescape_ansi(s: &str) -> Result<String> {
+    // Iterate CHARS, not bytes — `b as char` reinterprets each UTF-8 byte as
+    // Latin-1, silently corrupting any non-ASCII secret on load.
     let mut out = String::with_capacity(s.len());
-    let mut chars = s.as_bytes().iter().copied().peekable();
-    while let Some(b) = chars.next() {
-        if b != b'\\' {
-            out.push(b as char);
+    let mut chars = s.chars();
+    while let Some(c) = chars.next() {
+        if c != '\\' {
+            out.push(c);
             continue;
         }
         match chars.next() {
             None => return Err(KernelError::Vault("unterminated escape".into())),
-            Some(b'n') => out.push('\n'),
-            Some(b't') => out.push('\t'),
-            Some(b'\\') => out.push('\\'),
-            Some(b'\'') => out.push('\''),
-            Some(other) => out.push(other as char),
+            Some('n') => out.push('\n'),
+            Some('t') => out.push('\t'),
+            Some('\\') => out.push('\\'),
+            Some('\'') => out.push('\''),
+            Some(other) => out.push(other),
         }
     }
     Ok(out)
@@ -199,10 +273,15 @@ fn encode_for_shell(value: &str) -> String {
     if value.is_empty() {
         return "''".to_owned();
     }
+    // A value written bare must decode back to itself. `decode_shell_value`
+    // strips a surrounding pair of `'` or `"` and treats a leading `$'` as an
+    // ANSI-C string, so any value that could be mistaken for one of those
+    // forms has to be explicitly quoted or the round-trip silently mangles it.
     let needs_quoting = value
         .as_bytes()
         .iter()
-        .any(|b| matches!(b, b'\n' | b'\t' | b'\'' | b'\\' | b' '));
+        .any(|b| matches!(b, b'\n' | b'\t' | b'\'' | b'"' | b'\\' | b' '))
+        || value.starts_with('$');
     if !needs_quoting {
         return value.to_owned();
     }
@@ -231,6 +310,18 @@ mod tests {
     #[test]
     fn test_redact_long() {
         assert_eq!(redact_credential("abcdefghijklmnop"), "abcd****mnop");
+    }
+
+    #[test]
+    fn test_redact_multibyte_does_not_panic() {
+        // Byte slicing at fixed offsets would panic mid-codepoint here.
+        // 8 chars or fewer are fully masked; 9+ show first/last 4.
+        assert_eq!(redact_credential("한국어키값입니다"), "****");
+        assert_eq!(
+            redact_credential("한국어키값입니다요"),
+            "한국어키****입니다요"
+        );
+        assert_eq!(redact_credential(&"é".repeat(12)).chars().count(), 12);
     }
 
     #[test]
@@ -311,6 +402,73 @@ mod tests {
 
         assert_eq!(loaded.get("MY_KEY").map(|s| s.as_str()), Some("my-value"));
         assert_eq!(loaded.get("OTHER_KEY").map(|s| s.as_str()), Some("other"));
+    }
+
+    #[test]
+    fn test_roundtrip_non_ascii_with_quoting_trigger() {
+        // Space forces $'...' encoding; the decoder must not corrupt UTF-8.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("secrets.env");
+        let secrets = SecretVault::from(HashMap::from([(
+            "MY_KEY".to_string(),
+            "한국어 키 값".to_string(),
+        )]));
+        secrets.persist_to(&path).expect("persist");
+        let loaded = SecretVault::load_from(&path).expect("load");
+        assert_eq!(
+            loaded.get("MY_KEY").map(|s| s.as_str()),
+            Some("한국어 키 값")
+        );
+    }
+
+    #[test]
+    fn test_roundtrip_values_that_look_like_quoting() {
+        // Every form decode_shell_value would strip must survive persist+load.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("secrets.env");
+        for val in ["\"quoted\"", "'single'", "$'ansi'", "$plain", "sk-normal"] {
+            let v = SecretVault::from(HashMap::from([("K".to_string(), val.to_string())]));
+            v.persist_to(&path).expect("persist");
+            let loaded = SecretVault::load_from(&path).expect("load");
+            assert_eq!(
+                loaded.get("K").map(|s| s.as_str()),
+                Some(val),
+                "value {val:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_persist_rejects_invalid_key_instead_of_dropping_it() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("secrets.env");
+        let v = SecretVault::from(HashMap::from([("lowercase".to_string(), "v".to_string())]));
+        assert!(v.persist_to(&path).is_err(), "silent drop is data loss");
+    }
+
+    #[test]
+    fn test_invalid_utf8_line_errors_instead_of_vanishing() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("secrets.env");
+        std::fs::write(&path, b"GOOD=1\nBAD=\xff\xfe\n").expect("write");
+        assert!(SecretVault::load_from(&path).is_err());
+    }
+
+    #[test]
+    fn test_decode_bare_dollar_quote_does_not_panic() {
+        // A value of exactly `$'` must not slice out of bounds.
+        assert_eq!(decode_shell_value("$'").unwrap(), "$'");
+    }
+
+    #[test]
+    fn test_debug_never_prints_secret_values() {
+        let vault = SecretVault::from(HashMap::from([(
+            "API_KEY".to_string(),
+            "sk-super-secret".to_string(),
+        )]));
+        let dbg = format!("{vault:?}");
+        assert!(dbg.contains("API_KEY"));
+        assert!(!dbg.contains("sk-super-secret"), "{dbg}");
     }
 
     #[test]

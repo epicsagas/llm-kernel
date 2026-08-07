@@ -2492,7 +2492,7 @@ checksum = "11d3d7f243d5c5a8b9bb5d6dd2b1602c0cb0b9db1621bafc7ed66e35ff9fe092"
 
 [[package]]
 name = "llm-kernel"
-version = "0.23.0"
+version = "0.24.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2503,6 +2503,7 @@ dependencies = [
  "fastembed",
  "futures-core",
  "futures-util",
+ "getrandom 0.3.4",
  "indexmap 2.14.0",
  "native-tls",
  "ort",
@@ -2524,6 +2525,7 @@ dependencies = [
  "tracing",
  "turbovec",
  "ureq",
+ "zeroize",
 ]
 
 [[package]]

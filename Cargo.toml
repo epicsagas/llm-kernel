@@ -1,6 +1,6 @@
 [package]
 name         = "llm-kernel"
-version      = "0.23.0"
+version      = "0.24.0"
 edition      = "2024"
 description  = "Foundation library for Rust AI-native apps — provider catalog, LLM client, MCP server, search, telemetry, and safety"
 license      = "Apache-2.0"
@@ -44,7 +44,7 @@ catalog-sync = ["provider", "discovery", "dep:clap", "dep:anyhow"]
 cache = ["client-async", "store"]
 
 # Secret vault (dotenv-style credential management)
-secrets = ["dep:tempfile"]
+secrets = ["dep:tempfile", "dep:zeroize"]
 
 # SQLite store helpers (init_schema, PRAGMA, FTS5, KvStore)
 store = ["dep:rusqlite"]
@@ -72,7 +72,7 @@ graph-pg-tls = ["graph-pg", "dep:postgres-native-tls", "dep:native-tls"]
 graph-pg-sqlx = ["graph", "dep:sqlx", "dep:async-trait"]
 
 # MCP server framework (JSON-RPC 2.0, stdio transport, async handlers)
-mcp = ["dep:serde_json", "dep:async-trait"]
+mcp = ["dep:serde_json", "dep:async-trait", "dep:getrandom"]
 
 # MCP remote transport over HTTP with optional SSE (axum + tokio)
 mcp-http = ["mcp", "dep:axum", "dep:tokio", "dep:tokio-stream", "tokio/net", "tokio/io-util"]
@@ -197,6 +197,8 @@ anyhow      = { version = "1", optional = true }
 serde_json  = { version = "1", optional = true }
 ureq        = { version = "3", features = ["json"], optional = true }
 tempfile    = { version = "3", optional = true }
+getrandom   = { version = "0.3", optional = true }
+zeroize     = { version = "1", optional = true }
 reqwest     = { version = "0.13", features = ["json", "rustls", "stream"], default-features = false, optional = true }
 rusqlite    = { version = "0.40", features = ["bundled"], optional = true }
 toml        = { version = "1", optional = true }
