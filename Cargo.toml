@@ -72,7 +72,7 @@ graph-pg-tls = ["graph-pg", "dep:postgres-native-tls", "dep:native-tls"]
 graph-pg-sqlx = ["graph", "dep:sqlx", "dep:async-trait"]
 
 # MCP server framework (JSON-RPC 2.0, stdio transport, async handlers)
-mcp = ["dep:serde_json", "dep:async-trait"]
+mcp = ["dep:serde_json", "dep:async-trait", "dep:getrandom"]
 
 # MCP remote transport over HTTP with optional SSE (axum + tokio)
 mcp-http = ["mcp", "dep:axum", "dep:tokio", "dep:tokio-stream", "tokio/net", "tokio/io-util"]
@@ -197,6 +197,7 @@ anyhow      = { version = "1", optional = true }
 serde_json  = { version = "1", optional = true }
 ureq        = { version = "3", features = ["json"], optional = true }
 tempfile    = { version = "3", optional = true }
+getrandom   = { version = "0.3", optional = true }
 reqwest     = { version = "0.13", features = ["json", "rustls", "stream"], default-features = false, optional = true }
 rusqlite    = { version = "0.40", features = ["bundled"], optional = true }
 toml        = { version = "1", optional = true }

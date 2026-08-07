@@ -7,6 +7,11 @@ use std::io::{self, BufRead, Write};
 
 use crate::mcp::server::McpServer;
 
+/// Cap on a single stdio JSON-RPC line. `BufRead::lines` grows without bound,
+/// so a peer that never sends `\n` can exhaust memory — fatal under a
+/// `panic = "abort"` release profile.
+const MAX_LINE_BYTES: usize = 16 * 1024 * 1024;
+
 /// JSON-RPC 2.0 dispatcher for MCP stdio transport.
 pub struct JsonRpcDispatcher<'a> {
     server: &'a McpServer,
@@ -81,6 +86,15 @@ impl<'a> JsonRpcDispatcher<'a> {
 
     /// Dispatch a single pre-parsed JSON-RPC request.
     fn dispatch_single(&self, req: &serde_json::Value) -> Option<String> {
+        // A non-object is never a valid request — answering with silence
+        // (the notification path) leaves the client waiting forever.
+        if !req.is_object() {
+            return Some(self.error_response(
+                serde_json::Value::Null,
+                -32600,
+                "Invalid Request: expected a JSON object",
+            ));
+        }
         // Notifications (the `id` member is absent) don't get responses. This is
         // distinct from a null id, which is a request that must be answered.
         req.get("id")?;
@@ -121,13 +135,109 @@ impl<'a> JsonRpcDispatcher<'a> {
         }
     }
 
+    /// Dispatch a JSON-RPC request, awaiting async tool handlers.
+    ///
+    /// Identical to [`JsonRpcDispatcher::dispatch`] except that `tools/call`
+    /// resolves through [`McpServer::call_tool_async`], so tools registered
+    /// with `set_async_handler` work. The synchronous [`Self::dispatch`]
+    /// cannot invoke them — prefer this one whenever the server has any
+    /// async handler.
+    pub async fn dispatch_async(&self, request: &str) -> Option<String> {
+        let trimmed = request.trim();
+        if trimmed.starts_with('[') {
+            let reqs: Vec<serde_json::Value> = match serde_json::from_str(trimmed) {
+                Ok(v) => v,
+                Err(e) => {
+                    return Some(self.error_response(
+                        serde_json::Value::Null,
+                        -32700,
+                        &format!("Parse error: {e}"),
+                    ));
+                }
+            };
+            let mut responses: Vec<String> = Vec::with_capacity(reqs.len());
+            for req in &reqs {
+                if let Some(r) = self.dispatch_single_async(req).await {
+                    responses.push(r);
+                }
+            }
+            if responses.is_empty() {
+                None
+            } else {
+                Some(format!("[{}]", responses.join(",")))
+            }
+        } else {
+            let req: serde_json::Value = match serde_json::from_str(trimmed) {
+                Ok(v) => v,
+                Err(e) => {
+                    return Some(self.error_response(
+                        serde_json::Value::Null,
+                        -32700,
+                        &format!("Parse error: {e}"),
+                    ));
+                }
+            };
+            self.dispatch_single_async(&req).await
+        }
+    }
+
+    /// [`Self::dispatch_authenticated`] with async tool handler support.
+    pub async fn dispatch_authenticated_async(
+        &self,
+        request: &str,
+        auth_header: Option<&str>,
+    ) -> Option<String> {
+        if !self.server.check_auth(auth_header.unwrap_or("")) {
+            let id = serde_json::from_str::<serde_json::Value>(request.trim())
+                .ok()
+                .and_then(|v| v.get("id").cloned())
+                .unwrap_or(serde_json::Value::Null);
+            return Some(self.error_response(id, -32001, "Unauthorized"));
+        }
+        self.dispatch_async(request).await
+    }
+
+    async fn dispatch_single_async(&self, req: &serde_json::Value) -> Option<String> {
+        // Only `tools/call` can reach an async handler; everything else is
+        // pure metadata and shares the synchronous path.
+        if req.get("method").and_then(|v| v.as_str()) == Some("tools/call") {
+            req.get("id")?;
+            let id = req.get("id").cloned().unwrap_or(serde_json::Value::Null);
+            return Some(self.handle_tool_call_async(&id, req).await);
+        }
+        self.dispatch_single(req)
+    }
+
     /// Run the stdio transport loop: read lines from stdin, dispatch, write to stdout.
+    ///
+    /// Tools registered with `set_async_handler` are NOT callable from this
+    /// loop — use [`Self::run_stdio_async`] when the server has any.
+    ///
+    /// # Errors
+    ///
+    /// Fails immediately (`InvalidInput`) when the server has any async-only
+    /// tool: every call to it would otherwise return `isError` at runtime and
+    /// look like a handler bug.
     pub fn run_stdio(&self) -> io::Result<()> {
+        if let Some(name) = self.server.async_only_tools().first() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!(
+                    "tool '{name}' has only an async handler; use run_stdio_async instead of run_stdio"
+                ),
+            ));
+        }
         let stdin = io::stdin();
         let mut stdout = io::stdout().lock();
 
         for line in stdin.lock().lines() {
             let line = line?;
+            if line.len() > MAX_LINE_BYTES {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("JSON-RPC line exceeds {MAX_LINE_BYTES} bytes"),
+                ));
+            }
             let trimmed = line.trim();
             if trimmed.is_empty() {
                 continue;
@@ -138,6 +248,74 @@ impl<'a> JsonRpcDispatcher<'a> {
             }
         }
         Ok(())
+    }
+
+    /// [`Self::run_stdio`] for servers with async tool handlers.
+    ///
+    /// Reads stdin with blocking I/O between awaits — an MCP stdio server is
+    /// a dedicated process, so occupying the calling task is intended. Drive
+    /// it from a runtime's blocking-friendly context (e.g. a dedicated task).
+    pub async fn run_stdio_async(&self) -> io::Result<()> {
+        let stdin = io::stdin();
+        let mut stdout = io::stdout().lock();
+
+        for line in stdin.lock().lines() {
+            let line = line?;
+            if line.len() > MAX_LINE_BYTES {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("JSON-RPC line exceeds {MAX_LINE_BYTES} bytes"),
+                ));
+            }
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            if let Some(response) = self.dispatch_async(trimmed).await {
+                writeln!(stdout, "{response}")?;
+                stdout.flush()?;
+            }
+        }
+        Ok(())
+    }
+
+    /// [`Self::handle_tool_call`] resolving through `call_tool_async`.
+    async fn handle_tool_call_async(
+        &self,
+        id: &serde_json::Value,
+        req: &serde_json::Value,
+    ) -> String {
+        let tool_name = req
+            .get("params")
+            .and_then(|p| p.get("name"))
+            .and_then(|n| n.as_str())
+            .unwrap_or("");
+        let params = req
+            .get("params")
+            .and_then(|p| p.get("arguments"))
+            .cloned()
+            .unwrap_or(serde_json::json!(null));
+
+        if !self.server.has_tool(tool_name) {
+            return self.error_response(id.clone(), -32602, &format!("Unknown tool: {tool_name}"));
+        }
+
+        match self.server.call_tool_async(tool_name, params).await {
+            Ok(result) => self.success_response(
+                id.clone(),
+                serde_json::json!({
+                    "content": [{ "type": "text", "text": result.to_string() }],
+                    "isError": false
+                }),
+            ),
+            Err(e) => self.success_response(
+                id.clone(),
+                serde_json::json!({
+                    "content": [{ "type": "text", "text": e.to_string() }],
+                    "isError": true
+                }),
+            ),
+        }
     }
 
     /// Handle `tools/call`. Returns a full JSON-RPC response string.
@@ -250,6 +428,69 @@ impl<'a> JsonRpcDispatcher<'a> {
 mod tests {
     use super::*;
     use crate::mcp::schema::ToolDescription;
+
+    /// A server whose tool is registered ONLY via `set_async_handler` — the
+    /// shape real consumers use when their handlers await I/O.
+    fn async_only_server() -> McpServer {
+        let mut server = McpServer::new("async-server", "0.1.0");
+        server.register_tool(ToolDescription {
+            name: "search".into(),
+            description: "async search".into(),
+            input_schema: serde_json::json!({"type": "object"}),
+        });
+        server.set_async_handler("search", |p: serde_json::Value| async move { Ok(p) });
+        server
+    }
+
+    #[tokio::test]
+    async fn async_only_tool_runs_over_dispatch_async() {
+        let server = async_only_server();
+        let dispatcher = JsonRpcDispatcher::new(&server);
+        let req = r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"search","arguments":{"q":"x"}}}"#;
+        let resp = dispatcher.dispatch_async(req).await.expect("response");
+        let parsed: serde_json::Value = serde_json::from_str(&resp).unwrap();
+        assert_eq!(parsed["result"]["isError"], false, "{parsed}");
+        assert!(
+            parsed["result"]["content"][0]["text"]
+                .as_str()
+                .unwrap()
+                .contains("\"q\""),
+            "{parsed}"
+        );
+    }
+
+    #[tokio::test]
+    async fn dispatch_async_still_serves_metadata_methods() {
+        let server = async_only_server();
+        let dispatcher = JsonRpcDispatcher::new(&server);
+        let resp = dispatcher
+            .dispatch_async(r#"{"jsonrpc":"2.0","id":7,"method":"tools/list"}"#)
+            .await
+            .expect("response");
+        let parsed: serde_json::Value = serde_json::from_str(&resp).unwrap();
+        assert_eq!(parsed["id"], 7);
+        assert_eq!(parsed["result"]["tools"][0]["name"], "search");
+    }
+
+    #[test]
+    fn non_object_request_gets_invalid_request_not_silence() {
+        let server = async_only_server();
+        let dispatcher = JsonRpcDispatcher::new(&server);
+        let resp = dispatcher
+            .dispatch("[1, 2]")
+            .expect("must answer, not hang");
+        assert!(resp.contains("-32600"), "{resp}");
+    }
+
+    #[test]
+    fn sync_call_of_async_only_tool_says_so() {
+        let server = async_only_server();
+        let err = server
+            .call_tool("search", serde_json::json!({}))
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("async"), "misleading error: {err}");
+    }
 
     fn test_server() -> McpServer {
         let mut server = McpServer::new("test-server", "0.1.0");

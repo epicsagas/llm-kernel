@@ -240,16 +240,42 @@ impl McpServer {
         self.handlers.contains_key(name) || self.async_handlers.contains_key(name)
     }
 
+    /// Names of tools that have ONLY an async handler — these cannot run on
+    /// the synchronous transport path. Sorted for stable reporting.
+    pub fn async_only_tools(&self) -> Vec<&str> {
+        let mut names: Vec<&str> = self
+            .async_handlers
+            .keys()
+            .filter(|n| !self.handlers.contains_key(*n))
+            .map(String::as_str)
+            .collect();
+        names.sort_unstable();
+        names
+    }
+
     /// Call a tool by name with the given parameters.
+    ///
+    /// Synchronous handlers only. A tool registered via
+    /// [`McpServer::set_async_handler`] cannot run here — use
+    /// [`McpServer::call_tool_async`] (or an async transport entry point such
+    /// as `JsonRpcDispatcher::dispatch_async`).
     pub fn call_tool(
         &self,
         name: &str,
         params: serde_json::Value,
     ) -> crate::error::Result<serde_json::Value> {
-        let handler = self
-            .handlers
-            .get(name)
-            .ok_or_else(|| crate::error::KernelError::Config(format!("unknown tool: {name}")))?;
+        let handler = self.handlers.get(name).ok_or_else(|| {
+            // Distinguish "no such tool" from "registered, but async-only" —
+            // reporting the latter as unknown sends callers hunting a
+            // registration bug that isn't there.
+            if self.async_handlers.contains_key(name) {
+                crate::error::KernelError::Config(format!(
+                    "tool '{name}' has only an async handler; use call_tool_async"
+                ))
+            } else {
+                crate::error::KernelError::Config(format!("unknown tool: {name}"))
+            }
+        })?;
         handler(params)
     }
 

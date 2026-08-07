@@ -66,11 +66,13 @@ pub fn estimate_tokens(text: &str) -> usize {
     let mut total_weight: f32 = 0.0;
 
     for ch in text.chars() {
-        if ch.is_ascii_control() {
-            continue;
-        }
+        // Whitespace first: `\n`, `\t`, and `\r` are ASCII control chars too,
+        // and skipping them undercounts newline-dense text (code, markdown).
         if ch.is_whitespace() {
             total_weight += WS_WEIGHT;
+            continue;
+        }
+        if ch.is_ascii_control() {
             continue;
         }
         total_weight += 1.0 / char_cpt(ch);
@@ -80,7 +82,10 @@ pub fn estimate_tokens(text: &str) -> usize {
         return 0;
     }
 
-    total_weight.round() as usize
+    // Text with any visible content is at least one token — rounding alone
+    // reports 0 for short strings ("a" weighs 0.25), and a 0-token budget
+    // entry reads as "nothing to send".
+    (total_weight.round() as usize).max(1)
 }
 
 /// Estimate tokens for a single string, returning at least `min`.

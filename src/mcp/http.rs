@@ -161,6 +161,35 @@ fn authorized(server: &McpServer, headers: &HeaderMap) -> bool {
     server.check_auth(auth)
 }
 
+/// Reject cross-origin browser requests (MCP spec: servers MUST validate
+/// `Origin` to prevent DNS rebinding). A page on any website can POST to a
+/// loopback MCP server; without this, that page executes tools.
+///
+/// Non-browser clients send no `Origin` and are unaffected.
+fn origin_allowed(headers: &HeaderMap) -> bool {
+    let Some(origin) = headers.get("origin").and_then(|v| v.to_str().ok()) else {
+        return true; // no Origin — not a browser-initiated request
+    };
+    if origin == "null" {
+        return false;
+    }
+    // Only loopback origins may drive a local MCP server.
+    origin
+        .split_once("://")
+        .map(|(_, host_port)| host_port.split(':').next().unwrap_or(""))
+        .is_some_and(|host| {
+            host == "localhost" || host == "127.0.0.1" || host == "[::1]" || host == "::1"
+        })
+}
+
+fn forbidden_response(id: Option<Value>) -> Json<Value> {
+    Json(serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": id,
+        "error": { "code": ERR_UNAUTHORIZED, "message": "Forbidden origin" }
+    }))
+}
+
 fn unauthorized_response(id: Option<Value>) -> Json<Value> {
     Json(serde_json::json!({
         "jsonrpc": "2.0",
@@ -169,16 +198,38 @@ fn unauthorized_response(id: Option<Value>) -> Json<Value> {
     }))
 }
 
+/// Dispatch a single request or a JSON-RPC batch (array). Returns `None` only
+/// when nothing needs answering (all notifications).
+async fn dispatch_any(server: &McpServer, req: &Value) -> Option<Value> {
+    let Some(batch) = req.as_array() else {
+        return dispatch_async(server, req).await;
+    };
+    let mut out = Vec::with_capacity(batch.len());
+    for item in batch {
+        if let Some(resp) = dispatch_async(server, item).await {
+            out.push(resp);
+        }
+    }
+    if out.is_empty() {
+        None
+    } else {
+        Some(Value::Array(out))
+    }
+}
+
 async fn rpc_handler(
     State(state): State<HttpTransport>,
     headers: HeaderMap,
     Json(req): Json<Value>,
 ) -> impl IntoResponse {
     let id = req.get("id").cloned();
+    if !origin_allowed(&headers) {
+        return (StatusCode::FORBIDDEN, forbidden_response(id));
+    }
     if !authorized(&state.server, &headers) {
         return (StatusCode::UNAUTHORIZED, unauthorized_response(id));
     }
-    match dispatch_async(&state.server, &req).await {
+    match dispatch_any(&state.server, &req).await {
         Some(resp) => (StatusCode::OK, Json(resp)),
         // Notification — acknowledge with 204 No Content.
         None => (StatusCode::NO_CONTENT, Json(serde_json::Value::Null)),
@@ -195,12 +246,17 @@ async fn sse_handler(
 
     // Produce the response for this request, then stream it as one SSE event.
     tokio::spawn(async move {
-        let event = if !authorized(&server, &headers) {
+        let event = if !origin_allowed(&headers) {
+            Event::default().event("error").data(
+                serde_json::to_string(&forbidden_response(req.get("id").cloned()).0)
+                    .unwrap_or_default(),
+            )
+        } else if !authorized(&server, &headers) {
             Event::default().event("error").data(
                 serde_json::to_string(&unauthorized_response(req.get("id").cloned()).0)
                     .unwrap_or_default(),
             )
-        } else if let Some(resp) = dispatch_async(&server, &req).await {
+        } else if let Some(resp) = dispatch_any(&server, &req).await {
             let data = serde_json::to_string(&resp).unwrap_or_default();
             Event::default().event("message").data(data)
         } else {
@@ -275,6 +331,40 @@ mod tests {
         let resp = dispatch_async(&server, &req).await.unwrap();
         let text = resp["result"]["contents"][0]["text"].as_str().unwrap();
         assert!(text.contains("body"));
+    }
+
+    #[test]
+    fn origin_validation_blocks_cross_site_browsers() {
+        let mut h = HeaderMap::new();
+        assert!(origin_allowed(&h), "no Origin (non-browser client) passes");
+        h.insert("origin", "http://localhost:3000".parse().unwrap());
+        assert!(origin_allowed(&h));
+        h.insert("origin", "http://127.0.0.1:8080".parse().unwrap());
+        assert!(origin_allowed(&h));
+        h.insert("origin", "https://evil.example.com".parse().unwrap());
+        assert!(!origin_allowed(&h), "DNS-rebinding origin must be rejected");
+        h.insert("origin", "null".parse().unwrap());
+        assert!(!origin_allowed(&h));
+        // Suffix trickery must not pass.
+        h.insert("origin", "https://localhost.evil.com".parse().unwrap());
+        assert!(!origin_allowed(&h));
+    }
+
+    #[tokio::test]
+    async fn batch_requests_get_a_batch_response() {
+        let server = server_with_echo();
+        let batch = serde_json::json!([
+            {"jsonrpc":"2.0","id":1,"method":"ping"},
+            {"jsonrpc":"2.0","id":2,"method":"tools/call",
+             "params":{"name":"echo","arguments":{"v":1}}}
+        ]);
+        let resp = dispatch_any(&server, &batch)
+            .await
+            .expect("batch must not be dropped");
+        let arr = resp.as_array().expect("array response");
+        assert_eq!(arr.len(), 2);
+        assert_eq!(arr[0]["id"], 1);
+        assert_eq!(arr[1]["result"]["isError"], false);
     }
 
     /// AC2: a full HTTP round-trip — bind an ephemeral port, POST a tools/call,
