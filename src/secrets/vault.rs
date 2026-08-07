@@ -2,6 +2,8 @@ use std::collections::HashMap;
 use std::ops::{Deref, DerefMut};
 use std::path::Path;
 
+use zeroize::Zeroize;
+
 use crate::error::{KernelError, Result};
 
 use super::atomic::write_atomic;
@@ -17,11 +19,25 @@ use super::atomic::write_atomic;
 /// via an atomic temp-file rename. This protects against other local users
 /// and against torn writes; it does **not** protect against an attacker who
 /// already runs as this user, nor against disk forensics. It is not an OS
-/// keychain — do not describe it as one. Secrets are also not zeroized in
-/// memory. For stronger guarantees, hold the key in an OS keychain and pass
-/// it in rather than persisting it here.
+/// keychain — do not describe it as one. For stronger guarantees, hold the
+/// key in an OS keychain and pass it in rather than persisting it here.
+///
+/// Values are zeroized on drop and after the serialized body is written, so
+/// they do not linger in freed heap pages. This is best-effort: `DerefMut`
+/// and `IntoIterator` let copies escape, and those are the caller's to wipe.
 #[derive(Clone, Default)]
 pub struct SecretVault(HashMap<String, String>);
+
+/// Wipe every value when the vault goes away, so credentials do not linger
+/// in freed heap pages (core dumps, swap). Best-effort: `DerefMut` lets a
+/// caller clone a value out, and that copy is theirs to manage.
+impl Drop for SecretVault {
+    fn drop(&mut self) {
+        for value in self.0.values_mut() {
+            value.zeroize();
+        }
+    }
+}
 
 /// Deriving `Debug` would print every secret verbatim into logs and panic
 /// messages — show only the key names.
@@ -108,7 +124,7 @@ impl SecretVault {
             )));
         }
 
-        let body = self
+        let mut body = self
             .0
             .keys()
             .collect::<std::collections::BTreeSet<_>>()
@@ -118,7 +134,11 @@ impl SecretVault {
 
         // Pass the Path itself — a lossy string conversion would silently
         // write to a DIFFERENT file on a non-UTF-8 path.
-        write_atomic(p, body.as_bytes(), 0o600)?;
+        let result = write_atomic(p, body.as_bytes(), 0o600);
+        // `body` is a full plaintext copy of every secret; wipe it before the
+        // allocation goes back to the heap (readable in a core dump or swap).
+        Zeroize::zeroize(&mut body);
+        result?;
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
@@ -163,8 +183,11 @@ impl From<HashMap<String, String>> for SecretVault {
 impl IntoIterator for SecretVault {
     type Item = (String, String);
     type IntoIter = std::collections::hash_map::IntoIter<String, String>;
-    fn into_iter(self) -> Self::IntoIter {
-        self.0.into_iter()
+    /// Takes the map out so the `Drop` impl (which zeroizes) can still run —
+    /// moving a field out of a `Drop` type is not allowed. The values handed
+    /// to the caller are theirs to wipe.
+    fn into_iter(mut self) -> Self::IntoIter {
+        std::mem::take(&mut self.0).into_iter()
     }
 }
 

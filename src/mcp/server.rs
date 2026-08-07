@@ -240,6 +240,47 @@ impl McpServer {
         self.handlers.contains_key(name) || self.async_handlers.contains_key(name)
     }
 
+    /// Check `arguments` against the tool's advertised `input_schema`.
+    ///
+    /// Only the two constraints a caller can already see in `tools/list` are
+    /// enforced: an `"object"` schema needs an object, and every name under
+    /// `"required"` must be present. Without this a request that violates the
+    /// advertised contract reaches the handler, where `params["x"].as_str()
+    /// .unwrap_or_default()` turns a protocol error into a silently wrong
+    /// result (an empty-string search, a note titled "untitled").
+    ///
+    /// Returns the offending message; `Ok(())` when the tool is unknown here
+    /// (the caller reports unknown tools) or declares no constraints.
+    pub fn validate_tool_args(
+        &self,
+        name: &str,
+        arguments: &serde_json::Value,
+    ) -> Result<(), String> {
+        let Some(tool) = self.tools.iter().find(|t| t.name == name) else {
+            return Ok(());
+        };
+        if tool.input_schema.get("type").and_then(|t| t.as_str()) != Some("object") {
+            return Ok(());
+        }
+        // `null` stands for "no arguments given" on both transports.
+        let obj = match arguments {
+            serde_json::Value::Null => None,
+            serde_json::Value::Object(o) => Some(o),
+            _ => return Err(format!("tool '{name}' expects an object for arguments")),
+        };
+        let Some(required) = tool.input_schema.get("required").and_then(|r| r.as_array()) else {
+            return Ok(());
+        };
+        for field in required.iter().filter_map(|f| f.as_str()) {
+            if !obj.is_some_and(|o| o.contains_key(field)) {
+                return Err(format!(
+                    "tool '{name}' is missing required argument '{field}'"
+                ));
+            }
+        }
+        Ok(())
+    }
+
     /// Names of tools that have ONLY an async handler — these cannot run on
     /// the synchronous transport path. Sorted for stable reporting.
     pub fn async_only_tools(&self) -> Vec<&str> {

@@ -7,6 +7,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.24.0] - 2026-08-07
+
+### Security
+
+- **`SecretVault` no longer derives `Debug`.** The derive printed every stored
+  secret verbatim, so any `{:?}` of the vault (or a struct embedding it) wrote
+  the user's API keys into logs and panic messages. `Debug` now shows sorted
+  key names only.
+- **`BearerAuth::generate` uses the OS CSPRNG** (128 bits via `getrandom`)
+  instead of a wall-clock-seeded xorshift, whose output was predictable to
+  anyone who could guess the start time. `try_generate` is the fallible form;
+  neither falls back to a weak token. `BearerAuth`'s `Debug` no longer prints
+  the token.
+- **MCP HTTP transport validates `Origin`** (MCP spec DNS-rebinding
+  mitigation). Any web page could previously POST to a loopback MCP server
+  and execute tools; browser requests from non-loopback origins now get 403,
+  and non-browser clients (no `Origin`) are unaffected.
+- **Secrets are zeroized** on vault drop and after the serialized body is
+  written. Best-effort — `DerefMut`/`IntoIterator` let copies escape.
+
+### Fixed
+
+- **`redact_credential` panicked on multi-byte credentials** — it sliced at
+  fixed byte offsets, on the very log/error paths it exists to protect.
+- **MCP stdio could not execute async tool handlers.** `has_tool` accepted
+  tools registered with `set_async_handler`, but dispatch resolved them
+  through the sync-only `call_tool`, so every such tool was advertised in
+  `tools/list` and then failed as "unknown tool". Adds `dispatch_async`,
+  `dispatch_authenticated_async`, and `run_stdio_async`; `run_stdio` now
+  fails fast when the server has async-only tools instead of returning
+  `isError` per call, and `call_tool` distinguishes "async-only" from
+  "unknown". `McpServer::async_only_tools` exposes the set.
+- **Tool arguments are validated against the advertised `input_schema`**
+  (object-ness and `required` fields). Previously a call missing a required
+  argument reached the handler, where `params["x"].as_str().unwrap_or_default()`
+  turned a protocol violation into a silently wrong result.
+- **MCP HTTP dropped JSON-RPC batch requests**, answering 204 and leaving the
+  client waiting; batches are now dispatched and answered as a batch.
+- **`SecretVault::load_from` panicked** on a `KEY=$'` line (out-of-bounds
+  slice), and corrupted non-ASCII values by reinterpreting UTF-8 bytes as
+  Latin-1.
+- **`SecretVault` round-trip corruption.** Values wrapped in double quotes or
+  starting with `$` were written unquoted and then stripped on load.
+- **`SecretVault::persist_to` silently dropped entries** whose key failed
+  validation — `insert` then `persist_to` both reported success while the
+  credential never reached disk. It now errors.
+- **`SecretVault::load_from` silently dropped invalid-UTF-8 lines**, making
+  the documented error path unreachable and letting the next `persist_to`
+  erase the entry permanently.
+- **`write_atomic` now fsyncs** the temp file before renaming, and takes a
+  `Path` instead of a lossy string (non-UTF-8 paths wrote to a different
+  file).
+- **`estimate_tokens` counted newlines and tabs as zero** (the ASCII-control
+  skip ran before the whitespace check) and returned 0 for short non-empty
+  text.
+- **Non-object JSON-RPC requests** were treated as notifications and answered
+  with silence; they now get `-32600`. Stdio lines are length-capped.
+
 ## [0.23.0] - 2026-07-31
 
 ### Added

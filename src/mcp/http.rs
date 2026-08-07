@@ -125,6 +125,8 @@ async fn dispatch_async(server: &McpServer, req: &Value) -> Option<Value> {
                 .unwrap_or(serde_json::json!(null));
             if !server.has_tool(name) {
                 Err((ERR_INVALID_PARAMS, format!("Unknown tool: {name}")))
+            } else if let Err(e) = server.validate_tool_args(name, &params) {
+                Err((ERR_INVALID_PARAMS, e))
             } else {
                 // Execution failures are reported in-band with isError: true.
                 match server.call_tool_async(name, params).await {

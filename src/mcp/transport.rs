@@ -299,6 +299,9 @@ impl<'a> JsonRpcDispatcher<'a> {
         if !self.server.has_tool(tool_name) {
             return self.error_response(id.clone(), -32602, &format!("Unknown tool: {tool_name}"));
         }
+        if let Err(e) = self.server.validate_tool_args(tool_name, &params) {
+            return self.error_response(id.clone(), -32602, &e);
+        }
 
         match self.server.call_tool_async(tool_name, params).await {
             Ok(result) => self.success_response(
@@ -339,6 +342,9 @@ impl<'a> JsonRpcDispatcher<'a> {
 
         if !self.server.has_tool(tool_name) {
             return self.error_response(id.clone(), -32602, &format!("Unknown tool: {tool_name}"));
+        }
+        if let Err(e) = self.server.validate_tool_args(tool_name, &params) {
+            return self.error_response(id.clone(), -32602, &e);
         }
 
         match self.server.call_tool(tool_name, params) {
@@ -470,6 +476,42 @@ mod tests {
         let parsed: serde_json::Value = serde_json::from_str(&resp).unwrap();
         assert_eq!(parsed["id"], 7);
         assert_eq!(parsed["result"]["tools"][0]["name"], "search");
+    }
+
+    #[tokio::test]
+    async fn missing_required_argument_is_rejected_not_defaulted() {
+        let mut server = McpServer::new("s", "1.0");
+        server.register_tool(ToolDescription {
+            name: "search".into(),
+            description: "d".into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {"query": {"type": "string"}},
+                "required": ["query"]
+            }),
+        });
+        server.set_async_handler("search", |p: serde_json::Value| async move { Ok(p) });
+        let dispatcher = JsonRpcDispatcher::new(&server);
+
+        // No arguments at all — the handler would see null and search for "".
+        let resp = dispatcher
+            .dispatch_async(
+                r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"search"}}"#,
+            )
+            .await
+            .expect("response");
+        assert!(resp.contains("-32602"), "{resp}");
+        assert!(resp.contains("query"), "{resp}");
+
+        // Supplying it dispatches normally.
+        let ok = dispatcher
+            .dispatch_async(
+                r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"search","arguments":{"query":"x"}}}"#,
+            )
+            .await
+            .expect("response");
+        let parsed: serde_json::Value = serde_json::from_str(&ok).unwrap();
+        assert_eq!(parsed["result"]["isError"], false, "{ok}");
     }
 
     #[test]
