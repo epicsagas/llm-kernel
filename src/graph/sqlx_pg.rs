@@ -23,19 +23,23 @@
 //! # Scope
 //!
 //! Inherent async methods cover klr's needs — batch edge writes, directed /
-//! relation-filtered lookups, weighted neighbor aggregation, search, and
-//! traversal — plus basic node/edge CRUD. `query_nodes` and `smart_recall`
-//! (which would require porting the CSR PageRank pass) are out of scope: a
-//! citation graph does not need memory-recall ranking. They are marked with
-//! `TODO(post-1.0)` comments.
+//! relation-filtered lookups, weighted neighbor aggregation, search, traversal,
+//! and basic node/edge CRUD — plus `query_nodes` and `smart_recall` (composite
+//! recall with a PageRank centrality boost, ported from `PgGraph`).
 
 use std::collections::{HashMap, HashSet};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use sqlx::postgres::{PgPoolOptions, PgRow};
 use sqlx::{PgPool, Postgres, QueryBuilder, Row};
 
+use super::algo::{CsrGraph, pagerank_default};
+use super::lifecycle::now_iso;
+use super::recall::{W_ACCESS, W_FTS, W_GRAPH, W_IMPORTANCE, W_RECENCY, compute_recency};
 use super::schema::GRAPH_SCHEMA_VERSION;
-use super::types::{EdgeDirection, GraphEdge, GraphNode, escape_like, join_csv, split_csv};
+use super::types::{
+    EdgeDirection, GraphEdge, GraphNode, ScoredNode, escape_like, join_csv, split_csv,
+};
 use crate::error::{KernelError, Result};
 
 /// Standard node SELECT columns (positional order — keep in sync with [`row_to_node`]).
@@ -712,6 +716,175 @@ impl SqlxPgGraph {
         Ok(rows.iter().map(row_to_node).collect())
     }
 
+    /// Dynamic filter by tag / node_type / project, ranked by `updated` DESC.
+    /// Mirrors `PgGraph::query_nodes`.
+    pub async fn query_nodes(
+        &self,
+        tag: Option<&str>,
+        node_type: Option<&str>,
+        project: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<GraphNode>> {
+        let limit = limit.min(200) as i64;
+        let nodes = self.nodes_tbl();
+        let mut qb = QueryBuilder::<Postgres>::new("SELECT ");
+        qb.push(NODE_COLUMNS);
+        qb.push(" FROM ");
+        qb.push(nodes.as_str());
+        let mut filtered = false;
+        if let Some(t) = tag {
+            qb.push(" WHERE (',' || tags || ',') ILIKE ('%,' || ");
+            qb.push_bind(escape_like(t));
+            qb.push(" || ',%') ESCAPE '\\'");
+            filtered = true;
+        }
+        if let Some(nt) = node_type {
+            qb.push(if filtered {
+                " AND node_type = "
+            } else {
+                " WHERE node_type = "
+            });
+            qb.push_bind(nt);
+            filtered = true;
+        }
+        if let Some(p) = project {
+            qb.push(if filtered { " AND " } else { " WHERE " });
+            qb.push("(',' || projects || ',') ILIKE ('%,' || ");
+            qb.push_bind(escape_like(p));
+            qb.push(" || ',%') ESCAPE '\\'");
+        }
+        qb.push(" ORDER BY updated DESC LIMIT ");
+        qb.push_bind(limit);
+        let rows = qb.build().fetch_all(&self.pool).await.map_err(pg_err)?;
+        Ok(rows.iter().map(row_to_node).collect())
+    }
+
+    /// Composite recall — rank nodes by recency, importance, access, FTS, and a
+    /// PageRank centrality boost over the induced candidate subgraph. Mirrors
+    /// `PgGraph::smart_recall` (`pg.rs:573`): identical composite weights and
+    /// graph-boost math. Only the driver differs — `ANY($1)` array binds replace
+    /// the dynamic placeholder lists, so the PageRank pass loads the subgraph
+    /// edges in one round-trip instead of one-per-candidate.
+    pub async fn smart_recall(
+        &self,
+        project: Option<&str>,
+        hint: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<ScoredNode>> {
+        let now_secs = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+
+        // FTS match set (ILIKE), used as a binary boost signal.
+        let fts_ids: HashSet<String> = match hint {
+            Some(h) if !h.is_empty() => self
+                .search_nodes(h, limit * 4)
+                .await?
+                .into_iter()
+                .map(|n| n.id)
+                .collect(),
+            _ => HashSet::new(),
+        };
+
+        // Candidate fetch (broad set), excluding stale nodes.
+        let candidate_limit = (limit * 4).max(40) as i64;
+        let nodes = self.nodes_tbl();
+        let mut qb = QueryBuilder::<Postgres>::new("SELECT ");
+        qb.push(NODE_COLUMNS);
+        qb.push(" FROM ");
+        qb.push(nodes.as_str());
+        qb.push(" WHERE (',' || tags || ',') NOT ILIKE '%,stale,%'");
+        if let Some(p) = project {
+            qb.push(" AND (',' || projects || ',') ILIKE ('%,' || ");
+            qb.push_bind(escape_like(p));
+            qb.push(" || ',%') ESCAPE '\\'");
+        }
+        qb.push(" ORDER BY importance DESC, updated DESC LIMIT ");
+        qb.push_bind(candidate_limit);
+        let rows = qb.build().fetch_all(&self.pool).await.map_err(pg_err)?;
+        let candidates: Vec<GraphNode> = rows.iter().map(row_to_node).collect();
+
+        // Composite scoring — identical weights/recency as the SQLite/PgGraph backends.
+        let mut scored: Vec<ScoredNode> = candidates
+            .into_iter()
+            .map(|node| {
+                let recency = compute_recency(&node.updated, now_secs);
+                let importance = node.importance;
+                let access_freq = (node.access_count.max(0) as f64 / 20.0).min(1.0);
+                let fts_match = if fts_ids.contains(&node.id) { 1.0 } else { 0.0 };
+                let score = W_RECENCY * recency
+                    + W_IMPORTANCE * importance
+                    + W_ACCESS * access_freq
+                    + W_FTS * fts_match;
+                ScoredNode { node, score }
+            })
+            .collect();
+        scored.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        scored.truncate(limit);
+
+        // Graph-boost pass: PageRank centrality over the induced subgraph of the
+        // top candidates. Shares the pagerank math with PgGraph/SQLite (zero drift)
+        // — only the edge-load SQL differs. One round-trip via `ANY($1)`.
+        if scored.len() > 1 {
+            const MAX_GRAPH_BOOST_PARTICIPANTS: usize = 100;
+            let candidate_ids: Vec<String> = scored
+                .iter()
+                .take(MAX_GRAPH_BOOST_PARTICIPANTS)
+                .map(|sn| sn.node.id.clone())
+                .collect();
+            let edges = self.edges_tbl();
+            let sql = format!(
+                "SELECT id, source, target, relation, weight, ts FROM {edges} \
+                 WHERE source = ANY($1) AND target = ANY($1)"
+            );
+            let sub_edges: Vec<GraphEdge> = sqlx::query(&sql)
+                .bind(&candidate_ids)
+                .fetch_all(&self.pool)
+                .await
+                .map(|rows| rows.iter().map(row_to_edge).collect())
+                .unwrap_or_default();
+            let csr = CsrGraph::from_edges(&candidate_ids, &sub_edges);
+            let pr = pagerank_default(&csr);
+            let max_pr = pr.iter().copied().fold(0.0_f64, f64::max).max(1e-12);
+            let pr_map: HashMap<String, f64> = candidate_ids
+                .iter()
+                .zip(pr.iter())
+                .map(|(id, &s)| (id.clone(), s / max_pr))
+                .collect();
+            for sn in &mut scored {
+                let boost = pr_map.get(&sn.node.id).copied().unwrap_or(0.0);
+                sn.score += W_GRAPH * boost;
+            }
+            scored.sort_by(|a, b| {
+                b.score
+                    .partial_cmp(&a.score)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            });
+        }
+
+        // Touch retrieved nodes in one statement (access_count++,
+        // accessed_at = now) rather than N round-trips.
+        if !scored.is_empty() {
+            let now = now_iso();
+            let ids: Vec<String> = scored.iter().map(|sn| sn.node.id.clone()).collect();
+            let sql = format!(
+                "UPDATE {nodes} SET access_count = access_count + 1, accessed_at = $1 WHERE id = ANY($2)"
+            );
+            let _ = sqlx::query(&sql)
+                .bind(now)
+                .bind(&ids)
+                .execute(&self.pool)
+                .await;
+        }
+
+        Ok(scored)
+    }
+
     /// Bidirectional BFS up to `depth` hops from `start_id` via a recursive CTE.
     /// Mirrors `PgGraph::related_nodes`. Returns distinct neighbor IDs (the start
     /// node is excluded), capped at 500.
@@ -750,10 +923,6 @@ impl SqlxPgGraph {
             })
             .collect())
     }
-
-    // TODO(post-1.0): query_nodes / smart_recall — klr citation-graph path does
-    // not need them. Porting smart_recall requires the CSR PageRank boost pass
-    // (super::algo::{CsrGraph, pagerank_default}) which is a larger surface.
 }
 
 #[cfg(test)]
@@ -1099,5 +1268,72 @@ mod tests {
                 .is_err()
         );
         assert!(SqlxPgGraph::connect_with_prefix(&url, "1lk").await.is_err());
+    }
+
+    /// `smart_recall` ranks by the composite score (recency + importance + FTS
+    /// + PageRank boost); `query_nodes` filters by tag/project. An FTS-matched
+    /// high-importance node outranks a low-importance match.
+    #[tokio::test]
+    async fn smart_recall_and_query_nodes() {
+        let Some(url) = pg_url() else {
+            eprintln!("skip: LLMKERNEL_PG_URL unset");
+            return;
+        };
+        let prefix = "lk_sgrecall_";
+        let g = SqlxPgGraph::connect_with_prefix(&url, prefix)
+            .await
+            .expect("connect");
+
+        // a: high importance, matches "rust"
+        let mut a = sample_node("a");
+        a.importance = 0.9;
+        a.title = "rust memory".into();
+        a.tags = vec!["lang".into()];
+        a.projects = vec!["proj".into()];
+        // b: low importance, matches "rust"
+        let mut b = sample_node("b");
+        b.importance = 0.3;
+        b.title = "rust kernel".into();
+        b.tags = vec!["lang".into()];
+        b.projects = vec!["proj".into()];
+        // c: high importance, does NOT match "rust", different project
+        let mut c = sample_node("c");
+        c.importance = 0.8;
+        c.title = "python runtime".into();
+        c.tags = vec!["lang".into()];
+
+        g.upsert_node(&a).await.unwrap();
+        g.upsert_node(&b).await.unwrap();
+        g.upsert_node(&c).await.unwrap();
+        // citation edges → induce a subgraph for the PageRank boost pass
+        g.append_edge(&sample_edge("e1", "a", "b", "cites", 1.0))
+            .await
+            .unwrap();
+        g.append_edge(&sample_edge("e2", "b", "c", "cites", 0.7))
+            .await
+            .unwrap();
+
+        // smart_recall scoped to project "proj" with a "rust" hint: a (0.9 +
+        // FTS) outranks b (0.3 + FTS); c is excluded by the project filter.
+        let recalled = g.smart_recall(Some("proj"), Some("rust"), 5).await.unwrap();
+        let ids: Vec<&str> = recalled.iter().map(|s| s.node.id.as_str()).collect();
+        assert!(ids.contains(&"a"));
+        assert!(ids.contains(&"b"));
+        assert!(!ids.contains(&"c"), "c excluded by project scope");
+        let pos_a = ids.iter().position(|&x| x == "a").unwrap();
+        let pos_b = ids.iter().position(|&x| x == "b").unwrap();
+        assert!(pos_a < pos_b, "high-importance rust match ranks first");
+        assert!(recalled[0].score > 0.0);
+
+        // query_nodes by tag returns all lang nodes
+        let tagged = g.query_nodes(Some("lang"), None, None, 10).await.unwrap();
+        assert_eq!(tagged.len(), 3);
+        // project filter narrows to a, b
+        let proj = g.query_nodes(None, None, Some("proj"), 10).await.unwrap();
+        let pids: Vec<&str> = proj.iter().map(|n| n.id.as_str()).collect();
+        assert!(pids.contains(&"a") && pids.contains(&"b"));
+        assert!(!pids.contains(&"c"));
+
+        cleanup(g.pool(), prefix).await;
     }
 }
