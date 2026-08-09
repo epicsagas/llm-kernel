@@ -36,7 +36,7 @@ src/
   tokens/      — Unicode token estimation, budgeting, sentence-aware chunking  (feature: tokens)
   install/     — AI tool config wizard  (feature: install)
   search/      — SearchProvider trait, RRF + weighted-sum + CombMNZ fusion; cross-engine FederatedSearch  (features: search, federation)
-  embedding/   — provider trait + OpenAI client, ElasticsearchVectorIndex  (features: embedding, embedding-openai, elastic) — `embedding-fastembed` (static ONNX, default) needs glibc ≥2.38 / current MSVC; older baselines use the mutually-exclusive `embedding-fastembed-dynamic-linking` escape hatch (see #55)
+  embedding/   — provider trait + OpenAI client, ElasticsearchVectorIndex  (features: embedding, embedding-openai, elastic) — `embedding-fastembed` (static ONNX, default) needs glibc ≥2.38 / current MSVC; older baselines use the mutually-exclusive `embedding-fastembed-dynamic-linking` escape hatch (see #55). macOS GPU: `embedding-metal` (candle-Metal for Qwen3/Nomic; HF TEI's official path) + `embedding-fastembed-coreml` (CoreML EP for bge-small/bge-m3 ONNX). ort has no Metal EP; MLX rejected (mlx-rs lacks embedding forward path).
   telemetry/   — enum-gated events  (feature: telemetry)
   safety/      — secret masking, error classification, prompt-injection detection  (feature: safety)
 ```

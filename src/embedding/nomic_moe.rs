@@ -47,6 +47,23 @@ impl NomicMoeProvider {
         )
     }
 
+    /// Create using the Apple Silicon GPU (Metal) with F16 precision.
+    ///
+    /// Requires the `embedding-metal` feature and macOS. Routes candle
+    /// inference to the Metal device — typically several× faster than CPU on
+    /// Apple Silicon. If Metal is unavailable this returns an error (no
+    /// automatic CPU fallback).
+    #[cfg(all(feature = "embedding-metal", target_os = "macos"))]
+    pub fn new_metal() -> Result<Self> {
+        Self::with_options(
+            NOMIC_EMBED_TEXT_V2_MOE,
+            candle_core::Device::new_metal(0)
+                .map_err(|e| KernelError::Embedding(format!("metal device init: {e}")))?,
+            candle_core::DType::F16,
+            DEFAULT_MAX_LENGTH,
+        )
+    }
+
     /// Create with custom repo, device, dtype, and max sequence length.
     pub fn with_options(
         model_id: &str,
