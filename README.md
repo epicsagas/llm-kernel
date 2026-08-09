@@ -65,6 +65,7 @@ Each module is gated behind a feature flag so you only pay for what you use.
 | `embedding-fastembed-nomic-moe` | Nomic V2 MoE embedding via candle backend | |
 | `embedding-fastembed-directml` | DirectML GPU execution provider for `FastembedProvider` (Windows only) | |
 | `embedding-fastembed-coreml` | CoreML GPU/ANE execution provider for `FastembedProvider` (macOS only) — `new_with_coreml()` accelerates bge-m3 | |
+| `embedding-metal` | Metal GPU acceleration for the candle providers (`Qwen3Provider`/`NomicMoeProvider`) on Apple Silicon — `new_metal()` (macOS only; combine with `embedding-fastembed-qwen3` / `-nomic-moe`) | |
 | `embedding-fastembed-dynamic-linking` | Dynamic ONNX Runtime linking (opt-in; **mutually exclusive with `embedding-fastembed`** and any feature implying it — for hosts where the static archive fails at release link: glibc <2.38 / older MSVC; see #50 #55) | |
 | `vector-index` | TurboQuant compressed vector index — 2-bit/4-bit, SIMD ANN search | |
 | `qdrant` | Qdrant `AsyncVectorIndex` (`QdrantVectorIndex`) for remote vector search | |

@@ -140,6 +140,15 @@ embedding-fastembed-directml = ["embedding-fastembed", "dep:ort"]
 # mirrors directml: ort CoreML EP로 bge-m3 임베딩 가속 (CPU 대비 수십배).
 embedding-fastembed-coreml = ["embedding-fastembed", "dep:ort"]
 
+# Metal GPU acceleration for the candle-based providers (Qwen3, Nomic V2 MoE)
+# on macOS. Enables candle-core's `metal` feature so `Device::new_metal()`
+# routes inference to the Apple Silicon GPU. candle-core gates its Metal deps
+# behind `target_os = "macos"` (same pattern ort uses for CoreML), so this
+# feature is a no-op to enable on other platforms — but the constructors are
+# only compiled on macOS. Combine with `embedding-fastembed-qwen3` and/or
+# `embedding-fastembed-nomic-moe`.
+embedding-metal = ["candle-core/metal"]
+
 # Opt-in dynamic ONNX Runtime linking (loads libonnxruntime.{so,dylib,dll} at
 # runtime instead of statically linking a prebuilt archive at build time).
 #

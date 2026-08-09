@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`embedding-metal` feature** — Metal GPU acceleration for the candle-based
+  embedding providers (`Qwen3Provider`, `NomicMoeProvider`) on Apple Silicon,
+  via candle-core's `metal` feature. New `new_metal()` constructors route
+  inference to the Metal device (F16). This is the same path Hugging Face's
+  Text Embeddings Inference uses (`-F metal`). Combined with the existing
+  `embedding-fastembed-coreml` execution provider (CoreML EP for the ONNX
+  models bge-small / bge-m3), both embedding backend families now have a
+  native macOS GPU path. `ort` has no Metal EP, so CoreML is the only ONNX
+  route; MLX was evaluated and rejected (the `mlx-rs` binding is an Array
+  framework with no embedding forward path and requires a full Xcode build).
+
 ## [0.24.0] - 2026-08-07
 
 ### Security

@@ -53,6 +53,23 @@ impl Qwen3Provider {
         )
     }
 
+    /// Create using the Apple Silicon GPU (Metal) with F16 precision.
+    ///
+    /// Requires the `embedding-metal` feature and macOS. Routes candle
+    /// inference to the Metal device — typically several× faster than CPU on
+    /// Apple Silicon for these encoder models. If Metal is unavailable this
+    /// returns an error (no automatic CPU fallback).
+    #[cfg(all(feature = "embedding-metal", target_os = "macos"))]
+    pub fn new_metal(model_id: &str) -> Result<Self> {
+        Self::with_options(
+            model_id,
+            candle_core::Device::new_metal(0)
+                .map_err(|e| KernelError::Embedding(format!("metal device init: {e}")))?,
+            candle_core::DType::F16,
+            DEFAULT_MAX_LENGTH,
+        )
+    }
+
     /// Create with custom device (GPU), dtype, and max sequence length.
     pub fn with_options(
         model_id: &str,
@@ -137,6 +154,17 @@ mod tests {
         assert_eq!(QWEN3_VL_EMBEDDING_2B, "Qwen/Qwen3-VL-Embedding-2B");
     }
 
+    // Verifies the Metal device initialises — the only thing new_metal() adds
+    // beyond with_options(). No model download. macOS + embedding-metal only.
+    #[cfg(all(feature = "embedding-metal", target_os = "macos"))]
+    #[test]
+    fn metal_device_initialises() {
+        assert!(
+            candle_core::Device::new_metal(0).is_ok(),
+            "Metal device failed to init — new_metal() would error"
+        );
+    }
+
     #[test]
     #[ignore = "requires model download"]
     fn embed_with_qwen3_0_6b() {
@@ -145,6 +173,25 @@ mod tests {
         // Qwen3-Embedding-0.6B has hidden_size that the config reports
         assert!(!result.vector.is_empty());
         assert_eq!(result.vector.len(), provider.dim());
+    }
+
+    // End-to-end Metal verification: downloads Qwen3-Embedding-0.6B and runs a
+    // real embed on Device::Metal. candle executes ops on the device's backend
+    // or errors — no silent CPU fallback — so a passing embed on a Metal device
+    // proves Metal kernels ran. macOS + embedding-metal only.
+    #[cfg(all(feature = "embedding-metal", target_os = "macos"))]
+    #[test]
+    #[ignore = "requires model download + Metal (macOS)"]
+    fn embed_with_qwen3_metal() {
+        let provider = Qwen3Provider::new_metal(QWEN3_EMBEDDING_0_6B).unwrap();
+        let result = provider.embed("hello world").unwrap();
+        assert!(!result.vector.is_empty());
+        assert_eq!(result.vector.len(), provider.dim());
+        eprintln!(
+            "metal embed ok: dim={} preview={:?}",
+            result.vector.len(),
+            &result.vector[..3.min(result.vector.len())]
+        );
     }
 
     #[test]
