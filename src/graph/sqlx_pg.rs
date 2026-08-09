@@ -748,11 +748,8 @@ impl SqlxPgGraph {
             filtered = true;
         }
         if let Some(p) = project {
-            qb.push(if filtered {
-                " AND (',' || projects || ',') ILIKE ('%,' || "
-            } else {
-                " WHERE (',' || projects || ',') ILIKE ('%,' || "
-            });
+            qb.push(if filtered { " AND " } else { " WHERE " });
+            qb.push("(',' || projects || ',') ILIKE ('%,' || ");
             qb.push_bind(escape_like(p));
             qb.push(" || ',%') ESCAPE '\\'");
         }
