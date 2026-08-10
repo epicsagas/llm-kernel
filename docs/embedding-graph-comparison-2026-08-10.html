@@ -1,0 +1,269 @@
+<style>
+  :root {
+    --bg: #0e1116;
+    --surface: #161b22;
+    --surface-2: #1c232c;
+    --text: #d4dae3;
+    --text-dim: #8b95a5;
+    --accent: #d97757;
+    --accent-soft: rgba(217, 119, 87, 0.14);
+    --good: #4e9d6b;
+    --good-soft: rgba(78, 157, 107, 0.14);
+    --rule: #2a3038;
+    --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    --font-mono: ui-monospace, "SF Mono", "Menlo", "Consolas", monospace;
+    --maxw: 760px;
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      --bg: #fafaf7;
+      --surface: #ffffff;
+      --surface-2: #f3f1ec;
+      --text: #1a1d23;
+      --text-dim: #5a6270;
+      --accent: #c75d3a;
+      --accent-soft: rgba(199, 93, 58, 0.10);
+      --good: #2e7d4f;
+      --good-soft: rgba(46, 125, 79, 0.10);
+      --rule: #e2e4e7;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0e1116; --surface: #161b22; --surface-2: #1c232c;
+    --text: #d4dae3; --text-dim: #8b95a5; --accent: #d97757;
+    --accent-soft: rgba(217,119,87,0.14); --good: #4e9d6b;
+    --good-soft: rgba(78,157,107,0.14); --rule: #2a3038;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: var(--font-sans); font-size: 0.95rem; line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: var(--maxw); margin: 0 auto; padding: 3rem 1.5rem 5rem; }
+  .topbar { display: flex; justify-content: flex-end; }
+  .toggle {
+    background: var(--surface); color: var(--text-dim); border: 1px solid var(--rule);
+    font: inherit; font-size: 0.8rem; padding: 0.3rem 0.7rem; border-radius: 6px;
+    cursor: pointer; font-variant-numeric: tabular-nums;
+  }
+  .toggle:hover { color: var(--text); border-color: var(--accent); }
+  header { margin: 2.5rem 0 0; }
+  .eyebrow {
+    font-size: 0.75rem; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--accent); font-weight: 600; margin: 0 0 0.6rem;
+  }
+  h1 {
+    font-size: 1.7rem; line-height: 1.2; margin: 0 0 0.8rem;
+    text-wrap: balance; letter-spacing: -0.01em; font-weight: 700;
+  }
+  .meta {
+    font-size: 0.8rem; color: var(--text-dim); font-variant-numeric: tabular-nums;
+    border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule);
+    padding: 0.6rem 0; margin: 1.5rem 0 0;
+  }
+  .meta span { display: inline-block; margin-right: 1.2rem; }
+  .meta b { color: var(--text); font-weight: 600; }
+  .summary {
+    display: grid; gap: 0.8rem; margin: 1.8rem 0 0;
+    background: var(--surface); border: 1px solid var(--rule);
+    border-left: 3px solid var(--accent); border-radius: 8px; padding: 1.3rem 1.4rem;
+  }
+  .summary p { margin: 0; font-size: 0.92rem; }
+  .summary b { color: var(--accent); }
+  .summary .good { color: var(--good); font-weight: 600; }
+  section { margin: 2.6rem 0 0; }
+  h2 {
+    font-size: 1.15rem; margin: 0 0 1rem; font-weight: 700;
+    letter-spacing: -0.005em; display: flex; align-items: baseline; gap: 0.7rem;
+  }
+  .num {
+    font-family: var(--font-mono); font-size: 0.8rem; color: var(--accent);
+    font-weight: 500;
+  }
+  h3 { font-size: 0.98rem; margin: 1.4rem 0 0.6rem; color: var(--text-dim); font-weight: 600; }
+  p { margin: 0.6rem 0; }
+  .tbl-scroll { overflow-x: auto; margin: 0.8rem 0; }
+  table {
+    width: 100%; border-collapse: collapse; font-size: 0.86rem;
+    font-variant-numeric: tabular-nums;
+  }
+  th, td { padding: 0.55rem 0.7rem; text-align: left; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  th { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-dim); font-weight: 600; }
+  td.num, th.num { text-align: right; font-family: var(--font-mono); }
+  tr.lk { background: var(--accent-soft); }
+  tr.lk td:first-child { border-left: 2px solid var(--accent); font-weight: 600; }
+  tr.lk.good td:first-child { border-left-color: var(--good); }
+  .best { color: var(--good); font-weight: 600; }
+  code, .mono { font-family: var(--font-mono); font-size: 0.85em; background: var(--surface-2); padding: 0.1em 0.35em; border-radius: 4px; }
+  .analysis { font-size: 0.9rem; }
+  .analysis ul { margin: 0.5rem 0; padding-left: 1.2rem; }
+  .analysis li { margin: 0.4rem 0; }
+  .analysis li b { color: var(--text); }
+  .gaps { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 0.4rem 1.3rem; margin: 0.8rem 0; }
+  .gaps ol { margin: 0.4rem 0; padding-left: 1.4rem; }
+  .gaps li { margin: 0.5rem 0; font-size: 0.9rem; }
+  .concl { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1rem 0; }
+  .card { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 1.1rem 1.2rem; }
+  .card h4 { margin: 0 0 0.5rem; font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.06em; }
+  .card.pos h4 { color: var(--good); }
+  .card.neg h4 { color: var(--accent); }
+  .card ul { margin: 0.3rem 0; padding-left: 1.1rem; font-size: 0.88rem; }
+  .card li { margin: 0.35rem 0; }
+  footer { margin: 3rem 0 0; padding-top: 1.2rem; border-top: 1px solid var(--rule); font-size: 0.8rem; color: var(--text-dim); }
+  .arrow { color: var(--text-dim); }
+  .pos-label { color: var(--good); font-weight: 600; }
+  @media (max-width: 560px) {
+    .concl { grid-template-columns: 1fr; }
+    .wrap { padding: 2rem 1rem 3rem; }
+    h1 { font-size: 1.4rem; }
+  }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+<div class="wrap">
+  <div class="topbar"><button class="toggle" onclick="(()=>{const r=document.documentElement;const c=r.getAttribute('data-theme');r.setAttribute('data-theme',c==='dark'?'light':'dark');})()">-theme</button></div>
+
+  <header>
+    <p class="eyebrow">실증 비교분석 · embedding &amp; graph recall</p>
+    <h1>llm-kernel 임베딩·그래프, 타 시스템 대비 성능 위치</h1>
+    <div class="meta">
+      <span><b>환경</b> Apple M2 / 16GB / Metal</span>
+      <span><b>측정일</b> 2026-08-10</span>
+      <span><b>범위</b> 임베딩 6 · 그래프 4 시스템</span>
+    </div>
+    <div class="summary">
+      <p><b>임베딩</b> — 단일 embed <span class="good">6.9ms (전 시스템 최고)</span>. candle-Metal(Qwen3)은 CPU 대비 <span class="good">2.2× 가속</span> 확인. 단, 배치 throughput은 MLX에 2.4× 열세(ort에 Metal EP 없음).</p>
+      <p><b>그래프 recall</b> — hint 시 <span class="good">19–45µs</span>, 전체 회귀 <span class="good">0.93–1.12ms</span>. Mem0(33ms)·Zep(155–162ms) 대비 <span class="good">30–100× 빠름</span>. 단, 결정론적 회귀라 정확도 벤치는 별과제.</p>
+      <p><b>트레이드오프</b> — llm-kernel은 <b>LLM 0 · 외부 DB 0 · 오프라인</b>. Zep/Mem0/Letta는 LLM-in-loop + 서버 + 그래프 DB로 정확도·기능 우위, 단 비용·지연·의존 증가.</p>
+    </div>
+  </header>
+
+  <section>
+    <h2><span class="num">01</span> 임베딩 성능</h2>
+    <h3>공정 비교 · bge-small-en-v1.5, 384-dim (동일 모델)</h3>
+    <div class="tbl-scroll"><table>
+      <thead><tr><th>시스템</th><th>경로</th><th class="num">t/s @batch32</th><th class="num">단일 (ms)</th><th>비고</th></tr></thead>
+      <tbody>
+        <tr><td>mlx-embeddings</td><td>MLX GPU bf16</td><td class="num best">996</td><td class="num">10.0</td><td>Apple GPU 최적화</td></tr>
+        <tr><td>sentence-transformers</td><td>torch MPS</td><td class="num">667</td><td class="num">31.9</td><td>—</td></tr>
+        <tr><td>sentence-transformers</td><td>torch CPU</td><td class="num">439</td><td class="num">30.9</td><td>배치 잘 됨</td></tr>
+        <tr class="lk good"><td>llm-kernel fastembed</td><td>ONNX CPU</td><td class="num">409</td><td class="num best">6.9</td><td>단일 최고, ort Metal EP 없음</td></tr>
+        <tr><td>TEI (인용)</td><td>A10 GPU</td><td class="num">450+</td><td class="num">—</td><td>서버 GPU, M2 미측정</td></tr>
+        <tr><td>ollama</td><td>HTTP/JSON</td><td class="num">42</td><td class="num">48.6</td><td>JSON 직렬화 오버헤드</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>llm-kernel candle-Metal · Qwen3-Embedding-0.6B, 1024-dim (MTEB rank #4)</h3>
+    <div class="tbl-scroll"><table>
+      <thead><tr><th>경로</th><th class="num">t/s @batch32</th><th class="num">단일 (ms)</th></tr></thead>
+      <tbody>
+        <tr><td>CPU F32</td><td class="num">11.3</td><td class="num">178</td></tr>
+        <tr class="lk"><td>Metal F16 <code>embedding-metal</code></td><td class="num best">24.8</td><td class="num best">77</td></tr>
+      </tbody>
+    </table></div>
+    <p style="font-size:0.88rem;color:var(--text-dim);">Metal이 CPU 대비 <span class="best">2.2–2.3× 일관적 가속</span>. 큰 모델일수록 GPU 이득 큼.</p>
+
+    <div class="analysis">
+      <ul>
+        <li><b>단일 embed는 llm-kernel(6.9ms)이 최고</b> — ONNX JIT가 단일 호출 오버헤드에서 유리.</li>
+        <li><b>배치는 mlx(996 t/s)가 압도</b>. llm-kernel(409)은 <b>2.4× 느림</b> — ort에 Apple Metal EP 없음. bge-small 가속은 <code>embedding-fastembed-coreml</code> 활성화가 유일 경로 (후속 최우선).</li>
+        <li>ollama는 HTTP/JSON 오버헤드로 배치 비효율(42 t/s). 단일 서비스/모델 교체 용이성은 장점.</li>
+        <li><b>환경 결함 발견</b>: 기존 <code>torchaudio 2.9.1</code>이 torch 2.11과 네이티브 lib 충돌 → sentence-transformers import 파괴. 제거로 복구.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="num">02</span> 그래프 recall 성능</h2>
+    <div class="tbl-scroll"><table>
+      <thead><tr><th>시스템</th><th class="num">search / recall</th><th class="num">add</th><th>LLM 의존</th><th>정확도 벤치</th></tr></thead>
+      <tbody>
+        <tr class="lk good"><td>llm-kernel smart_recall</td><td class="num best">19–45µs / 0.93–1.12ms</td><td class="num">경량</td><td><span class="pos-label">0</span></td><td>미측정(지연만)</td></tr>
+        <tr><td>Mem0</td><td class="num">33ms</td><td class="num">11.8s</td><td>필수 (Ollama)</td><td>—</td></tr>
+        <tr><td>Zep</td><td class="num">155–162ms p95</td><td class="num">—</td><td>필수 (OpenAI)</td><td>LoCoMo 94.7% / LongMemEval 90.2%</td></tr>
+        <tr><td>Letta / Graphiti</td><td class="num">갭</td><td class="num">갭</td><td>필수</td><td>—</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>llm-kernel smart_recall 상세 · SQLite, criterion 중앙값</h3>
+    <div class="tbl-scroll"><table>
+      <thead><tr><th>모드</th><th class="num">노드 100</th><th class="num">200</th><th class="num">500</th></tr></thead>
+      <tbody>
+        <tr><td>no_hint (전체 회귀)</td><td class="num">0.93ms</td><td class="num">1.01ms</td><td class="num">1.12ms</td></tr>
+        <tr class="lk"><td>with_hint (FTS 선필터)</td><td class="num">19µs</td><td class="num">45µs</td><td class="num">40µs</td></tr>
+      </tbody>
+    </table></div>
+
+    <div class="analysis">
+      <ul>
+        <li><b>llm-kernel이 Mem0 대비 ~34×(search), Zep 대비 ~100× 빠름</b> — 단, 결정론적 회귀라 LLM-rerank 정확도는 비교 불가.</li>
+        <li>hint 있으면 FTS5가 후보 축소 → PageRank 부스트 대상 감소 → no_hint 대비 <span class="best">20–50× 단축</span>.</li>
+        <li>Zep은 bi-temporal + cross-encoder rerank로 <b>정확도 94.7%</b> 달성, 단 LLM 비용·지연·프라이버시 의존.</li>
+        <li><b>llm-kernel 정확도 벤치 부재가 핵심 갭</b> — 지연 우위는 증명, 정확도 위치는 미지수.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="num">03</span> 아키텍처 철학</h2>
+    <div class="tbl-scroll"><table>
+      <thead><tr><th>측면</th><th>llm-kernel</th><th>Mem0</th><th>Zep</th><th>Letta/Graphiti</th></tr></thead>
+      <tbody>
+        <tr class="lk"><td>언어</td><td>Rust</td><td>Python</td><td>Python/TS</td><td>Python</td></tr>
+        <tr class="lk"><td>LLM 의존</td><td><span class="pos-label">0 (결정론적)</span></td><td>recall+add</td><td>recall 루프</td><td>에이전트 자가 메모리</td></tr>
+        <tr class="lk"><td>배포</td><td>라이브러리 (단일 프로세스)</td><td>pip</td><td>서버</td><td>서버</td></tr>
+        <tr class="lk"><td>외부 DB</td><td>없음 (sqlite/pg 내장)</td><td>벡터 DB</td><td>Neo4j/FalkorDB</td><td>그래프 DB</td></tr>
+        <tr class="lk"><td>결정론</td><td><span class="pos-label">O (수식 고정)</span></td><td>X (LLM)</td><td>X</td><td>X</td></tr>
+        <tr class="lk"><td>오프라인</td><td><span class="pos-label">O</span></td><td>X</td><td>X</td><td>X</td></tr>
+      </tbody>
+    </table></div>
+    <div class="analysis">
+      <p><b>llm-kernel</b> — "AI 네이티브 <b>기반 라이브러리</b>". 도메인 타입(provider/tokens/embedding)은 외부 의존 0, 기능별 feature gate, hexagonal. 회귀를 LLM 없이 결정론적 수식(PageRank 중심성 + FTS + 시간 감쇠). 임베디드/오프라인/저지연/비용 민감 + 프라이버시 강점.</p>
+      <p><b>Zep/Mem0/Letta</b> — "에이전트 <b>메모리 서비스</b>". LLM을 회귀 루프에 투입, 정확도·맥락 이해 우위. bi-temporal(Zep), 자가 편집(Letta) 고기능. 단 비용·지연·인프라(그래프 DB+서버) 의존.</p>
+      <p style="color:var(--accent);font-weight:600;">서로 다른 문제. 경쟁이 아닌 목적 차등 — llm-kernel 위에 Zep형 LLM-rerank를 얹는 하이브리드가 유효 전략.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="num">04</span> 한계 · 측정 갭</h2>
+    <div class="gaps"><ol>
+      <li><b>Letta / Graphiti 로컬 미측정</b> — 그래프 Agent doc-research 단계에서 yield. 아키텍처는 문서 추정, 수치 갭.</li>
+      <li><b>llm-kernel recall 정확도 벤치 부재</b> — 지연만 측정. LoCoMo/LongMemEval 표준 벤치에서 정확도 미측정 → 최우선 후속.</li>
+      <li><b>TEI 로컬 미측정</b> — podman/소스 빌드 시간 초과. A10 수치(450+)만 인용. M2 TEI 갭.</li>
+      <li><b>embedding-fastembed-coreml 미측정</b> — bge-small MLX 대항 경로. 후속 가치 최상.</li>
+      <li><b>MTEB 정확도 인용</b> — 리더보드 공개 수치(비실측).</li>
+      <li><b>열 스로틀 미모니터링</b> — M2 Air 패시브. 서스테인드 로드 시 변동 가능.</li>
+    </ol></div>
+  </section>
+
+  <section>
+    <h2><span class="num">05</span> 결론 및 권고</h2>
+    <div class="concl">
+      <div class="card pos">
+        <h4>llm-kernel 강점</h4>
+        <ul>
+          <li>단일 임베딩 최고 속도 (6.9ms)</li>
+          <li>candle-Metal 2.2× 가속 확증</li>
+          <li>그래프 recall 30–100× 빠름</li>
+          <li>0 외부 의존 · 오프라인 · 프라이버시</li>
+        </ul>
+      </div>
+      <div class="card neg">
+        <h4>개선 우선순위</h4>
+        <ul>
+          <li>coreml EP 벤치 → MLX 대항</li>
+          <li>recall 정확도 벤치 도입 (LoCoMo)</li>
+          <li>TEI Metal 로컬 벤치</li>
+          <li>Nomic MoE candle 검증</li>
+        </ul>
+      </div>
+    </div>
+    <div class="analysis">
+      <p><b>타 시스템 대비 위치</b>: Zep/Mem0/Letta는 LLM 강화 정확도·고기능 우위(장기 메모리) — 단 비용·지연·인프라 의존. llm-kernel은 결정론·저지연·LLM-free. <b>보완 관계</b> — llm-kernel을 회귀 기저로, Zep형 LLM-rerark를 상위 레이어로 얹는 하이브리드가 양쪽 강점 결합.</p>
+    </div>
+  </section>
+
+  <footer>
+    측정 스크립트: Python 3종 (bench_ollama/st/mlx) · Rust 일회성 examples/bench_embed.rs (측정 후 제거). 재현 시 재생성 가능.
+  </footer>
+</div>
