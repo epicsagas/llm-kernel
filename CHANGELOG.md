@@ -144,6 +144,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   instead of two, removing a per-doc `remove` lookup on the build path.
 
 ### Changed
+- Downgraded `rusqlite` 0.40 → 0.32. Cargo's `links = "sqlite3"` rule rejects two
+  `libsqlite3-sys` versions in one graph; 0.32 pins `libsqlite3-sys` to exactly
+  0.30.1, the same version `sqlx-sqlite` 0.8.6 resolves to. Consumers that also
+  depend on `sqlx` (sqlite via rusqlite + postgres via sqlx, e.g. founder-os)
+  could not otherwise build — `rusqlite` 0.40 pulled `libsqlite3-sys` 0.38,
+  clashing with `sqlx-sqlite`'s 0.30. The graph API surface uses only stable
+  primitives (`Connection`, `params`, `ToSql`, `unchecked_transaction`), so the
+  downgrade is source-compatible. The previous 0.40 bump (0.21.x) is reverted.
 - `graph/search` + `graph/recall`: added unit tests for `query_nodes_ex` paging /
   time-range / tag filters and for the recall FTS-recovery scope isolation
   (AC1 coverage).
