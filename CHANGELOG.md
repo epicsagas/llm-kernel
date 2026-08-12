@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.25.0] - 2026-08-12
+
+### Changed
+
+- **⚠️ `query_prefix()` now returns the BGE instruction prefix for BGE-en-v1.5
+  (small/base/large), mxbai-embed-large and Snowflake Arctic — previously
+  `None`.** These are asymmetric models that expect the prefix on the query
+  side, so omitting it silently degraded retrieval quality.
+
+  **Migration — existing indexes need re-embedding.** `embed()` now prepends
+  the prefix for these models, so queries land in a different region of the
+  embedding space than vectors stored with ≤ 0.24.0. Mixing the two degrades
+  recall *silently* — no error, no dimension mismatch, just worse results.
+  Either re-embed the corpus with 0.25.0, or pin to 0.24.0 until you can.
+  Unaffected: E5 and Nomic (already prefixed), and every symmetric model
+  (MiniLM, paraphrase-ML, mpnet), which still return `None`.
+
+  `cargo-semver-checks` does not flag this — the signature is unchanged and
+  only the returned value differs.
+
 ### Added
 
 - **`embedding-mlx` feature** — Rust-native MLX embedding provider
@@ -30,11 +50,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   New catalog accessors: `mlx_supported()`, `uses_cls_pooling()`, `mlx_repo()`.
   Weights load from F32, F16 or BF16; any other dtype is an explicit error
   rather than a silent misread.
-
-- **`query_prefix()` now covers BGE-en-v1.5, mxbai and Snowflake Arctic.**
-  These are asymmetric models that expect the BGE instruction prefix on the
-  query side; previously they returned `None`, so retrieval quality silently
-  suffered for every consumer using `embed()` for queries.
 
 - **`embedding-metal` feature** — Metal GPU acceleration for the candle-based
   embedding providers (`Qwen3Provider`, `NomicMoeProvider`) on Apple Silicon,

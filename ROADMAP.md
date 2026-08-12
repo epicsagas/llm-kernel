@@ -353,6 +353,25 @@ Makes **dense + lexical hybrid retrieval** a first-class path, and cuts the RAM 
 
 ---
 
+### v0.25.0 — Rust-Native MLX Embedding ✅ (staged, PR #88)
+
+Adds `embedding-mlx`: a Rust-native BERT encoder forward pass on the Apple Silicon GPU via `mlx-rs`, complementing `embedding-metal` (which wins on single-embed latency) on the **batch-throughput** path. The `mlx-rs` dependency sits behind a `target.'cfg(all(target_os = "macos", target_arch = "aarch64"))'` section, so `full` stays resolvable under the Linux CI matrix (verified: `cargo tree --target x86_64-unknown-linux-gnu` resolves no `mlx-rs`).
+
+| # | Deliverable | Scope | Key Files |
+|---|-------------|-------|-----------|
+| 1 | `MlxEmbeddingProvider` — 12-layer BERT forward pass assembled from `mlx-rs` `nn` modules + `fast::scaled_dot_product_attention`; CLS and mask-weighted mean pooling | L | `src/embedding/mlx.rs` |
+| 2 | `embeddings.LayerNorm` applied before layer 0 — its absence made every output vector numerically wrong while still passing determinism, L2-norm and relatedness-ranking checks | S | `src/embedding/mlx.rs` |
+| 3 | dtype-aware safetensors decode (F32 / F16 / BF16, explicit error otherwise) — mxbai-embed-large ships F16, which a blind 4-byte f32 read silently corrupted | S | `src/embedding/mlx.rs` |
+| 4 | `mlx_supported()` / `uses_cls_pooling()` / `mlx_repo()` — support set established by probing each catalog model's original weight repo (`config.json` + safetensors header), not inferred from model names | M | `src/embedding/catalog.rs` |
+| 5 | `query_prefix()` extended to BGE-en-v1.5, mxbai and Snowflake Arctic — these are asymmetric models that were returning `None`, silently degrading retrieval | S | `src/embedding/catalog.rs` |
+| 6 | Element-wise regression test against a HuggingFace `transformers` reference vector | S | `src/embedding/mlx.rs` |
+
+**Supported set:** 13 base models / 21 catalog variants — BGE-en-v1.5 (small/base/large), bge-small-zh-v1.5, all-MiniLM-L6/L12, paraphrase-multilingual-MiniLM, multilingual-e5-small, Snowflake Arctic (xs/s/m/l), mxbai-embed-large. Admission requires `architectures: ["BertModel"]`, absolute position embeddings, gelu, and the standard `encoder.layer.N.*` tensor layout.
+
+**Exit criteria:** MLX output matches the `transformers` reference element-wise (the only check that catches a structurally wrong encoder — determinism, unit norm and relatedness ranking all pass without `embeddings.LayerNorm`); `full` resolves on Linux; every MLX-supported model resolves to a repo carrying `model.safetensors`, never an ONNX-only mirror. **Deferred:** true batched inference (the forward pass is still one sequence per call, so the throughput advantage over candle-Metal is not yet realised); non-BERT architectures (NomicBert, XLM-R, MPNet, JinaBert, GTE `NewModel`, ModernBERT, Gemma, CLIP) each need their own forward pass; a macOS CI job running the `#[ignore]`d MLX e2e tests — CI currently cannot catch a regression in this encoder, since no job executes it.
+
+---
+
 ### v1.0.0 — Production Readiness
 
 API stability guarantee. Once shipped, all public types and signatures are locked under semver.
