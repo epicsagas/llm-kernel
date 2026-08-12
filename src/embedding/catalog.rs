@@ -2,6 +2,22 @@
 //!
 //! Mirrors `fastembed::EmbeddingModel` (44 variants) so the catalog is always
 //! available — even when the `embedding-fastembed` feature is disabled.
+//!
+//! # Backend availability
+//!
+//! Each model's backend support is independent — a model listed below is an
+//! ONNX checkpoint served via `embedding-fastembed`; the same model family
+//! may also have a Rust-native path on specific platforms:
+//!
+//! | Backend (feature)            | Models                                    | Platform         |
+//! |------------------------------|-------------------------------------------|------------------|
+//! | `embedding-fastembed` (ONNX) | All 44 variants below                     | cross-platform   |
+//! | `embedding-metal` (candle)   | Qwen3-Embedding, Nomic V2 MoE             | macOS (Metal)    |
+//! | `embedding-mlx` (MLX)        | `BAAI/bge-small-en-v1.5` (only, for now)  | macOS (aarch64)  |
+//!
+//! The MLX provider ([`crate::embedding::MlxEmbeddingProvider`]) currently
+//! hard-codes bge-small-en-v1.5's BERT-encoder architecture; other models
+//! require porting their forward pass to `mlx-rs`. See `src/embedding/mlx.rs`.
 
 /// Embedding model catalog with metadata for all supported ONNX models.
 ///
@@ -10,6 +26,9 @@
 pub enum EmbeddingModel {
     // ── sentence-transformers ───────────────────────
     /// BGE Small EN v1.5 — fast 384-dim English model (default).
+    ///
+    /// Also the sole model served by the Rust-native MLX backend
+    /// (`embedding-mlx`, macOS aarch64) — see [`crate::embedding::MlxEmbeddingProvider`].
     #[default]
     BGESmallENV15,
     /// sentence-transformers all-MiniLM-L6-v2 (384-dim).

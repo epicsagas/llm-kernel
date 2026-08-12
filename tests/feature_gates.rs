@@ -88,3 +88,11 @@ fn test_pgvector_feature() {
     fn _assert_impl<T: AsyncVectorIndex>() {}
     _assert_impl::<PgVectorIndex>();
 }
+
+#[cfg(all(feature = "embedding-mlx", target_os = "macos"))]
+#[test]
+fn test_embedding_mlx_feature() {
+    use llm_kernel::embedding::{EmbeddingProvider, MlxEmbeddingProvider};
+    fn _assert_impl<T: EmbeddingProvider>() {}
+    _assert_impl::<MlxEmbeddingProvider>();
+}
