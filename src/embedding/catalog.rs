@@ -15,7 +15,7 @@
 //! | `embedding-metal` (candle)   | Qwen3-Embedding, Nomic V2 MoE             | macOS (Metal)    |
 //! | `embedding-mlx` (MLX)        | `BAAI/bge-small-en-v1.5` (only, for now)  | macOS (aarch64)  |
 //!
-//! The MLX provider ([`crate::embedding::MlxEmbeddingProvider`]) currently
+//! The MLX provider (`MlxEmbeddingProvider`, feature `embedding-mlx`) currently
 //! hard-codes bge-small-en-v1.5's BERT-encoder architecture; other models
 //! require porting their forward pass to `mlx-rs`. See `src/embedding/mlx.rs`.
 
@@ -28,7 +28,7 @@ pub enum EmbeddingModel {
     /// BGE Small EN v1.5 — fast 384-dim English model (default).
     ///
     /// Also the sole model served by the Rust-native MLX backend
-    /// (`embedding-mlx`, macOS aarch64) — see [`crate::embedding::MlxEmbeddingProvider`].
+    /// (`embedding-mlx`, macOS aarch64) — see `MlxEmbeddingProvider`.
     #[default]
     BGESmallENV15,
     /// sentence-transformers all-MiniLM-L6-v2 (384-dim).
