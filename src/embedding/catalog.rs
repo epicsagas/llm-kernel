@@ -13,11 +13,13 @@
 //! |------------------------------|-------------------------------------------|------------------|
 //! | `embedding-fastembed` (ONNX) | All 44 variants below                     | cross-platform   |
 //! | `embedding-metal` (candle)   | Qwen3-Embedding, Nomic V2 MoE             | macOS (Metal)    |
-//! | `embedding-mlx` (MLX)        | `BAAI/bge-small-en-v1.5` (only, for now)  | macOS (aarch64)  |
+//! | `embedding-mlx` (MLX)        | 14 vanilla-BERT models (see `mlx_supported`) | macOS (aarch64)  |
 //!
-//! The MLX provider (`MlxEmbeddingProvider`, feature `embedding-mlx`) currently
-//! hard-codes bge-small-en-v1.5's BERT-encoder architecture; other models
-//! require porting their forward pass to `mlx-rs`. See `src/embedding/mlx.rs`.
+//! The MLX provider (`MlxEmbeddingProvider`, feature `embedding-mlx`) covers
+//! the vanilla-BERT encoder family (BGE-en/zh, MiniLM, paraphrase-ML-MiniLM,
+//! Snowflake Arctic, mxbai); other architectures (XLM-R, MPNet, NomicBert,
+//! ModernBERT, Gemma, CLIP) need their own forward passes. See
+//! [`EmbeddingModel::mlx_supported`] and `src/embedding/mlx.rs`.
 
 /// Embedding model catalog with metadata for all supported ONNX models.
 ///
@@ -27,8 +29,8 @@ pub enum EmbeddingModel {
     // ── sentence-transformers ───────────────────────
     /// BGE Small EN v1.5 — fast 384-dim English model (default).
     ///
-    /// Also the sole model served by the Rust-native MLX backend
-    /// (`embedding-mlx`, macOS aarch64) — see `MlxEmbeddingProvider`.
+    /// One of the vanilla-BERT models served by the Rust-native MLX backend
+    /// (`embedding-mlx`, macOS aarch64) — see [`Self::mlx_supported`].
     #[default]
     BGESmallENV15,
     /// sentence-transformers all-MiniLM-L6-v2 (384-dim).
@@ -251,7 +253,16 @@ impl EmbeddingModel {
                 Some("query: ")
             }
             Self::NomicEmbedTextV15 | Self::NomicEmbedTextV15Q => Some("search_query: "),
-            Self::SnowflakeArcticEmbedXS
+            // Asymmetric models using the BGE instruction prefix.
+            Self::BGESmallENV15
+            | Self::BGESmallENV15Q
+            | Self::BGEBaseENV15
+            | Self::BGEBaseENV15Q
+            | Self::BGELargeENV15
+            | Self::BGELargeENV15Q
+            | Self::MxbaiEmbedLargeV1
+            | Self::MxbaiEmbedLargeV1Q
+            | Self::SnowflakeArcticEmbedXS
             | Self::SnowflakeArcticEmbedXSQ
             | Self::SnowflakeArcticEmbedS
             | Self::SnowflakeArcticEmbedSQ
@@ -275,6 +286,112 @@ impl EmbeddingModel {
             }
             Self::NomicEmbedTextV15 | Self::NomicEmbedTextV15Q => Some("search_document: "),
             _ => None,
+        }
+    }
+
+    /// Whether the MLX Rust-native backend (`embedding-mlx`) supports this model.
+    ///
+    /// True for the vanilla-BERT encoder family — `BertModel` with gelu,
+    /// ln_eps 1e-12, standard `encoder.layer.N.*` tensor layout. Other
+    /// architectures (XLM-RoBERTa, MPNet, NomicBert/NewModel, ModernBERT,
+    /// Gemma, CLIP) need their own forward passes and are not yet covered.
+    pub const fn mlx_supported(self) -> bool {
+        matches!(
+            self,
+            Self::BGESmallENV15
+                | Self::BGESmallENV15Q
+                | Self::BGEBaseENV15
+                | Self::BGEBaseENV15Q
+                | Self::BGELargeENV15
+                | Self::BGELargeENV15Q
+                | Self::BGESmallZHV15
+                | Self::BGELargeZHV15
+                | Self::AllMiniLML6V2
+                | Self::AllMiniLML6V2Q
+                | Self::AllMiniLML12V2
+                | Self::AllMiniLML12V2Q
+                | Self::ParaphraseMLMiniLML12V2
+                | Self::ParaphraseMLMiniLML12V2Q
+                | Self::SnowflakeArcticEmbedXS
+                | Self::SnowflakeArcticEmbedXSQ
+                | Self::SnowflakeArcticEmbedS
+                | Self::SnowflakeArcticEmbedSQ
+                | Self::SnowflakeArcticEmbedM
+                | Self::SnowflakeArcticEmbedMQ
+                | Self::SnowflakeArcticEmbedMLong
+                | Self::SnowflakeArcticEmbedMLongQ
+                | Self::SnowflakeArcticEmbedL
+                | Self::SnowflakeArcticEmbedLQ
+                | Self::MxbaiEmbedLargeV1
+                | Self::MxbaiEmbedLargeV1Q
+        )
+    }
+
+    /// Pooling strategy: `true` = CLS (token 0), `false` = mean (mask-weighted).
+    ///
+    /// Verified from each model's `1_Pooling/config.json`. BGE / Arctic / mxbai
+    /// use CLS; MiniLM / paraphrase-multilingual-MiniLM use mean.
+    pub const fn uses_cls_pooling(self) -> bool {
+        matches!(
+            self,
+            Self::BGESmallENV15
+                | Self::BGESmallENV15Q
+                | Self::BGEBaseENV15
+                | Self::BGEBaseENV15Q
+                | Self::BGELargeENV15
+                | Self::BGELargeENV15Q
+                | Self::BGESmallZHV15
+                | Self::BGELargeZHV15
+                | Self::SnowflakeArcticEmbedXS
+                | Self::SnowflakeArcticEmbedXSQ
+                | Self::SnowflakeArcticEmbedS
+                | Self::SnowflakeArcticEmbedSQ
+                | Self::SnowflakeArcticEmbedM
+                | Self::SnowflakeArcticEmbedMQ
+                | Self::SnowflakeArcticEmbedMLong
+                | Self::SnowflakeArcticEmbedMLongQ
+                | Self::SnowflakeArcticEmbedL
+                | Self::SnowflakeArcticEmbedLQ
+                | Self::MxbaiEmbedLargeV1
+                | Self::MxbaiEmbedLargeV1Q
+        )
+    }
+
+    /// HuggingFace repo holding the **original PyTorch/safetensors weights** for
+    /// the MLX backend. Differs from [`model_code`](Self::model_code) (which
+    /// points at the ONNX-converted repo) for BGE/MiniLM/paraphrase models —
+    /// MLX loads `model.safetensors` + `config.json`, which the `Xenova/*` /
+    /// `Qdrant/*` ONNX repos do not carry.
+    ///
+    /// Only meaningful when [`mlx_supported`](Self::mlx_supported) is true.
+    pub const fn mlx_repo(self) -> &'static str {
+        match self {
+            Self::BGESmallENV15 | Self::BGESmallENV15Q => "BAAI/bge-small-en-v1.5",
+            Self::BGEBaseENV15 | Self::BGEBaseENV15Q => "BAAI/bge-base-en-v1.5",
+            Self::BGELargeENV15 | Self::BGELargeENV15Q => "BAAI/bge-large-en-v1.5",
+            Self::BGESmallZHV15 => "BAAI/bge-small-zh-v1.5",
+            Self::BGELargeZHV15 => "BAAI/bge-large-zh-v1.5",
+            Self::AllMiniLML6V2 | Self::AllMiniLML6V2Q => "sentence-transformers/all-MiniLM-L6-v2",
+            Self::AllMiniLML12V2 | Self::AllMiniLML12V2Q => {
+                "sentence-transformers/all-MiniLM-L12-v2"
+            }
+            Self::ParaphraseMLMiniLML12V2 | Self::ParaphraseMLMiniLML12V2Q => {
+                "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+            }
+            // Arctic / mxbai: model_code already points at the original repo.
+            Self::SnowflakeArcticEmbedXS
+            | Self::SnowflakeArcticEmbedXSQ
+            | Self::SnowflakeArcticEmbedS
+            | Self::SnowflakeArcticEmbedSQ
+            | Self::SnowflakeArcticEmbedM
+            | Self::SnowflakeArcticEmbedMQ
+            | Self::SnowflakeArcticEmbedMLong
+            | Self::SnowflakeArcticEmbedMLongQ
+            | Self::SnowflakeArcticEmbedL
+            | Self::SnowflakeArcticEmbedLQ
+            | Self::MxbaiEmbedLargeV1
+            | Self::MxbaiEmbedLargeV1Q => self.model_code(),
+            _ => self.model_code(),
         }
     }
 

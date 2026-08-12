@@ -153,7 +153,7 @@ embedding-metal = ["candle-core/metal"]
 # oxideai/mlx-rs (NOT mlxrs). macOS/aarch64 only — the target-cfg dep section
 # below means mlx-rs is not fetched off macOS, so this is safe to include in
 # `full` (Linux CI stays green). safetensors comes via mlx-rs's own feature.
-embedding-mlx = ["embedding", "dep:mlx-rs", "dep:tokenizers", "dep:hf-hub", "dep:safetensors", "mlx-rs/safetensors"]
+embedding-mlx = ["embedding", "dep:mlx-rs", "dep:tokenizers", "dep:hf-hub", "dep:safetensors", "dep:serde_json", "mlx-rs/safetensors"]
 
 # Opt-in dynamic ONNX Runtime linking (loads libonnxruntime.{so,dylib,dll} at
 # runtime instead of statically linking a prebuilt archive at build time).
