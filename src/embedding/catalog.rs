@@ -2,6 +2,26 @@
 //!
 //! Mirrors `fastembed::EmbeddingModel` (44 variants) so the catalog is always
 //! available — even when the `embedding-fastembed` feature is disabled.
+//!
+//! # Backend availability
+//!
+//! Each model's backend support is independent — a model listed below is an
+//! ONNX checkpoint served via `embedding-fastembed`; the same model family
+//! may also have a Rust-native path on specific platforms:
+//!
+//! | Backend (feature)            | Models                                       | Platform         |
+//! |------------------------------|----------------------------------------------|------------------|
+//! | `embedding-fastembed` (ONNX) | All 44 variants below                        | cross-platform   |
+//! | `embedding-metal` (candle)   | Qwen3-Embedding, Nomic V2 MoE                | macOS (Metal)    |
+//! | `embedding-mlx` (MLX)        | 13 vanilla-BERT models (see `mlx_supported`)  | macOS (aarch64)  |
+//!
+//! The MLX provider (`MlxEmbeddingProvider`, feature `embedding-mlx`) covers the
+//! vanilla-BERT encoder family: BGE-en-v1.5 (small/base/large), bge-small-zh-v1.5,
+//! all-MiniLM-L6/L12, paraphrase-multilingual-MiniLM, multilingual-e5-small,
+//! Snowflake Arctic (xs/s/m/l) and mxbai-embed-large. Other architectures
+//! (XLM-R, MPNet, NomicBert, GTE `NewModel`, JinaBert, ModernBERT, Gemma, CLIP)
+//! need their own forward passes. See [`EmbeddingModel::mlx_supported`] for the
+//! exclusion list and `src/embedding/mlx.rs`.
 
 /// Embedding model catalog with metadata for all supported ONNX models.
 ///
@@ -10,6 +30,9 @@
 pub enum EmbeddingModel {
     // ── sentence-transformers ───────────────────────
     /// BGE Small EN v1.5 — fast 384-dim English model (default).
+    ///
+    /// One of the vanilla-BERT models served by the Rust-native MLX backend
+    /// (`embedding-mlx`, macOS aarch64) — see [`Self::mlx_supported`].
     #[default]
     BGESmallENV15,
     /// sentence-transformers all-MiniLM-L6-v2 (384-dim).
@@ -232,7 +255,16 @@ impl EmbeddingModel {
                 Some("query: ")
             }
             Self::NomicEmbedTextV15 | Self::NomicEmbedTextV15Q => Some("search_query: "),
-            Self::SnowflakeArcticEmbedXS
+            // Asymmetric models using the BGE instruction prefix.
+            Self::BGESmallENV15
+            | Self::BGESmallENV15Q
+            | Self::BGEBaseENV15
+            | Self::BGEBaseENV15Q
+            | Self::BGELargeENV15
+            | Self::BGELargeENV15Q
+            | Self::MxbaiEmbedLargeV1
+            | Self::MxbaiEmbedLargeV1Q
+            | Self::SnowflakeArcticEmbedXS
             | Self::SnowflakeArcticEmbedXSQ
             | Self::SnowflakeArcticEmbedS
             | Self::SnowflakeArcticEmbedSQ
@@ -256,6 +288,114 @@ impl EmbeddingModel {
             }
             Self::NomicEmbedTextV15 | Self::NomicEmbedTextV15Q => Some("search_document: "),
             _ => None,
+        }
+    }
+
+    /// Whether the MLX Rust-native backend (`embedding-mlx`) supports this model.
+    ///
+    /// True only for models whose **original weight repo** is a vanilla-BERT
+    /// encoder the MLX forward pass can actually load: `architectures:
+    /// ["BertModel"]`, `model_type: "bert"`, absolute position embeddings, gelu,
+    /// a `model.safetensors` in F32/F16/BF16, and the standard
+    /// `encoder.layer.N.attention.self.*` tensor layout. Each entry below was
+    /// verified by probing that repo's `config.json` and safetensors header.
+    ///
+    /// Excluded despite being in the catalog:
+    /// - `SnowflakeArcticEmbedMLong`, `NomicEmbedTextV1/V15` — `NomicBertModel`
+    ///   (`encoder.layers.N.attn.Wqkv`, no position embeddings)
+    /// - `GTEBaseENV15`, `GTELargeENV15` — `NewModel`
+    /// - `MultilingualE5Base/Large`, `ParaphraseMLMpnetBaseV2`, `BGEM3` —
+    ///   `XLMRobertaModel`
+    /// - `AllMpnetBaseV2` — `MPNetForMaskedLM`
+    /// - `JinaEmbeddingsV2Base*` — `JinaBertForMaskedLM` (ALiBi)
+    /// - `ModernBertEmbedLarge` — `ModernBertModel`
+    /// - `EmbeddingGemma300M`, `ClipVitB32` — not BERT text encoders
+    /// - `BGELargeZHV15` — BertModel, but the repo ships only
+    ///   `pytorch_model.bin` with no safetensors to load
+    pub const fn mlx_supported(self) -> bool {
+        matches!(
+            self,
+            Self::BGESmallENV15
+                | Self::BGESmallENV15Q
+                | Self::BGEBaseENV15
+                | Self::BGEBaseENV15Q
+                | Self::BGELargeENV15
+                | Self::BGELargeENV15Q
+                | Self::BGESmallZHV15
+                | Self::AllMiniLML6V2
+                | Self::AllMiniLML6V2Q
+                | Self::AllMiniLML12V2
+                | Self::AllMiniLML12V2Q
+                | Self::ParaphraseMLMiniLML12V2
+                | Self::ParaphraseMLMiniLML12V2Q
+                | Self::MultilingualE5Small
+                | Self::SnowflakeArcticEmbedXS
+                | Self::SnowflakeArcticEmbedXSQ
+                | Self::SnowflakeArcticEmbedS
+                | Self::SnowflakeArcticEmbedSQ
+                | Self::SnowflakeArcticEmbedM
+                | Self::SnowflakeArcticEmbedMQ
+                | Self::SnowflakeArcticEmbedL
+                | Self::SnowflakeArcticEmbedLQ
+                | Self::MxbaiEmbedLargeV1
+                | Self::MxbaiEmbedLargeV1Q
+        )
+    }
+
+    /// Pooling strategy: `true` = CLS (token 0), `false` = mean (mask-weighted).
+    ///
+    /// Read from each model's `1_Pooling/config.json`: BGE / Arctic / mxbai set
+    /// `pooling_mode_cls_token`; MiniLM, paraphrase-multilingual-MiniLM and
+    /// multilingual-e5-small set `pooling_mode_mean_tokens`.
+    pub const fn uses_cls_pooling(self) -> bool {
+        matches!(
+            self,
+            Self::BGESmallENV15
+                | Self::BGESmallENV15Q
+                | Self::BGEBaseENV15
+                | Self::BGEBaseENV15Q
+                | Self::BGELargeENV15
+                | Self::BGELargeENV15Q
+                | Self::BGESmallZHV15
+                | Self::BGELargeZHV15
+                | Self::SnowflakeArcticEmbedXS
+                | Self::SnowflakeArcticEmbedXSQ
+                | Self::SnowflakeArcticEmbedS
+                | Self::SnowflakeArcticEmbedSQ
+                | Self::SnowflakeArcticEmbedM
+                | Self::SnowflakeArcticEmbedMQ
+                | Self::SnowflakeArcticEmbedMLong
+                | Self::SnowflakeArcticEmbedMLongQ
+                | Self::SnowflakeArcticEmbedL
+                | Self::SnowflakeArcticEmbedLQ
+                | Self::MxbaiEmbedLargeV1
+                | Self::MxbaiEmbedLargeV1Q
+        )
+    }
+
+    /// HuggingFace repo holding the **original PyTorch/safetensors weights** for
+    /// the MLX backend. Differs from [`model_code`](Self::model_code) (which
+    /// points at the ONNX-converted repo) for BGE/MiniLM/paraphrase models —
+    /// MLX loads `model.safetensors` + `config.json`, which the `Xenova/*` /
+    /// `Qdrant/*` ONNX repos do not carry.
+    ///
+    /// Only meaningful when [`mlx_supported`](Self::mlx_supported) is true.
+    pub const fn mlx_repo(self) -> &'static str {
+        match self {
+            Self::BGESmallENV15 | Self::BGESmallENV15Q => "BAAI/bge-small-en-v1.5",
+            Self::BGEBaseENV15 | Self::BGEBaseENV15Q => "BAAI/bge-base-en-v1.5",
+            Self::BGELargeENV15 | Self::BGELargeENV15Q => "BAAI/bge-large-en-v1.5",
+            Self::BGESmallZHV15 => "BAAI/bge-small-zh-v1.5",
+            Self::AllMiniLML6V2 | Self::AllMiniLML6V2Q => "sentence-transformers/all-MiniLM-L6-v2",
+            Self::AllMiniLML12V2 | Self::AllMiniLML12V2Q => {
+                "sentence-transformers/all-MiniLM-L12-v2"
+            }
+            Self::ParaphraseMLMiniLML12V2 | Self::ParaphraseMLMiniLML12V2Q => {
+                "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+            }
+            // Arctic / mxbai / e5-small: model_code already points at the
+            // original (non-ONNX) repo, which carries model.safetensors.
+            _ => self.model_code(),
         }
     }
 
@@ -800,9 +940,17 @@ mod tests {
         // Nomic v1 has no prefixes
         assert!(EmbeddingModel::NomicEmbedTextV1.query_prefix().is_none());
         assert!(EmbeddingModel::NomicEmbedTextV1.doc_prefix().is_none());
-        // Most models have no prefixes
-        assert!(EmbeddingModel::BGESmallENV15.query_prefix().is_none());
-        assert!(EmbeddingModel::BGESmallENV15.doc_prefix().is_none());
+        // BGE-en-v1.5 + mxbai are asymmetric (query prefix, no doc prefix)
+        for &m in &[
+            EmbeddingModel::BGESmallENV15,
+            EmbeddingModel::MxbaiEmbedLargeV1,
+        ] {
+            assert!(m.query_prefix().is_some());
+            assert!(m.doc_prefix().is_none());
+        }
+        // MiniLM (symmetric) has no prefixes
+        assert!(EmbeddingModel::AllMiniLML6V2.query_prefix().is_none());
+        assert!(EmbeddingModel::AllMiniLML6V2.doc_prefix().is_none());
     }
 
     #[test]
@@ -832,5 +980,75 @@ mod tests {
         assert_eq!(EmbeddingModel::AllMpnetBaseV2.max_seq_length(), 384);
         assert_eq!(EmbeddingModel::BGEM3.max_seq_length(), 8192);
         assert_eq!(EmbeddingModel::BGESmallENV15.max_seq_length(), 512);
+    }
+
+    /// The MLX-supported set is 13 base models (21 variants counting the `*Q`
+    /// aliases, which share weights with their non-quantized twin). Locked down
+    /// so adding a variant to `mlx_supported` without verifying its architecture
+    /// against the real weight repo fails here.
+    #[test]
+    fn mlx_supported_set_is_exact() {
+        let supported: Vec<&str> = EmbeddingModel::ALL
+            .iter()
+            .filter(|m| m.mlx_supported())
+            .map(|m| m.as_str())
+            .collect();
+        assert_eq!(
+            supported,
+            vec![
+                "BGESmallENV15",
+                "AllMiniLML6V2",
+                "AllMiniLML6V2Q",
+                "AllMiniLML12V2",
+                "AllMiniLML12V2Q",
+                "BGEBaseENV15",
+                "BGEBaseENV15Q",
+                "BGELargeENV15",
+                "BGELargeENV15Q",
+                "BGESmallENV15Q",
+                "ParaphraseMLMiniLML12V2",
+                "ParaphraseMLMiniLML12V2Q",
+                "BGESmallZHV15",
+                "MultilingualE5Small",
+                "MxbaiEmbedLargeV1",
+                "MxbaiEmbedLargeV1Q",
+                "SnowflakeArcticEmbedXS",
+                "SnowflakeArcticEmbedXSQ",
+                "SnowflakeArcticEmbedS",
+                "SnowflakeArcticEmbedSQ",
+                "SnowflakeArcticEmbedM",
+                "SnowflakeArcticEmbedMQ",
+                "SnowflakeArcticEmbedL",
+                "SnowflakeArcticEmbedLQ",
+            ]
+        );
+    }
+
+    /// Architectures known not to be loadable by the MLX vanilla-BERT forward
+    /// pass must stay excluded — regression guard for the arctic-m-long case,
+    /// where a NomicBert model was listed as supported and failed at load.
+    #[test]
+    fn mlx_excludes_non_vanilla_bert() {
+        for &m in &[
+            EmbeddingModel::SnowflakeArcticEmbedMLong, // NomicBertModel
+            EmbeddingModel::SnowflakeArcticEmbedMLongQ,
+            EmbeddingModel::NomicEmbedTextV1,
+            EmbeddingModel::NomicEmbedTextV15,
+            EmbeddingModel::GTEBaseENV15,            // NewModel
+            EmbeddingModel::GTELargeENV15,           // NewModel
+            EmbeddingModel::MultilingualE5Base,      // XLM-R
+            EmbeddingModel::MultilingualE5Large,     // XLM-R
+            EmbeddingModel::ParaphraseMLMpnetBaseV2, // XLM-R
+            EmbeddingModel::BGEM3,                   // XLM-R
+            EmbeddingModel::AllMpnetBaseV2,          // MPNet
+            EmbeddingModel::JinaEmbeddingsV2BaseEN,  // JinaBert
+            EmbeddingModel::JinaEmbeddingsV2BaseCode,
+            EmbeddingModel::ModernBertEmbedLarge, // ModernBERT
+            EmbeddingModel::EmbeddingGemma300M,
+            EmbeddingModel::ClipVitB32,
+            EmbeddingModel::BGELargeZHV15, // BertModel but no safetensors
+        ] {
+            assert!(!m.mlx_supported(), "{m:?} must not be MLX-supported");
+        }
     }
 }

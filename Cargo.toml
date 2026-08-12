@@ -149,6 +149,12 @@ embedding-fastembed-coreml = ["embedding-fastembed", "dep:ort"]
 # `embedding-fastembed-nomic-moe`.
 embedding-metal = ["candle-core/metal"]
 
+# Rust-native MLX embedding on Apple Silicon (GPU via unified memory).
+# oxideai/mlx-rs (NOT mlxrs). macOS/aarch64 only — the target-cfg dep section
+# below means mlx-rs is not fetched off macOS, so this is safe to include in
+# `full` (Linux CI stays green). safetensors comes via mlx-rs's own feature.
+embedding-mlx = ["embedding", "dep:mlx-rs", "dep:tokenizers", "dep:hf-hub", "dep:safetensors", "dep:serde_json", "mlx-rs/safetensors"]
+
 # Opt-in dynamic ONNX Runtime linking (loads libonnxruntime.{so,dylib,dll} at
 # runtime instead of statically linking a prebuilt archive at build time).
 #
@@ -190,7 +196,7 @@ eval-full = ["eval", "graph", "graph-cjk"]
 #   - embedding-fastembed-dynamic-linking: opt-in dynamic ONNX linking (see #50).
 #   - eval / eval-full: developer CLI tooling (the `llm-kernel-eval` binary),
 #     not part of the library surface. Enable explicitly to run the eval suite.
-full = ["provider", "discovery", "discovery-async", "client-async", "cache", "secrets", "store", "config", "graph", "graph-async", "graph-pool", "graph-cjk", "graph-pg", "graph-pg-tls", "graph-pg-sqlx", "mcp", "mcp-http", "tokens", "install", "search", "embedding", "embedding-openai", "embedding-fastembed", "embedding-fastembed-qwen3", "embedding-fastembed-nomic-moe", "vector-index", "qdrant", "elastic", "pgvector", "federation", "telemetry", "safety", "catalog-sync"]
+full = ["provider", "discovery", "discovery-async", "client-async", "cache", "secrets", "store", "config", "graph", "graph-async", "graph-pool", "graph-cjk", "graph-pg", "graph-pg-tls", "graph-pg-sqlx", "mcp", "mcp-http", "tokens", "install", "search", "embedding", "embedding-openai", "embedding-fastembed", "embedding-fastembed-qwen3", "embedding-fastembed-nomic-moe", "embedding-mlx", "vector-index", "qdrant", "elastic", "pgvector", "federation", "telemetry", "safety", "catalog-sync"]
 
 [dependencies]
 # Always required
@@ -243,6 +249,16 @@ native-tls  = { version = "0.2", optional = true }
 qdrant-client = { version = "1", optional = true }
 sqlx         = { version = "0.8", default-features = false, features = ["postgres", "runtime-tokio-rustls", "macros"], optional = true }
 pgvector     = { version = "0.4", default-features = false, features = ["sqlx"], optional = true }
+
+# macOS/aarch64-only deps for `embedding-mlx`. The target-cfg means these are
+# never resolved on other platforms, so `full` (which includes `embedding-mlx`)
+# builds cleanly under the Linux CI matrix. `safetensors` is provided via
+# `mlx-rs/safetensors`, not listed separately here.
+[target.'cfg(all(target_os = "macos", target_arch = "aarch64"))'.dependencies]
+mlx-rs      = { version = "0.25", optional = true }
+tokenizers  = { version = "0.23", default-features = false, features = ["fancy-regex"], optional = true }
+hf-hub      = { version = "0.5", default-features = false, features = ["ureq", "rustls-tls"], optional = true }
+safetensors = { version = "0.6", optional = true }
 
 [dev-dependencies]
 tempfile = "3"

@@ -38,6 +38,10 @@ pub mod qwen3;
 #[cfg(feature = "embedding-fastembed-nomic-moe")]
 pub mod nomic_moe;
 
+/// BGE-small-en-v1.5 via Rust-native MLX (feature `embedding-mlx`, macOS only).
+#[cfg(all(feature = "embedding-mlx", target_os = "macos"))]
+pub mod mlx;
+
 /// Vector index trait and types (zero dependencies).
 pub mod vector_index;
 
@@ -91,6 +95,9 @@ pub use qwen3::Qwen3Provider;
 
 #[cfg(feature = "embedding-fastembed-nomic-moe")]
 pub use nomic_moe::NomicMoeProvider;
+
+#[cfg(all(feature = "embedding-mlx", target_os = "macos"))]
+pub use mlx::MlxEmbeddingProvider;
 
 /// Re-export `ort` for DirectML execution provider configuration.
 ///
