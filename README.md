@@ -26,7 +26,7 @@ llm-kernel provides the foundational layer for building LLM-powered tools, agent
 - **Knowledge graph** — `GraphBackend` trait (SQLite impl), FTS5 search, smart recall, BFS traversal, CJK search, schema migrations, async wrappers, pure-Rust graph algorithms (PageRank, community detection, shortest path, similarity)
 - **MCP server** — JSON-RPC 2.0 server framework (protocol 2025-06-18) with stdio and HTTP/SSE transports, tools, resources, prompts, `ping`, async handlers, Bearer auth
 - **Key-value store** — `KvStore` trait powering LLM response caching and other byte-oriented stores
-- **Embedding** — provider trait + cosine similarity, local ONNX (44 models), Qwen3 candle, Nomic V2 MoE candle, OpenAI remote, compressed vector indexing ([full model list →](EMBEDDING_MODELS.md))
+- **Embedding** — provider trait + cosine similarity, local ONNX (44 models), Qwen3 candle, Nomic V2 MoE candle, MLX native (Apple Silicon), OpenAI remote, compressed vector indexing ([full model list →](EMBEDDING_MODELS.md))
 - **Search** — Reciprocal Rank Fusion for hybrid search result merging
 - **Token estimation** — zero-dependency Unicode-script heuristic token counting
 - **Telemetry** — enum-gated events with no PII, console and noop sinks
@@ -66,6 +66,7 @@ Each module is gated behind a feature flag so you only pay for what you use.
 | `embedding-fastembed-directml` | DirectML GPU execution provider for `FastembedProvider` (Windows only) | |
 | `embedding-fastembed-coreml` | CoreML GPU/ANE execution provider for `FastembedProvider` (macOS only) — `new_with_coreml()` accelerates bge-m3 | |
 | `embedding-metal` | Metal GPU acceleration for the candle providers (`Qwen3Provider`/`NomicMoeProvider`) on Apple Silicon — `new_metal()` (macOS only; combine with `embedding-fastembed-qwen3` / `-nomic-moe`) | |
+| `embedding-mlx` | Rust-native MLX embedding on Apple Silicon (GPU via unified memory) — `MlxEmbeddingProvider`, bge-small-en-v1.5 (macOS/aarch64 only; batch-throughput path complementing `embedding-metal`) | |
 | `embedding-fastembed-dynamic-linking` | Dynamic ONNX Runtime linking (opt-in; **mutually exclusive with `embedding-fastembed`** and any feature implying it — for hosts where the static archive fails at release link: glibc <2.38 / older MSVC; see #50 #55) | |
 | `vector-index` | TurboQuant compressed vector index — 2-bit/4-bit, SIMD ANN search | |
 | `qdrant` | Qdrant `AsyncVectorIndex` (`QdrantVectorIndex`) for remote vector search | |

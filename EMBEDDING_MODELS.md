@@ -1,6 +1,6 @@
 # Supported Embedding Models
 
-llm-kernel supports **46 embedding models** across three backends.
+llm-kernel supports **46 embedding models** across four backends.
 
 ## ONNX Models (fastembed-rs)
 
@@ -115,6 +115,27 @@ let provider = NomicMoeProvider::new()?;
 let result = provider.embed("hello world")?;
 ```
 
+## MLX Models (Apple Silicon native)
+
+Pure-Rust MLX inference on the Apple Silicon GPU via unified memory — the
+**batch-throughput** path that complements candle-Metal (which wins on
+single-embed latency). Enable with `embedding-mlx` (macOS / aarch64 only).
+
+| Model | Dim | Description |
+|-------|-----|-------------|
+| `BAAI/bge-small-en-v1.5` | 384 | BERT encoder, CLS pooling, L2-normalised |
+
+> Other models require porting their forward pass to `mlx-rs`. The BERT encoder
+> used here is the first; bge-base/large share the architecture and are the
+> natural next targets.
+
+```rust
+use llm_kernel::embedding::{MlxEmbeddingProvider, EmbeddingProvider};
+
+let provider = MlxEmbeddingProvider::new()?; // bge-small-en-v1.5
+let result = provider.embed("hello world")?;
+```
+
 ## Remote API
 
 | Provider | Feature | Models |
@@ -135,4 +156,5 @@ let result = client.embed("hello world")?;
 | ONNX (fastembed) | `embedding-fastembed` | ✅ | 384–1024 | 44 models, auto-download |
 | Qwen3 (candle) | `embedding-fastembed-qwen3` | ✅ | varies | Pure Rust, GPU support |
 | Nomic V2 MoE (candle) | `embedding-fastembed-nomic-moe` | ✅ | 768 | MoE, lightweight |
+| BGE-small (MLX) | `embedding-mlx` | ✅ | 384 | macOS/aarch64 only, batch throughput |
 | OpenAI | `embedding-openai` | ❌ | 1536–3072 | Remote API |
