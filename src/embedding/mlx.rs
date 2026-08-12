@@ -7,9 +7,20 @@
 //! single-embed latency).
 //!
 //! Supports any vanilla-BERT encoder model in the catalog whose
-//! [`EmbeddingModel::mlx_supported()`] returns `true` — currently 14 base
-//! architectures (28 variants incl. quantized): BGE-en/zh-v1.5, all-MiniLM-L6/L12,
-//! paraphrase-multilingual-MiniLM, Snowflake Arctic Embed (XS–L), mxbai-embed-large.
+//! [`EmbeddingModel::mlx_supported()`] returns `true` — 13 base models
+//! (21 variants incl. quantized aliases): BGE-en-v1.5 (small/base/large),
+//! bge-small-zh-v1.5, all-MiniLM-L6/L12, paraphrase-multilingual-MiniLM,
+//! multilingual-e5-small, Snowflake Arctic Embed (xs/s/m/l), mxbai-embed-large.
+//!
+//! Membership was established by probing each candidate's original weight repo
+//! (`config.json` + the `model.safetensors` header) — a model qualifies only if
+//! it is `architectures: ["BertModel"]`, `model_type: "bert"`, absolute position
+//! embeddings, gelu, and carries the full `encoder.layer.N.*` tensor layout this
+//! forward pass indexes. Notable exclusions: `arctic-embed-m-long` and Nomic v1/v1.5
+//! are `NomicBertModel` (`encoder.layers.N.attn.Wqkv`), GTE is `NewModel`, E5
+//! base/large and paraphrase-mpnet are `XLMRobertaModel`, mpnet is `MPNetForMaskedLM`,
+//! and `bge-large-zh-v1.5` ships only `pytorch_model.bin` (no safetensors).
+//!
 //! The encoder forward pass is assembled from `mlx-rs` `nn` modules and the
 //! `fast::scaled_dot_product_attention` kernel; shape/pooling/prefix come from
 //! the catalog + each model's `config.json`.
@@ -114,6 +125,9 @@ struct MlxBertEncoder {
     word_embed: mlx_rs::nn::Embedding,
     pos_embed: mlx_rs::nn::Embedding,
     token_type_embed: mlx_rs::nn::Embedding,
+    /// `embeddings.LayerNorm` — applied to the summed embeddings before layer 0.
+    /// BERT always has this; omitting it silently corrupts every output vector.
+    embed_ln: mlx_rs::nn::LayerNorm,
     layers: Vec<LayerWeights>,
     tokenizer: tokenizers::Tokenizer,
 }
@@ -169,16 +183,11 @@ impl MlxEmbeddingProvider {
             .inner
             .lock()
             .map_err(|_| KernelError::Embedding("mlx embedding model mutex poisoned".into()))?;
-        let max_seq = encoder.cfg.max_seq;
-
-        let mut tok = encoder.tokenizer.clone();
-        tok.with_truncation(Some(tokenizers::TruncationParams {
-            max_length: max_seq,
-            ..Default::default()
-        }))
-        .map_err(|e| KernelError::embedding(format!("tokenizer truncation: {e}")))?;
-        let enc = tok
-            .encode(vec![input.to_string()], true)
+        // Truncation is configured once in `load_model` — no per-call clone of the
+        // tokenizer (which would deep-copy the whole 30k+ entry vocab every embed).
+        let enc = encoder
+            .tokenizer
+            .encode(input, true)
             .map_err(|e| KernelError::embedding(format!("tokenizer encode: {e}")))?;
         let ids: Vec<i32> = enc.get_ids().iter().map(|&u| u as i32).collect();
         let mask: Vec<i32> = enc.get_attention_mask().iter().map(|&u| u as i32).collect();
@@ -248,9 +257,11 @@ fn encoder_forward(
     use mlx_rs::Array;
     use mlx_rs::module::Module;
 
-    let cfg = &model.cfg;
-    let hidden = cfg.hidden;
-    let head_dim = cfg.head_dim();
+    // Copy the scalars out so `model` stays free for the `&mut` module calls below.
+    let hidden = model.cfg.hidden;
+    let num_heads = model.cfg.num_heads;
+    let pooling = model.cfg.pooling;
+    let head_dim = model.cfg.head_dim();
 
     // Embeddings: word + position + token_type (token_type=0 throughout).
     let pos_ids = Array::arange::<_, i32>(0, seq as i32, None)
@@ -273,6 +284,11 @@ fn encoder_forward(
     h = h
         .add(&tt)
         .map_err(|e| KernelError::embedding(format!("add token_type: {e}")))?;
+    // BERT normalises the summed embeddings before the first encoder layer.
+    h = model
+        .embed_ln
+        .forward(&h)
+        .map_err(|e| KernelError::embedding(format!("embeddings ln: {e}")))?;
 
     // Attention mask as additive bias: keep=0, pad=-inf, shaped [1,1,1,seq].
     let bias: Vec<f32> = mask
@@ -298,9 +314,9 @@ fn encoder_forward(
             .forward(&h)
             .map_err(|e| KernelError::embedding(format!("v proj: {e}")))?;
 
-        let qh = split_heads(&q, seq, cfg.num_heads, head_dim)?;
-        let kh = split_heads(&k, seq, cfg.num_heads, head_dim)?;
-        let vh = split_heads(&v, seq, cfg.num_heads, head_dim)?;
+        let qh = split_heads(&q, seq, num_heads, head_dim)?;
+        let kh = split_heads(&k, seq, num_heads, head_dim)?;
+        let vh = split_heads(&v, seq, num_heads, head_dim)?;
 
         let ctx = mlx_rs::fast::scaled_dot_product_attention(&qh, &kh, &vh, scale, &bias)
             .map_err(|e| KernelError::embedding(format!("sdpa: {e}")))?;
@@ -341,7 +357,7 @@ fn encoder_forward(
     // Pooling. BERT-family checkpoints have no top-level post-encoder norm —
     // the final layer's `output.LayerNorm` is the last normalisation, so we
     // pool `h` directly (no identity final-LN hack needed).
-    match cfg.pooling {
+    match pooling {
         Pooling::Cls => {
             // Row 0 of [1, seq, hidden].
             let flat = h
@@ -429,6 +445,16 @@ fn load_model(model: EmbeddingModel) -> Result<MlxBertEncoder> {
             hf.hidden_size, hf.num_attention_heads
         )));
     }
+    // `dim()` reports the catalog constant while vectors are sized by the loaded
+    // config — if the upstream repo ever disagrees, fail here rather than handing
+    // a wrong-width vector to a vector index that was created from `dim()`.
+    if hf.hidden_size != model.dimension() {
+        return Err(KernelError::Embedding(format!(
+            "{model:?}: config.json hidden_size {} != catalog dimension {} (repo {repo})",
+            hf.hidden_size,
+            model.dimension()
+        )));
+    }
     let cfg = BertConfig {
         hidden: hf.hidden_size,
         num_heads: hf.num_attention_heads,
@@ -444,9 +470,17 @@ fn load_model(model: EmbeddingModel) -> Result<MlxBertEncoder> {
         eps: hf.layer_norm_eps,
     };
 
+    // Configure padding + truncation once here; `run_one` then encodes without
+    // cloning the tokenizer on every call.
     let mut tokenizer = tokenizers::Tokenizer::from_file(tok_path)
         .map_err(|e| KernelError::embedding(format!("load tokenizer: {e}")))?;
     tokenizer.with_padding(None);
+    tokenizer
+        .with_truncation(Some(tokenizers::TruncationParams {
+            max_length: cfg.max_seq,
+            ..Default::default()
+        }))
+        .map_err(|e| KernelError::embedding(format!("tokenizer truncation: {e}")))?;
 
     let bytes = std::fs::read(&weights_path)
         .map_err(|e| KernelError::embedding(format!("read safetensors: {e}")))?;
@@ -470,18 +504,23 @@ fn load_model(model: EmbeddingModel) -> Result<MlxBertEncoder> {
                 &names[..names.len().min(6)]
             ))
         })?;
-        let data: Vec<f32> = view
-            .data()
-            .chunks_exact(4)
-            .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
-            .collect();
+        let data = decode_f32(view.dtype(), view.data(), &full)?;
         let shape: Vec<i32> = view.shape().iter().map(|&d| d as i32).collect();
+        let expected: usize = view.shape().iter().product();
+        if data.len() != expected {
+            return Err(KernelError::Embedding(format!(
+                "tensor {full}: decoded {} elements but shape {:?} needs {expected}",
+                data.len(),
+                view.shape()
+            )));
+        }
         Ok(mlx_rs::Array::from_slice(&data, &shape))
     };
 
     let word_embed = embed_from(&w, "embeddings.word_embeddings.weight")?;
     let pos_embed = embed_from(&w, "embeddings.position_embeddings.weight")?;
     let token_type_embed = embed_from(&w, "embeddings.token_type_embeddings.weight")?;
+    let embed_ln = layernorm_from(&w, "embeddings.LayerNorm", cfg.eps)?;
 
     let mut layers = Vec::with_capacity(cfg.num_layers);
     for i in 0..cfg.num_layers {
@@ -511,9 +550,76 @@ fn load_model(model: EmbeddingModel) -> Result<MlxBertEncoder> {
         word_embed,
         pos_embed,
         token_type_embed,
+        embed_ln,
         layers,
         tokenizer,
     })
+}
+
+/// Decode a safetensors byte payload into `f32`, honouring the declared dtype.
+///
+/// Checkpoints in this family ship F32 (BGE, MiniLM, Arctic) or F16 (mxbai);
+/// BF16 is accepted too since upstream repos re-upload in it. Anything else is
+/// an explicit error rather than a silent misread — blindly treating bytes as
+/// f32 would decode F16 as garbage that still normalises to 1.0.
+fn decode_f32(dtype: safetensors::Dtype, raw: &[u8], name: &str) -> Result<Vec<f32>> {
+    use safetensors::Dtype;
+
+    let width = match dtype {
+        Dtype::F32 => 4,
+        Dtype::F16 | Dtype::BF16 => 2,
+        other => {
+            return Err(KernelError::Embedding(format!(
+                "tensor {name}: unsupported dtype {other:?} (expected F32, F16 or BF16)"
+            )));
+        }
+    };
+    if !raw.len().is_multiple_of(width) {
+        return Err(KernelError::Embedding(format!(
+            "tensor {name}: {} bytes is not a multiple of the {width}-byte {dtype:?} element",
+            raw.len()
+        )));
+    }
+
+    Ok(match dtype {
+        Dtype::F32 => raw
+            .chunks_exact(4)
+            .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+            .collect(),
+        // IEEE half -> f32 via the standard bit-layout widening.
+        Dtype::F16 => raw
+            .chunks_exact(2)
+            .map(|c| f16_bits_to_f32(u16::from_le_bytes([c[0], c[1]])))
+            .collect(),
+        // bfloat16 is the top 16 bits of an f32, so widening is a shift.
+        Dtype::BF16 => raw
+            .chunks_exact(2)
+            .map(|c| f32::from_bits((u16::from_le_bytes([c[0], c[1]]) as u32) << 16))
+            .collect(),
+        _ => unreachable!("dtype filtered above"),
+    })
+}
+
+/// Widen IEEE-754 binary16 bits to `f32`, preserving subnormals, inf and NaN.
+fn f16_bits_to_f32(bits: u16) -> f32 {
+    let sign = ((bits >> 15) as u32) << 31;
+    let exp = ((bits >> 10) & 0x1f) as u32;
+    let mant = (bits & 0x3ff) as u32;
+
+    match exp {
+        // Zero / subnormal. A subnormal half is exactly `mant * 2^-24`, which
+        // f32 represents as a normal — let the FPU do the renormalisation
+        // instead of hand-rolling the shift.
+        0 if mant == 0 => f32::from_bits(sign),
+        0 => {
+            let mag = mant as f32 * 5.960_464_5e-8; // 2^-24
+            if sign != 0 { -mag } else { mag }
+        }
+        // Inf / NaN.
+        0x1f => f32::from_bits(sign | 0x7f80_0000 | (mant << 13)),
+        // Normal: rebias the exponent (15 -> 127).
+        _ => f32::from_bits(sign | ((exp + 127 - 15) << 23) | (mant << 13)),
+    }
 }
 
 /// Build an `Embedding` and load its weight matrix from `{leaf}`.
@@ -574,13 +680,90 @@ mod tests {
 
     #[test]
     fn mlx_supported_flag_is_sane() {
-        // BERT family supported; representative non-BERT not.
+        // Vanilla-BERT family supported (verified against each weight repo).
         assert!(EmbeddingModel::BGESmallENV15.mlx_supported());
         assert!(EmbeddingModel::AllMiniLML6V2.mlx_supported());
         assert!(EmbeddingModel::SnowflakeArcticEmbedL.mlx_supported());
+        assert!(EmbeddingModel::MultilingualE5Small.mlx_supported()); // BertModel
+        assert!(EmbeddingModel::MxbaiEmbedLargeV1.mlx_supported()); // BertModel, F16
+
+        // Non-BERT architectures.
         assert!(!EmbeddingModel::BGEM3.mlx_supported()); // XLM-RoBERTa
         assert!(!EmbeddingModel::AllMpnetBaseV2.mlx_supported()); // MPNet
         assert!(!EmbeddingModel::ModernBertEmbedLarge.mlx_supported()); // ModernBERT
+        assert!(!EmbeddingModel::GTEBaseENV15.mlx_supported()); // NewModel
+        assert!(!EmbeddingModel::JinaEmbeddingsV2BaseEN.mlx_supported()); // JinaBert
+        assert!(!EmbeddingModel::NomicEmbedTextV15.mlx_supported()); // NomicBert
+        // e5 base/large are XLM-R even though e5-small is BERT.
+        assert!(!EmbeddingModel::MultilingualE5Base.mlx_supported());
+        assert!(!EmbeddingModel::MultilingualE5Large.mlx_supported());
+        // arctic-m-long is NomicBertModel, unlike the rest of the Arctic line.
+        assert!(!EmbeddingModel::SnowflakeArcticEmbedMLong.mlx_supported());
+        // BertModel, but the repo has no safetensors — only pytorch_model.bin.
+        assert!(!EmbeddingModel::BGELargeZHV15.mlx_supported());
+    }
+
+    /// Every MLX-supported model must resolve to a repo that actually carries
+    /// the original weights — never an ONNX-only `Xenova/*` / `Qdrant/*` mirror.
+    #[test]
+    fn mlx_repo_never_points_at_onnx_mirror() {
+        for &m in EmbeddingModel::ALL {
+            if m.mlx_supported() {
+                let repo = m.mlx_repo();
+                assert!(
+                    !repo.starts_with("Xenova/") && !repo.starts_with("Qdrant/"),
+                    "{m:?} mlx_repo {repo} is an ONNX mirror with no model.safetensors"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn f16_decode_matches_reference_values() {
+        // Exact halves: sign, zero, one, and a fraction.
+        assert_eq!(f16_bits_to_f32(0x0000), 0.0);
+        assert_eq!(f16_bits_to_f32(0x8000), -0.0);
+        assert_eq!(f16_bits_to_f32(0x3C00), 1.0);
+        assert_eq!(f16_bits_to_f32(0xBC00), -1.0);
+        assert_eq!(f16_bits_to_f32(0x4000), 2.0);
+        assert_eq!(f16_bits_to_f32(0x3800), 0.5);
+        // Largest normal half = 65504.
+        assert_eq!(f16_bits_to_f32(0x7BFF), 65504.0);
+        // Subnormals: value == mant * 2^-24, both signs.
+        assert!((f16_bits_to_f32(0x0001) - 2f32.powi(-24)).abs() < 1e-30);
+        assert!((f16_bits_to_f32(0x8001) + 2f32.powi(-24)).abs() < 1e-30);
+        // Largest subnormal = 1023 * 2^-24, just below the smallest normal 2^-14.
+        assert!((f16_bits_to_f32(0x03FF) - 1023.0 * 2f32.powi(-24)).abs() < 1e-30);
+        // Smallest positive normal = 2^-14.
+        assert!((f16_bits_to_f32(0x0400) - 2f32.powi(-14)).abs() < 1e-30);
+        // Inf / NaN.
+        assert!(f16_bits_to_f32(0x7C00).is_infinite());
+        assert!(f16_bits_to_f32(0xFC00).is_infinite() && f16_bits_to_f32(0xFC00) < 0.0);
+        assert!(f16_bits_to_f32(0x7E00).is_nan());
+    }
+
+    #[test]
+    fn decode_f32_handles_each_supported_dtype() {
+        use safetensors::Dtype;
+        // f32 1.0 little-endian.
+        assert_eq!(
+            decode_f32(Dtype::F32, &1.0f32.to_le_bytes(), "t").unwrap(),
+            vec![1.0]
+        );
+        // f16 1.0 = 0x3C00.
+        assert_eq!(
+            decode_f32(Dtype::F16, &0x3C00u16.to_le_bytes(), "t").unwrap(),
+            vec![1.0]
+        );
+        // bf16 1.0 = top 16 bits of f32 1.0 (0x3F80).
+        assert_eq!(
+            decode_f32(Dtype::BF16, &0x3F80u16.to_le_bytes(), "t").unwrap(),
+            vec![1.0]
+        );
+        // Unsupported dtype is a hard error, not a silent misread.
+        assert!(decode_f32(Dtype::I64, &[0u8; 8], "t").is_err());
+        // Truncated payload is rejected rather than silently dropped.
+        assert!(decode_f32(Dtype::F32, &[0u8; 6], "t").is_err());
     }
 
     #[test]
@@ -641,6 +824,81 @@ mod tests {
             .sum::<f64>()
             .sqrt();
         assert!((norm - 1.0).abs() < 1e-4, "L2 norm {norm} != 1.0");
+    }
+
+    /// Numerical ground truth vs HuggingFace `transformers`.
+    ///
+    /// Relatedness ranking and L2 norm both pass even with a structurally wrong
+    /// encoder (a missing `embeddings.LayerNorm` still yields deterministic,
+    /// unit-norm, correctly-ranked vectors), so those checks cannot detect a
+    /// broken forward pass. Only an element-wise comparison against the
+    /// reference implementation can. Values produced by:
+    ///
+    /// ```python
+    /// h = AutoModel.from_pretrained(repo)(**tok(text, return_tensors="pt")).last_hidden_state
+    /// v = h[:, 0]                       # CLS  (mean+mask for MiniLM)
+    /// v = torch.nn.functional.normalize(v, p=2, dim=1)[0][:8]
+    /// ```
+    #[test]
+    #[ignore = "requires model download + Apple Silicon (macOS)"]
+    fn matches_transformers_reference_vectors() {
+        // BGE-small-en-v1.5, CLS pooling, query prefix applied by `embed`.
+        let bge = MlxEmbeddingProvider::new(EmbeddingModel::BGESmallENV15).unwrap();
+        let got = bge.embed("hello world").unwrap().vector;
+        let want = [
+            -0.027733, -0.028816, -0.00888, -0.040712, 0.041487, -0.020241, -0.009069, 0.051351,
+        ];
+        for (i, (&g, &w)) in got.iter().zip(want.iter()).enumerate() {
+            assert!(
+                (g - w).abs() < 2e-3,
+                "bge dim {i}: got {g}, want {w} (delta {})",
+                (g - w).abs()
+            );
+        }
+
+        // all-MiniLM-L6-v2, mask-weighted mean pooling, no prefix.
+        let mini = MlxEmbeddingProvider::new(EmbeddingModel::AllMiniLML6V2).unwrap();
+        let got = mini.embed("hello world").unwrap().vector;
+        let want = [
+            -0.034477, 0.031023, 0.006735, 0.026109, -0.039362, -0.160303, 0.066924, -0.006441,
+        ];
+        for (i, (&g, &w)) in got.iter().zip(want.iter()).enumerate() {
+            assert!(
+                (g - w).abs() < 2e-3,
+                "minilm dim {i}: got {g}, want {w} (delta {})",
+                (g - w).abs()
+            );
+        }
+    }
+
+    /// Smoke-load every newly-admitted model family so a wrong `mlx_supported`
+    /// entry surfaces as a load failure rather than at a user's first embed.
+    /// mxbai exercises the F16 decode path; e5-small the mean-pool + `query:`
+    /// prefix path; arctic the CLS path at 1024 dims.
+    #[test]
+    #[ignore = "requires model download + Apple Silicon (macOS)"]
+    fn newly_supported_models_load_and_embed() {
+        for m in [
+            EmbeddingModel::MxbaiEmbedLargeV1,
+            EmbeddingModel::MultilingualE5Small,
+            EmbeddingModel::SnowflakeArcticEmbedXS,
+        ] {
+            let p = MlxEmbeddingProvider::new(m)
+                .unwrap_or_else(|e| panic!("{m:?} failed to load: {e}"));
+            let r = p.embed("hello world").unwrap();
+            assert_eq!(r.vector.len(), m.dimension(), "{m:?} wrong dim");
+            let norm: f64 = r
+                .vector
+                .iter()
+                .map(|x| (*x as f64).powi(2))
+                .sum::<f64>()
+                .sqrt();
+            assert!((norm - 1.0).abs() < 1e-4, "{m:?} L2 norm {norm} != 1.0");
+            assert!(
+                r.vector.iter().any(|x| *x != 0.0) && r.vector.iter().all(|x| x.is_finite()),
+                "{m:?} produced a degenerate vector"
+            );
+        }
     }
 
     #[test]

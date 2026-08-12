@@ -66,7 +66,7 @@ Each module is gated behind a feature flag so you only pay for what you use.
 | `embedding-fastembed-directml` | DirectML GPU execution provider for `FastembedProvider` (Windows only) | |
 | `embedding-fastembed-coreml` | CoreML GPU/ANE execution provider for `FastembedProvider` (macOS only) — `new_with_coreml()` accelerates bge-m3 | |
 | `embedding-metal` | Metal GPU acceleration for the candle providers (`Qwen3Provider`/`NomicMoeProvider`) on Apple Silicon — `new_metal()` (macOS only; combine with `embedding-fastembed-qwen3` / `-nomic-moe`) | |
-| `embedding-mlx` | Rust-native MLX embedding on Apple Silicon (GPU via unified memory) — `MlxEmbeddingProvider`, bge-small-en-v1.5 (macOS/aarch64 only; batch-throughput path complementing `embedding-metal`) | |
+| `embedding-mlx` | Rust-native MLX embedding on Apple Silicon (GPU via unified memory) — `MlxEmbeddingProvider`, 13 vanilla-BERT models incl. BGE-en/zh, MiniLM, e5-small, Arctic, mxbai (macOS/aarch64 only; batch-throughput path complementing `embedding-metal`) | |
 | `embedding-fastembed-dynamic-linking` | Dynamic ONNX Runtime linking (opt-in; **mutually exclusive with `embedding-fastembed`** and any feature implying it — for hosts where the static archive fails at release link: glibc <2.38 / older MSVC; see #50 #55) | |
 | `vector-index` | TurboQuant compressed vector index — 2-bit/4-bit, SIMD ANN search | |
 | `qdrant` | Qdrant `AsyncVectorIndex` (`QdrantVectorIndex`) for remote vector search | |

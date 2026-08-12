@@ -121,20 +121,69 @@ Pure-Rust MLX inference on the Apple Silicon GPU via unified memory — the
 **batch-throughput** path that complements candle-Metal (which wins on
 single-embed latency). Enable with `embedding-mlx` (macOS / aarch64 only).
 
-| Model | Dim | Description |
-|-------|-----|-------------|
-| `BAAI/bge-small-en-v1.5` | 384 | BERT encoder, CLS pooling, L2-normalised |
+`MlxEmbeddingProvider` takes a catalog `EmbeddingModel` and covers the
+**vanilla-BERT** subset of the fastembed catalog — 13 base models (21 catalog
+variants, counting `*Q` aliases that share weights with their non-quantized
+twin). All are CLS- or mean-pooled and L2-normalised, matching the reference
+`sentence-transformers` output.
 
-> Other models require porting their forward pass to `mlx-rs`. The BERT encoder
-> used here is the first; bge-base/large share the architecture and are the
-> natural next targets.
+| Catalog variant | Weight repo (`mlx_repo`) | Dim | Pooling | Query prefix |
+|-----------------|--------------------------|-----|---------|--------------|
+| `BGESmallENV15` | `BAAI/bge-small-en-v1.5` | 384 | CLS | BGE instruction |
+| `BGEBaseENV15` | `BAAI/bge-base-en-v1.5` | 768 | CLS | BGE instruction |
+| `BGELargeENV15` | `BAAI/bge-large-en-v1.5` | 1024 | CLS | BGE instruction |
+| `BGESmallZHV15` | `BAAI/bge-small-zh-v1.5` | 512 | CLS | BGE instruction |
+| `AllMiniLML6V2` | `sentence-transformers/all-MiniLM-L6-v2` | 384 | mean | — |
+| `AllMiniLML12V2` | `sentence-transformers/all-MiniLM-L12-v2` | 384 | mean | — |
+| `ParaphraseMLMiniLML12V2` | `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` | 384 | mean | — |
+| `MultilingualE5Small` | `intfloat/multilingual-e5-small` | 384 | mean | `query: ` / `passage: ` |
+| `SnowflakeArcticEmbedXS` | `Snowflake/snowflake-arctic-embed-xs` | 384 | CLS | BGE instruction |
+| `SnowflakeArcticEmbedS` | `Snowflake/snowflake-arctic-embed-s` | 384 | CLS | BGE instruction |
+| `SnowflakeArcticEmbedM` | `Snowflake/snowflake-arctic-embed-m` | 768 | CLS | BGE instruction |
+| `SnowflakeArcticEmbedL` | `Snowflake/snowflake-arctic-embed-l` | 1024 | CLS | BGE instruction |
+| `MxbaiEmbedLargeV1` | `mixedbread-ai/mxbai-embed-large-v1` | 1024 | CLS | BGE instruction |
+
+Each `*Q` variant (e.g. `BGESmallENV15Q`) maps to the same weight repo — MLX
+loads the original float checkpoint, so quantized aliases behave identically.
+
+### Not MLX-supported
+
+Membership was determined by probing every catalog model's original weight repo
+(`config.json` + `model.safetensors` header). A model qualifies only if it is
+`architectures: ["BertModel"]` with absolute position embeddings, gelu, and the
+standard `encoder.layer.N.attention.self.*` tensor layout. Excluded:
+
+| Model(s) | Reason |
+|----------|--------|
+| `SnowflakeArcticEmbedMLong`, `NomicEmbedTextV1`, `NomicEmbedTextV15` | `NomicBertModel` — fused `attn.Wqkv`, rotary/no position embeddings |
+| `GTEBaseENV15`, `GTELargeENV15` | `NewModel` architecture |
+| `MultilingualE5Base`, `MultilingualE5Large`, `ParaphraseMLMpnetBaseV2`, `BGEM3` | `XLMRobertaModel` |
+| `AllMpnetBaseV2` | `MPNetForMaskedLM` |
+| `JinaEmbeddingsV2BaseEN`, `JinaEmbeddingsV2BaseCode` | `JinaBertForMaskedLM` (ALiBi) |
+| `ModernBertEmbedLarge` | `ModernBertModel` |
+| `EmbeddingGemma300M`, `ClipVitB32` | Not BERT text encoders |
+| `BGELargeZHV15` | `BertModel`, but the repo ships only `pytorch_model.bin` — no safetensors |
+
+Calling `MlxEmbeddingProvider::new` with any of these returns an error rather
+than failing later at weight load.
 
 ```rust
-use llm_kernel::embedding::{MlxEmbeddingProvider, EmbeddingProvider};
+use llm_kernel::embedding::{EmbeddingModel, MlxEmbeddingProvider, EmbeddingProvider};
 
-let provider = MlxEmbeddingProvider::new()?; // bge-small-en-v1.5
-let result = provider.embed("hello world")?;
+let provider = MlxEmbeddingProvider::new(EmbeddingModel::BGESmallENV15)?;
+
+// Asymmetric models apply the query prefix on `embed` and none on
+// `embed_document` — use the matching call for each side of a search.
+let query = provider.embed("What is the capital of France?")?;
+let doc = provider.embed_document("The capital of France is Paris.")?;
+
+// Check support before constructing, if the model is chosen at runtime.
+assert!(EmbeddingModel::MxbaiEmbedLargeV1.mlx_supported());
+assert!(!EmbeddingModel::BGEM3.mlx_supported());
 ```
+
+Weights load from `model.safetensors` in F32, F16 or BF16 (mxbai ships F16);
+any other dtype is an explicit error rather than a silent misread.
 
 ## Remote API
 
@@ -156,5 +205,5 @@ let result = client.embed("hello world")?;
 | ONNX (fastembed) | `embedding-fastembed` | ✅ | 384–1024 | 44 models, auto-download |
 | Qwen3 (candle) | `embedding-fastembed-qwen3` | ✅ | varies | Pure Rust, GPU support |
 | Nomic V2 MoE (candle) | `embedding-fastembed-nomic-moe` | ✅ | 768 | MoE, lightweight |
-| BGE-small (MLX) | `embedding-mlx` | ✅ | 384 | macOS/aarch64 only, batch throughput |
+| Vanilla BERT (MLX) | `embedding-mlx` | ✅ | 384–1024 | 13 models, macOS/aarch64 only, batch throughput |
 | OpenAI | `embedding-openai` | ❌ | 1536–3072 | Remote API |

@@ -9,6 +9,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`embedding-mlx` feature** — Rust-native MLX embedding provider
+  (`MlxEmbeddingProvider`) running a BERT encoder forward pass on the Apple
+  Silicon GPU via unified memory, complementing `embedding-metal` (which wins
+  on single-embed latency) on the batch-throughput path. macOS/aarch64 only:
+  `mlx-rs` and friends sit behind a `target.'cfg(...)'` dependency section, so
+  `full` stays resolvable on Linux CI.
+
+  Covers 13 vanilla-BERT models (21 catalog variants): BGE-en-v1.5
+  small/base/large, bge-small-zh-v1.5, all-MiniLM-L6/L12,
+  paraphrase-multilingual-MiniLM, multilingual-e5-small, Snowflake Arctic
+  xs/s/m/l and mxbai-embed-large. Membership is not guesswork — each candidate's
+  original weight repo was probed (`config.json` + safetensors header) and
+  admitted only if it is `architectures: ["BertModel"]` with absolute position
+  embeddings, gelu, and the standard `encoder.layer.N.*` tensor layout. See
+  `EmbeddingModel::mlx_supported` for the exclusion list (NomicBert, XLM-R,
+  MPNet, JinaBert, GTE `NewModel`, ModernBERT, Gemma, CLIP, plus
+  `BGELargeZHV15`, which ships no safetensors).
+
+  New catalog accessors: `mlx_supported()`, `uses_cls_pooling()`, `mlx_repo()`.
+  Weights load from F32, F16 or BF16; any other dtype is an explicit error
+  rather than a silent misread.
+
+- **`query_prefix()` now covers BGE-en-v1.5, mxbai and Snowflake Arctic.**
+  These are asymmetric models that expect the BGE instruction prefix on the
+  query side; previously they returned `None`, so retrieval quality silently
+  suffered for every consumer using `embed()` for queries.
+
 - **`embedding-metal` feature** — Metal GPU acceleration for the candle-based
   embedding providers (`Qwen3Provider`, `NomicMoeProvider`) on Apple Silicon,
   via candle-core's `metal` feature. New `new_metal()` constructors route
@@ -17,8 +44,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `embedding-fastembed-coreml` execution provider (CoreML EP for the ONNX
   models bge-small / bge-m3), both embedding backend families now have a
   native macOS GPU path. `ort` has no Metal EP, so CoreML is the only ONNX
-  route; MLX was evaluated and rejected (the `mlx-rs` binding is an Array
-  framework with no embedding forward path and requires a full Xcode build).
+  route. (MLX was initially rejected here because `mlx-rs` ships no embedding
+  forward path; `embedding-mlx` above supersedes that by assembling the BERT
+  encoder from `mlx-rs` `nn` primitives directly.)
 
 ## [0.24.0] - 2026-08-07
 
