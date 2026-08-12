@@ -936,9 +936,17 @@ mod tests {
         // Nomic v1 has no prefixes
         assert!(EmbeddingModel::NomicEmbedTextV1.query_prefix().is_none());
         assert!(EmbeddingModel::NomicEmbedTextV1.doc_prefix().is_none());
-        // Most models have no prefixes
-        assert!(EmbeddingModel::BGESmallENV15.query_prefix().is_none());
-        assert!(EmbeddingModel::BGESmallENV15.doc_prefix().is_none());
+        // BGE-en-v1.5 + mxbai are asymmetric (query prefix, no doc prefix)
+        for &m in &[
+            EmbeddingModel::BGESmallENV15,
+            EmbeddingModel::MxbaiEmbedLargeV1,
+        ] {
+            assert!(m.query_prefix().is_some());
+            assert!(m.doc_prefix().is_none());
+        }
+        // MiniLM (symmetric) has no prefixes
+        assert!(EmbeddingModel::AllMiniLML6V2.query_prefix().is_none());
+        assert!(EmbeddingModel::AllMiniLML6V2.doc_prefix().is_none());
     }
 
     #[test]
