@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.26.0] - 2026-08-18
+
+### Added
+
+- **Graph temporal validity** (closes #92): `GraphNode.valid_until` /
+  `GraphNode.last_verified` (ISO 8601, empty string = unset / never verified).
+  - Schema v4 on SQLite and both Postgres backends — existing v3 databases
+    upgrade in place, no data loss (validated against a live 1k-node DB).
+  - `mark_verified()` / `count_expired_nodes()` lifecycle functions, exported
+    via prelude; `SqliteGraph::mark_verified` / `SqliteGraph::count_expired_nodes`
+    wrappers so callers don't need their own connection.
+
+### Breaking (semver minor)
+
+- `GraphNode` gained two fields — exhaustive struct literals in downstream
+  code must add `..Default::default()` (or the new fields). Serde is
+  unaffected (`#[serde(default)]`).
+
 ## [0.25.0] - 2026-08-12
 
 ### Changed

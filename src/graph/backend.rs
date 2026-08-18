@@ -203,6 +203,24 @@ impl SqliteGraph {
     fn lock(&self) -> std::sync::MutexGuard<'_, Connection> {
         self.conn.lock().unwrap_or_else(|e| e.into_inner())
     }
+
+    /// Record that a node's content was verified as of `now` (ISO 8601).
+    ///
+    /// Convenience wrapper over [`crate::graph::lifecycle::mark_verified`] —
+    /// the connection is owned by the graph, so callers don't need to open
+    /// their own.
+    pub fn mark_verified(&self, id: &str, now: &str) -> Result<bool> {
+        let c = self.lock();
+        crate::graph::lifecycle::mark_verified(&c, id, now)
+    }
+
+    /// Count nodes whose `valid_until` is set and earlier than `now` (ISO 8601).
+    ///
+    /// Convenience wrapper over [`crate::graph::lifecycle::count_expired_nodes`].
+    pub fn count_expired_nodes(&self, now: &str) -> Result<u64> {
+        let c = self.lock();
+        crate::graph::lifecycle::count_expired_nodes(&c, now)
+    }
 }
 
 /// Open a file-backed connection, apply the schema, then run pending migrations.
@@ -377,6 +395,20 @@ mod tests {
         assert_eq!(loaded.tags, vec!["backend".to_string()]);
         assert!(backend.delete_node("n1").unwrap());
         assert!(backend.read_node("n1").unwrap().is_none());
+    }
+
+    /// Temporal-validity wrappers reachable without owning a connection.
+    #[test]
+    fn mark_verified_and_count_expired_wrappers() {
+        let backend = SqliteGraph::open_in_memory().unwrap();
+        backend.upsert_node(&sample_node("n1")).unwrap();
+        assert!(backend.mark_verified("n1", "2026-08-18T00:00:00Z").unwrap());
+        let node = backend.read_node("n1").unwrap().unwrap();
+        assert_eq!(node.last_verified, "2026-08-18T00:00:00Z");
+        assert_eq!(
+            backend.count_expired_nodes("2026-08-18T00:00:00Z").unwrap(),
+            0
+        );
     }
 
     /// AC5: a fresh backend reports the current schema version.
