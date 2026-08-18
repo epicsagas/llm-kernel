@@ -722,6 +722,7 @@ mod eval_graph {
                 importance: n.importance,
                 access_count: 0,
                 accessed_at: String::new(),
+                ..Default::default()
             };
             upsert_node(conn, &node).unwrap();
         }
@@ -975,6 +976,7 @@ mod eval_graph_korean {
                 importance: d.importance,
                 access_count: 0,
                 accessed_at: String::new(),
+                ..Default::default()
             };
             // Seed failure means the dataset is malformed — surface it loudly.
             upsert_node(&conn, &node).unwrap();

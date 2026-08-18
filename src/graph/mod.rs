@@ -50,6 +50,7 @@
 //!     importance: 0.8,
 //!     access_count: 0,
 //!     accessed_at: String::new(),
+//!     ..Default::default()
 //! }).unwrap();
 //!
 //! let results = smart_recall(&conn, Some("my-project"), Some("ownership"), 5).unwrap();
