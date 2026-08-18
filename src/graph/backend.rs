@@ -231,7 +231,12 @@ impl SqliteGraph {
     ///
     /// Do **not** call other `SqliteGraph` methods on the same instance inside
     /// `f` — they re-acquire the connection lock and will deadlock. Use only
-    /// the free functions on the passed connection.
+    /// the free functions on the passed connection. Similarly, avoid the
+    /// free functions that open their own transaction inside `f` — notably
+    /// [`crate::graph::store::append_edges`] and
+    /// [`crate::graph::store::delete_node`] — they fail with "cannot start a
+    /// transaction within a transaction". Their single-item counterparts
+    /// ([`crate::graph::store::append_edge`], plain `DELETE`) are safe.
     pub fn with_tx(&self, f: impl FnOnce(&Connection) -> Result<()>) -> Result<()> {
         let conn = self.lock();
         let tx = conn.unchecked_transaction().map_err(store_err)?;

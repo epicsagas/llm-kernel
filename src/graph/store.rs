@@ -165,6 +165,11 @@ pub fn append_edge(conn: &Connection, edge: &GraphEdge) -> Result<()> {
 /// Equivalent to calling [`append_edge`] per edge, but commits once and reuses
 /// one prepared statement, so it scales to hundreds of thousands of edges
 /// (e.g. building a citation graph during indexing).
+///
+/// Opens its own transaction — **not usable inside
+/// [`SqliteGraph::with_tx`](crate::graph::backend::SqliteGraph::with_tx)**
+/// ("cannot start a transaction within a transaction"). Inside a `with_tx`
+/// closure, loop [`append_edge`] instead.
 pub fn append_edges(conn: &Connection, edges: &[GraphEdge]) -> Result<()> {
     if edges.is_empty() {
         return Ok(());
