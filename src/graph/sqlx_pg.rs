@@ -44,7 +44,7 @@ use crate::error::{KernelError, Result};
 
 /// Standard node SELECT columns (positional order — keep in sync with [`row_to_node`]).
 const NODE_COLUMNS: &str = "id, node_type, title, tags, projects, agents, \
-     created, updated, body, importance, access_count, accessed_at";
+     created, updated, body, importance, access_count, accessed_at, valid_until, last_verified";
 
 /// Map a `sqlx::Error` into a [`KernelError::Store`].
 fn pg_err(e: sqlx::Error) -> KernelError {
@@ -69,6 +69,8 @@ fn row_to_node(row: &PgRow) -> GraphNode {
         importance: row.get("importance"),
         access_count: row.get("access_count"),
         accessed_at: row.get("accessed_at"),
+        valid_until: row.get("valid_until"),
+        last_verified: row.get("last_verified"),
     }
 }
 
@@ -229,7 +231,9 @@ impl SqlxPgGraph {
                     body         TEXT NOT NULL DEFAULT '',
                     importance   DOUBLE PRECISION NOT NULL DEFAULT 0.5,
                     access_count BIGINT NOT NULL DEFAULT 0,
-                    accessed_at  TEXT NOT NULL DEFAULT ''
+                    accessed_at  TEXT NOT NULL DEFAULT '',
+                    valid_until  TEXT NOT NULL DEFAULT '',
+                    last_verified TEXT NOT NULL DEFAULT ''
                 )"
             ),
             format!(
@@ -284,6 +288,12 @@ impl SqlxPgGraph {
             ),
             format!(
                 "CREATE TABLE IF NOT EXISTS {meta} (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
+            ),
+            format!(
+                "ALTER TABLE {nodes} ADD COLUMN IF NOT EXISTS valid_until TEXT NOT NULL DEFAULT ''"
+            ),
+            format!(
+                "ALTER TABLE {nodes} ADD COLUMN IF NOT EXISTS last_verified TEXT NOT NULL DEFAULT ''"
             ),
             format!(
                 "INSERT INTO {meta} (key, value) VALUES ('graph_schema_version', '{}')
@@ -362,6 +372,22 @@ impl SqlxPgGraph {
             .map_err(pg_err)?;
             v = 3;
         }
+        // v3 -> v4: temporal validity columns.
+        if v < 4 {
+            sqlx::query(&format!(
+                "ALTER TABLE {nodes} ADD COLUMN IF NOT EXISTS valid_until TEXT NOT NULL DEFAULT ''"
+            ))
+            .execute(&mut *tx)
+            .await
+            .map_err(pg_err)?;
+            sqlx::query(&format!(
+                "ALTER TABLE {nodes} ADD COLUMN IF NOT EXISTS last_verified TEXT NOT NULL DEFAULT ''"
+            ))
+            .execute(&mut *tx)
+            .await
+            .map_err(pg_err)?;
+            v = 4;
+        }
         sqlx::query(&format!(
             "UPDATE {meta} SET value = $1 WHERE key = 'graph_schema_version'"
         ))
@@ -382,13 +408,14 @@ impl SqlxPgGraph {
         let agents = join_csv(&node.agents);
         let nodes = self.nodes_tbl();
         sqlx::query(&format!(
-            "INSERT INTO {nodes} (id, node_type, title, tags, projects, agents, created, updated, body, importance, access_count, accessed_at)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+            "INSERT INTO {nodes} (id, node_type, title, tags, projects, agents, created, updated, body, importance, access_count, accessed_at, valid_until, last_verified)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
              ON CONFLICT (id) DO UPDATE SET
                node_type=EXCLUDED.node_type, title=EXCLUDED.title, tags=EXCLUDED.tags,
                projects=EXCLUDED.projects, agents=EXCLUDED.agents, created=EXCLUDED.created,
                updated=EXCLUDED.updated, body=EXCLUDED.body, importance=EXCLUDED.importance,
-               access_count=EXCLUDED.access_count, accessed_at=EXCLUDED.accessed_at"
+               access_count=EXCLUDED.access_count, accessed_at=EXCLUDED.accessed_at,
+               valid_until=EXCLUDED.valid_until, last_verified=EXCLUDED.last_verified"
         ))
         .bind(node.id.as_str())
         .bind(node.node_type.as_str())
@@ -402,6 +429,8 @@ impl SqlxPgGraph {
         .bind(node.importance)
         .bind(node.access_count)
         .bind(node.accessed_at.as_str())
+        .bind(node.valid_until.as_str())
+        .bind(node.last_verified.as_str())
         .execute(&self.pool)
         .await
         .map_err(pg_err)?;
@@ -948,6 +977,7 @@ mod tests {
             importance: 0.5,
             access_count: 0,
             accessed_at: String::new(),
+            ..Default::default()
         }
     }
 

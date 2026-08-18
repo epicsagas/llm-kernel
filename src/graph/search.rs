@@ -277,6 +277,7 @@ mod tests {
             importance: 0.7,
             access_count: 0,
             accessed_at: String::new(),
+            ..Default::default()
         }
     }
 
@@ -422,6 +423,7 @@ mod tests {
             importance: 0.7,
             access_count: 0,
             accessed_at: String::new(),
+            ..Default::default()
         }
     }
 

@@ -47,6 +47,7 @@ fn make_node(id: usize, importance: f64, tags: Vec<&str>) -> GraphNode {
         importance,
         access_count: (id % 10) as i64,
         accessed_at: String::new(),
+        ..Default::default()
     }
 }
 

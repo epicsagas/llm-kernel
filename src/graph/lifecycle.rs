@@ -73,6 +73,37 @@ pub fn tag_stale_nodes(conn: &Connection, days: u64) -> Result<u64> {
     Ok(changed as u64)
 }
 
+// ── Temporal validity ─────────────────────────────────
+
+/// Record that a node's content was verified as of `now` (ISO 8601).
+///
+/// Returns `true` when the node existed and was updated.
+pub fn mark_verified(conn: &Connection, id: &str, now: &str) -> Result<bool> {
+    let changed = conn
+        .execute(
+            "UPDATE nodes SET last_verified = ?1 WHERE id = ?2",
+            params![now, id],
+        )
+        .map_err(|e| KernelError::Store(e.to_string()))?;
+    Ok(changed > 0)
+}
+
+/// Count nodes whose `valid_until` is set and earlier than `now` (ISO 8601).
+///
+/// String comparison is correct for same-format (zero-padded, UTC) ISO 8601
+/// timestamps — the same convention the rest of the graph uses for
+/// `created`/`updated`/`accessed_at`.
+pub fn count_expired_nodes(conn: &Connection, now: &str) -> Result<u64> {
+    let n: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM nodes WHERE valid_until <> '' AND valid_until < ?1",
+            params![now],
+            |r| r.get(0),
+        )
+        .map_err(|e| KernelError::Store(e.to_string()))?;
+    Ok(n as u64)
+}
+
 // ── Statistics ────────────────────────────────────────
 
 /// Compute aggregate statistics about the knowledge graph.
@@ -238,7 +269,36 @@ mod tests {
             importance,
             access_count: 0,
             accessed_at: String::new(),
+            ..Default::default()
         }
+    }
+
+    #[test]
+    fn mark_verified_sets_timestamp() {
+        let conn = mem_db();
+        upsert_node(&conn, &test_node("n1", 0.7, vec![])).unwrap();
+        assert!(mark_verified(&conn, "n1", "2026-08-18T00:00:00Z").unwrap());
+        let node = crate::graph::store::read_node(&conn, "n1")
+            .unwrap()
+            .unwrap();
+        assert_eq!(node.last_verified, "2026-08-18T00:00:00Z");
+        assert!(!mark_verified(&conn, "missing", "2026-08-18T00:00:00Z").unwrap());
+    }
+
+    #[test]
+    fn count_expired_nodes_only_counts_set_and_past() {
+        let conn = mem_db();
+        let mut expired = test_node("expired", 0.7, vec![]);
+        expired.valid_until = "2026-01-01T00:00:00Z".to_string();
+        let mut future = test_node("future", 0.7, vec![]);
+        future.valid_until = "2030-01-01T00:00:00Z".to_string();
+        upsert_node(&conn, &expired).unwrap();
+        upsert_node(&conn, &future).unwrap();
+        upsert_node(&conn, &test_node("unset", 0.7, vec![])).unwrap();
+        assert_eq!(
+            count_expired_nodes(&conn, "2026-08-18T00:00:00Z").unwrap(),
+            1
+        );
     }
 
     #[test]

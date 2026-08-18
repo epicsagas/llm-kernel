@@ -26,8 +26,8 @@ pub fn upsert_node(conn: &Connection, node: &GraphNode) -> Result<()> {
     conn.execute(
         "INSERT INTO nodes
             (id, type, title, tags, projects, agents, created, updated, body,
-             importance, access_count, accessed_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+             importance, access_count, accessed_at, valid_until, last_verified)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
          ON CONFLICT(id) DO UPDATE SET
             type = excluded.type,
             title = excluded.title,
@@ -39,7 +39,9 @@ pub fn upsert_node(conn: &Connection, node: &GraphNode) -> Result<()> {
             importance = excluded.importance,
             created      = nodes.created,
             access_count = MAX(nodes.access_count, excluded.access_count),
-            accessed_at  = MAX(nodes.accessed_at, excluded.accessed_at)",
+            accessed_at  = MAX(nodes.accessed_at, excluded.accessed_at),
+            valid_until  = excluded.valid_until,
+            last_verified = excluded.last_verified",
         params![
             node.id,
             node.node_type,
@@ -53,6 +55,8 @@ pub fn upsert_node(conn: &Connection, node: &GraphNode) -> Result<()> {
             node.importance,
             node.access_count,
             node.accessed_at,
+            node.valid_until,
+            node.last_verified,
         ],
     )
     .map_err(|e| KernelError::Store(e.to_string()))?;
@@ -368,6 +372,7 @@ mod tests {
             importance: 0.7,
             access_count: 0,
             accessed_at: String::new(),
+            ..Default::default()
         }
     }
 
@@ -380,6 +385,18 @@ mod tests {
         assert_eq!(loaded.id, "n1");
         assert_eq!(loaded.title, "Node n1");
         assert_eq!(loaded.tags, vec!["test"]);
+    }
+
+    #[test]
+    fn upsert_roundtrips_temporal_validity() {
+        let conn = mem_db();
+        let mut n = test_node("tv");
+        n.valid_until = "2027-01-01T00:00:00Z".to_string();
+        n.last_verified = "2026-08-01T00:00:00Z".to_string();
+        upsert_node(&conn, &n).unwrap();
+        let got = read_node(&conn, "tv").unwrap().unwrap();
+        assert_eq!(got.valid_until, "2027-01-01T00:00:00Z");
+        assert_eq!(got.last_verified, "2026-08-01T00:00:00Z");
     }
 
     #[test]

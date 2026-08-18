@@ -5,7 +5,7 @@ use rusqlite::{Connection, params};
 use crate::error::{KernelError, Result};
 
 /// Current graph schema version. Increment when adding migrations.
-pub const GRAPH_SCHEMA_VERSION: u32 = 3;
+pub const GRAPH_SCHEMA_VERSION: u32 = 4;
 
 /// Read the recorded graph schema version from `_meta`, or `0` if unset.
 pub fn schema_version(conn: &Connection) -> Result<u32> {
@@ -50,6 +50,23 @@ pub fn migrate_graph(conn: &Connection, current: u32) -> Result<u32> {
         .map_err(|e| KernelError::Store(format!("migration v2->v3 failed: {e}")))?;
         v = 3;
     }
+    // v3 -> v4: temporal validity columns (empty = unset / never verified).
+    // Skipped when the columns already exist — `init_graph_schema` also adds
+    // them idempotently, so an in-place-upgraded DB may reach `migrate_graph`
+    // with the columns present but `_meta` still at v3.
+    if v < 4 {
+        if !has_column(&tx, "valid_until") {
+            tx.execute_batch("ALTER TABLE nodes ADD COLUMN valid_until TEXT NOT NULL DEFAULT '';")
+                .map_err(|e| KernelError::Store(format!("migration v3->v4 failed: {e}")))?;
+        }
+        if !has_column(&tx, "last_verified") {
+            tx.execute_batch(
+                "ALTER TABLE nodes ADD COLUMN last_verified TEXT NOT NULL DEFAULT '';",
+            )
+            .map_err(|e| KernelError::Store(format!("migration v3->v4 failed: {e}")))?;
+        }
+        v = 4;
+    }
     tx.execute(
         "UPDATE _meta SET value = ?1 WHERE key = 'graph_schema_version'",
         params![v.to_string()],
@@ -58,6 +75,17 @@ pub fn migrate_graph(conn: &Connection, current: u32) -> Result<u32> {
     tx.commit()
         .map_err(|e| KernelError::Store(format!("migration commit failed: {e}")))?;
     Ok(v)
+}
+
+/// True when `nodes` already has a column named `col`.
+fn has_column(conn: &Connection, col: &str) -> bool {
+    let Ok(mut stmt) = conn.prepare("PRAGMA table_info(nodes)") else {
+        return false;
+    };
+    let Ok(rows) = stmt.query_map([], |row| row.get::<_, String>(1)) else {
+        return false;
+    };
+    rows.flatten().any(|c| c == col)
 }
 
 /// Apply the full knowledge graph schema (tables, indexes, FTS5 triggers) to a connection.
@@ -80,7 +108,9 @@ pub fn init_graph_schema(conn: &Connection) -> Result<()> {
             body         TEXT NOT NULL DEFAULT '',
             importance   REAL NOT NULL DEFAULT 0.5,
             access_count INTEGER NOT NULL DEFAULT 0,
-            accessed_at  TEXT NOT NULL DEFAULT ''
+            accessed_at  TEXT NOT NULL DEFAULT '',
+            valid_until  TEXT NOT NULL DEFAULT '',
+            last_verified TEXT NOT NULL DEFAULT ''
         );
 
         -- FTS5 full-text search with trigram tokenizer
@@ -126,10 +156,19 @@ pub fn init_graph_schema(conn: &Connection) -> Result<()> {
 
         -- Schema version tracking
         CREATE TABLE IF NOT EXISTS _meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-        INSERT OR IGNORE INTO _meta (key, value) VALUES ('graph_schema_version', '3');
+        INSERT OR IGNORE INTO _meta (key, value) VALUES ('graph_schema_version', '4');
         ",
     )
     .map_err(|e| KernelError::Store(format!("Graph schema init failed: {}", e)))?;
+
+    // v4 columns: `CREATE TABLE IF NOT EXISTS` does not add columns to an
+    // existing table, so upgrade in-place. Tolerates "duplicate column name"
+    // when the columns already exist (idempotent re-init).
+    for col in ["valid_until", "last_verified"] {
+        let _ = conn.execute_batch(&format!(
+            "ALTER TABLE nodes ADD COLUMN {col} TEXT NOT NULL DEFAULT '';"
+        ));
+    }
 
     Ok(())
 }
@@ -251,6 +290,61 @@ mod tests {
         assert_eq!(new_version, GRAPH_SCHEMA_VERSION);
         assert!(has_index(&conn, "idx_edges_src_rel"));
         assert!(has_index(&conn, "idx_edges_tgt_rel"));
+    }
+
+    /// v3 -> v4: temporal validity columns are added by migration.
+    #[test]
+    fn migrate_advances_v3_to_v4_adds_validity_columns() {
+        let conn = mem_db();
+        // Simulate a v3 DB: drop the v4 columns and rewind the version.
+        conn.execute_batch(
+            "ALTER TABLE nodes DROP COLUMN valid_until;
+             ALTER TABLE nodes DROP COLUMN last_verified;",
+        )
+        .unwrap();
+        set_version(&conn, 3);
+
+        let new_version = migrate_graph(&conn, 3).unwrap();
+        assert_eq!(new_version, GRAPH_SCHEMA_VERSION);
+        let cols: Vec<String> = conn
+            .prepare("PRAGMA table_info(nodes)")
+            .unwrap()
+            .query_map([], |r| r.get::<_, String>(1))
+            .unwrap()
+            .flatten()
+            .collect();
+        assert!(cols.contains(&"valid_until".to_string()));
+        assert!(cols.contains(&"last_verified".to_string()));
+    }
+
+    /// A pre-existing v3 DB gets the v4 columns from `init_graph_schema` alone
+    /// (idempotent ALTER, no explicit `migrate_graph` call required).
+    #[test]
+    fn init_adds_v4_columns_to_existing_v3_table() {
+        let conn = Connection::open_in_memory().unwrap();
+        // Minimal v3-shaped table.
+        conn.execute_batch(
+            "CREATE TABLE nodes (
+                id TEXT PRIMARY KEY, type TEXT NOT NULL, title TEXT NOT NULL,
+                tags TEXT NOT NULL DEFAULT '', projects TEXT NOT NULL DEFAULT '',
+                agents TEXT NOT NULL DEFAULT '', created TEXT NOT NULL,
+                updated TEXT NOT NULL, body TEXT NOT NULL DEFAULT '',
+                importance REAL NOT NULL DEFAULT 0.5,
+                access_count INTEGER NOT NULL DEFAULT 0,
+                accessed_at TEXT NOT NULL DEFAULT ''
+            );",
+        )
+        .unwrap();
+        init_graph_schema(&conn).unwrap();
+        let cols: Vec<String> = conn
+            .prepare("PRAGMA table_info(nodes)")
+            .unwrap()
+            .query_map([], |r| r.get::<_, String>(1))
+            .unwrap()
+            .flatten()
+            .collect();
+        assert!(cols.contains(&"valid_until".to_string()));
+        assert!(cols.contains(&"last_verified".to_string()));
     }
 
     /// AC5: migrating an already-current DB is a no-op.

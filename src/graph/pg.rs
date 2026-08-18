@@ -59,7 +59,7 @@ use crate::error::{KernelError, Result};
 
 /// Standard node SELECT columns (positional order — keep in sync with [`row_to_node`]).
 const NODE_COLUMNS: &str = "id, node_type, title, tags, projects, agents, \
-     created, updated, body, importance, access_count, accessed_at";
+     created, updated, body, importance, access_count, accessed_at, valid_until, last_verified";
 
 /// Map a `postgres` error into a [`KernelError::Store`].
 fn pg_err(e: postgres::Error) -> KernelError {
@@ -81,6 +81,8 @@ fn row_to_node(row: &Row) -> GraphNode {
         importance: row.get(9),
         access_count: row.get(10),
         accessed_at: row.get(11),
+        valid_until: row.get(12),
+        last_verified: row.get(13),
     }
 }
 
@@ -157,7 +159,9 @@ fn init_schema(client: &mut Client, prefix: &str) -> Result<()> {
                 body         TEXT NOT NULL DEFAULT '',
                 importance   DOUBLE PRECISION NOT NULL DEFAULT 0.5,
                 access_count BIGINT NOT NULL DEFAULT 0,
-                accessed_at  TEXT NOT NULL DEFAULT ''
+                accessed_at  TEXT NOT NULL DEFAULT '',
+                valid_until  TEXT NOT NULL DEFAULT '',
+                last_verified TEXT NOT NULL DEFAULT ''
             );
             CREATE TABLE IF NOT EXISTS {edges} (
                 id       TEXT PRIMARY KEY,
@@ -178,7 +182,9 @@ fn init_schema(client: &mut Client, prefix: &str) -> Result<()> {
             CREATE INDEX IF NOT EXISTS {idx_nodes_accessed}   ON {nodes}(accessed_at DESC);
             CREATE INDEX IF NOT EXISTS {idx_nodes_created}    ON {nodes}(created);
             CREATE TABLE IF NOT EXISTS {meta} (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-            INSERT INTO {meta} (key, value) VALUES ('graph_schema_version', '3')
+            ALTER TABLE {nodes} ADD COLUMN IF NOT EXISTS valid_until TEXT NOT NULL DEFAULT '';
+            ALTER TABLE {nodes} ADD COLUMN IF NOT EXISTS last_verified TEXT NOT NULL DEFAULT '';
+            INSERT INTO {meta} (key, value) VALUES ('graph_schema_version', '4')
                 ON CONFLICT (key) DO NOTHING;",
         ))
         .map_err(pg_err)?;
@@ -231,6 +237,15 @@ fn migrate(client: &mut Client, current: u32, prefix: &str) -> Result<u32> {
         ))
         .map_err(pg_err)?;
         v = 3;
+    }
+    // v3 -> v4: temporal validity columns.
+    if v < 4 {
+        tx.batch_execute(&format!(
+            "ALTER TABLE {nodes} ADD COLUMN IF NOT EXISTS valid_until TEXT NOT NULL DEFAULT '';
+             ALTER TABLE {nodes} ADD COLUMN IF NOT EXISTS last_verified TEXT NOT NULL DEFAULT '';",
+        ))
+        .map_err(pg_err)?;
+        v = 4;
     }
     tx.execute(
         &format!("UPDATE {meta} SET value = $1 WHERE key = 'graph_schema_version'"),
@@ -452,7 +467,7 @@ impl GraphBackend for PgGraph {
         let tags = join_csv(&node.tags);
         let projects = join_csv(&node.projects);
         let agents = join_csv(&node.agents);
-        let params: [&(dyn ToSql + Sync); 12] = [
+        let params: [&(dyn ToSql + Sync); 14] = [
             &node.id,
             &node.node_type,
             &node.title,
@@ -465,18 +480,21 @@ impl GraphBackend for PgGraph {
             &node.importance,
             &node.access_count,
             &node.accessed_at,
+            &node.valid_until,
+            &node.last_verified,
         ];
         let nodes = self.nodes_tbl();
         let mut c = self.lock();
         c.execute(
             &format!(
-                "INSERT INTO {nodes} (id, node_type, title, tags, projects, agents, created, updated, body, importance, access_count, accessed_at)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+                "INSERT INTO {nodes} (id, node_type, title, tags, projects, agents, created, updated, body, importance, access_count, accessed_at, valid_until, last_verified)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
              ON CONFLICT (id) DO UPDATE SET
                node_type=EXCLUDED.node_type, title=EXCLUDED.title, tags=EXCLUDED.tags,
                projects=EXCLUDED.projects, agents=EXCLUDED.agents, created=EXCLUDED.created,
                updated=EXCLUDED.updated, body=EXCLUDED.body, importance=EXCLUDED.importance,
-               access_count=EXCLUDED.access_count, accessed_at=EXCLUDED.accessed_at"
+               access_count=EXCLUDED.access_count, accessed_at=EXCLUDED.accessed_at,
+               valid_until=EXCLUDED.valid_until, last_verified=EXCLUDED.last_verified"
             ),
             &params,
         )
@@ -974,6 +992,7 @@ mod tests {
             importance: 0.5,
             access_count: 0,
             accessed_at: String::new(),
+            ..Default::default()
         }
     }
 

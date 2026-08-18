@@ -244,6 +244,7 @@ mod tests {
                 importance: 0.5,
                 access_count: 0,
                 accessed_at: String::new(),
+                ..Default::default()
             };
             upsert_node(&conn, &n).unwrap();
         }

@@ -49,6 +49,14 @@ pub struct GraphNode {
     /// Last time this node was accessed (ISO 8601).
     #[serde(default)]
     pub accessed_at: String,
+    /// Timestamp after which this node is considered expired (ISO 8601).
+    /// Empty string means no expiry (the node never goes stale by date).
+    #[serde(default)]
+    pub valid_until: String,
+    /// Last time a verification pass confirmed this node's content (ISO 8601).
+    /// Empty string means never verified.
+    #[serde(default)]
+    pub last_verified: String,
 }
 
 /// A directed, weighted edge between two nodes.
@@ -191,10 +199,10 @@ pub fn validate_uuid(id: &str) -> bool {
 // ── Row mapping ───────────────────────────────────────
 
 /// Standard SELECT columns for node queries.
-pub(crate) const NODE_COLUMNS: &str = "id, type, title, tags, projects, agents, created, updated, body, importance, access_count, accessed_at";
+pub(crate) const NODE_COLUMNS: &str = "id, type, title, tags, projects, agents, created, updated, body, importance, access_count, accessed_at, valid_until, last_verified";
 
 /// Same columns but table-prefixed for JOIN queries.
-pub(crate) const NODE_COLUMNS_PREFIXED: &str = "id, n.type, n.title, n.tags, n.projects, n.agents, n.created, n.updated, n.body, n.importance, n.access_count, n.accessed_at";
+pub(crate) const NODE_COLUMNS_PREFIXED: &str = "id, n.type, n.title, n.tags, n.projects, n.agents, n.created, n.updated, n.body, n.importance, n.access_count, n.accessed_at, n.valid_until, n.last_verified";
 
 pub(crate) fn row_to_node(row: &rusqlite::Row<'_>) -> rusqlite::Result<GraphNode> {
     let tags: String = row.get(3)?;
@@ -213,6 +221,8 @@ pub(crate) fn row_to_node(row: &rusqlite::Row<'_>) -> rusqlite::Result<GraphNode
         importance: row.get(9).unwrap_or(0.5),
         access_count: row.get::<_, i64>(10).unwrap_or(0),
         accessed_at: row.get(11).unwrap_or_default(),
+        valid_until: row.get(12).unwrap_or_default(),
+        last_verified: row.get(13).unwrap_or_default(),
     })
 }
 
