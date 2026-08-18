@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.26.1] - 2026-08-18
+
+### Added
+
+- `SqliteGraph::with_tx(f)` — run multi-step sequences (e.g. edge
+  delete-then-insert replacement) in one transaction; commits on `Ok`,
+  rolls back on `Err`. Exposes the `unchecked_transaction` pattern already
+  used internally by `store.rs`.
+
 ## [0.26.0] - 2026-08-18
 
 ### Added

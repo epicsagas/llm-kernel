@@ -221,6 +221,23 @@ impl SqliteGraph {
         let c = self.lock();
         crate::graph::lifecycle::count_expired_nodes(&c, now)
     }
+
+    /// Run `f` against the underlying connection inside one transaction.
+    ///
+    /// Commits when `f` returns `Ok`, rolls back on `Err` — so multi-step
+    /// sequences (e.g. delete-then-insert edge replacement) cannot leave a
+    /// half-applied state. `f` receives `&Connection`: the transaction derefs
+    /// to it, so the free functions in [`crate::graph::store`] work as-is.
+    ///
+    /// Do **not** call other `SqliteGraph` methods on the same instance inside
+    /// `f` — they re-acquire the connection lock and will deadlock. Use only
+    /// the free functions on the passed connection.
+    pub fn with_tx(&self, f: impl FnOnce(&Connection) -> Result<()>) -> Result<()> {
+        let conn = self.lock();
+        let tx = conn.unchecked_transaction().map_err(store_err)?;
+        f(&tx)?;
+        tx.commit().map_err(store_err)
+    }
 }
 
 /// Open a file-backed connection, apply the schema, then run pending migrations.
@@ -409,6 +426,60 @@ mod tests {
             backend.count_expired_nodes("2026-08-18T00:00:00Z").unwrap(),
             0
         );
+    }
+
+    /// `with_tx` commits on Ok — both statements are visible afterwards.
+    #[test]
+    fn with_tx_commits_on_ok() {
+        let backend = SqliteGraph::open_in_memory().unwrap();
+        backend.upsert_node(&sample_node("a")).unwrap();
+        backend.upsert_node(&sample_node("b")).unwrap();
+        backend
+            .with_tx(|conn| {
+                crate::graph::store::remove_edges_for_node(conn, "a")?;
+                crate::graph::store::append_edge(
+                    conn,
+                    &GraphEdge {
+                        id: "e1".into(),
+                        source: "a".into(),
+                        target: "b".into(),
+                        relation: "related".into(),
+                        weight: 1.0,
+                        ts: "2026-01-01T00:00:00Z".into(),
+                    },
+                )
+            })
+            .unwrap();
+        let edges = backend.edges_for_node("a").unwrap();
+        assert_eq!(edges.len(), 1);
+    }
+
+    /// `with_tx` rolls back on Err — the delete is undone, nothing is lost.
+    #[test]
+    fn with_tx_rolls_back_on_err() {
+        let backend = SqliteGraph::open_in_memory().unwrap();
+        backend.upsert_node(&sample_node("a")).unwrap();
+        backend.upsert_node(&sample_node("b")).unwrap();
+        backend
+            .append_edge(&GraphEdge {
+                id: "e0".into(),
+                source: "a".into(),
+                target: "b".into(),
+                relation: "related".into(),
+                weight: 1.0,
+                ts: "2026-01-01T00:00:00Z".into(),
+            })
+            .unwrap();
+
+        let result = backend.with_tx(|conn| {
+            crate::graph::store::remove_edges_for_node(conn, "a")?;
+            // Simulate a failure after the delete.
+            Err(crate::error::KernelError::Store("boom".into()))
+        });
+        assert!(result.is_err());
+        // The original edge survived — rollback undid the delete.
+        let edges = backend.edges_for_node("a").unwrap();
+        assert_eq!(edges.len(), 1, "edge lost mid-transaction: {edges:?}");
     }
 
     /// AC5: a fresh backend reports the current schema version.
