@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.26.2] - 2026-08-19
+
+### Fixed
+
+- Docs: `SqliteGraph::with_tx` nesting footgun — `append_edges` and
+  `delete_node` open their own transaction and fail inside a `with_tx`
+  closure ("cannot start a transaction within a transaction"). Their
+  single-item counterparts are safe; documented on both sides.
+
 ## [0.26.1] - 2026-08-18
 
 ### Added
