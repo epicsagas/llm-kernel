@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.28.1] - 2026-08-21
+
+### Fixed
+- **tls**: the `rustls-ring` bootstrap added in 0.28.0 tripped `dead_code`
+  under `-D warnings` on builds without a reqwest-backed feature (default
+  `provider`-only, `embedding-fastembed-directml`,
+  `embedding-fastembed-dynamic-linking`). `ensure_tls_provider` now compiles
+  only when `client-async` / `discovery-async` / `elastic` is active. 0.28.0's
+  release CI failed on this and was **never published to crates.io** — 0.28.1
+  is the first published 0.28.x. CI lint now also clippies
+  `--no-default-features`, the gap that let this through.
+
 ## [0.28.0] - 2026-08-21
 
 ### ⚠️ Changed (breaking — minor on the 0.x track)
