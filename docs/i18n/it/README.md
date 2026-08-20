@@ -58,7 +58,7 @@ Ogni modulo è protetto da una flag di feature, così paghi solo per ciò che ut
 | `graph-pg` | GraphBackend PostgreSQL (PgGraph) + CLI di migrazione SQLite<->PostgreSQL | |
 | `graph-pg-tls` | TLS-enabled `PgGraph` connections (`connect_native_tls` / `connect_tls` / `connect_config_tls`) | |
 | `mcp` | Server MCP — JSON-RPC 2.0, trasporto stdio, autenticazione Bearer | |
-| `mcp-http` | MCP remote transport — HTTP/SSE (axum + tokio) | |
+| `mcp-http` | MCP remote transport — Streamable HTTP (axum + tokio) | |
 | `cache` | LLM response cache — `CacheClient` over `KvStore` | |
 | `tokens` | Stima di token, budget e suddivisione di documenti per confini di frase | |
 | `install` | Wizard di installazione strumenti AI | |

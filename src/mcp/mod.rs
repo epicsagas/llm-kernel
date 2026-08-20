@@ -41,11 +41,13 @@ pub mod transport;
 pub use auth::BearerAuth;
 pub use schema::{PromptArgument, PromptDescription, ResourceDescription, ToolDescription};
 pub use server::{
-    AsyncToolHandler, Handler, LATEST_PROTOCOL_VERSION, McpServer, SUPPORTED_PROTOCOL_VERSIONS,
+    AsyncToolHandler, Handler, LATEST_PROTOCOL_VERSION, LEGACY_LATEST_PROTOCOL_VERSION,
+    LEGACY_PROTOCOL_VERSIONS, META_PROTOCOL_VERSION, META_SERVER_INFO, META_SUBSCRIPTION_ID,
+    McpServer, SUPPORTED_PROTOCOL_VERSIONS, request_protocol_version,
 };
 pub use transport::JsonRpcDispatcher;
 
-/// HTTP/SSE remote transport for MCP (axum + tokio).
+/// Streamable HTTP remote transport for MCP (axum + tokio).
 #[cfg(feature = "mcp-http")]
 pub mod http;
 #[cfg(feature = "mcp-http")]

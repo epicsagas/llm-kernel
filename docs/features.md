@@ -40,7 +40,7 @@ platform constraints per feature — v1.0.0 ROADMAP #6.
 | `federation` | Cross-engine `FederatedSearch` (qdrant + elastic + TurboVec) |
 | `discovery` / `discovery-async` | models.dev / Ollama / OpenAI-compat model discovery |
 | `mcp` | JSON-RPC 2.0 MCP server, stdio transport |
-| `mcp-http` | MCP over HTTP/SSE (axum) |
+| `mcp-http` | MCP over Streamable HTTP (axum) |
 
 ### Knowledge graph
 | Feature | What it enables |

@@ -24,7 +24,7 @@ llm-kernel provides the foundational layer for building LLM-powered tools, agent
 - **Credential vault** — dotenv-style API key management with atomic writes
 - **Config loader** — TOML config with auto-create from template
 - **Knowledge graph** — `GraphBackend` trait (SQLite impl), FTS5 search, smart recall, BFS traversal, CJK search, schema migrations, async wrappers, pure-Rust graph algorithms (PageRank, community detection, shortest path, similarity)
-- **MCP server** — JSON-RPC 2.0 server framework (protocol 2025-06-18) with stdio and HTTP/SSE transports, tools, resources, prompts, `ping`, async handlers, Bearer auth
+- **MCP server** — JSON-RPC 2.0 server framework (dual-era: stateless 2026-07-28 incl. `server/discover`, plus legacy handshake revisions down to 2024-11-05) with stdio and Streamable HTTP transports, tools, resources, prompts, async handlers, Bearer auth
 - **Key-value store** — `KvStore` trait powering LLM response caching and other byte-oriented stores
 - **Embedding** — provider trait + cosine similarity, local ONNX (44 models), Qwen3 candle, Nomic V2 MoE candle, MLX native (Apple Silicon), OpenAI remote, compressed vector indexing ([full model list →](EMBEDDING_MODELS.md))
 - **Search** — Reciprocal Rank Fusion for hybrid search result merging
@@ -52,8 +52,8 @@ Each module is gated behind a feature flag so you only pay for what you use.
 | `graph-cjk` | CJK-aware graph search via Rust-side segmentation (no schema change) | |
 | `graph-pg` | PostgreSQL `GraphBackend` (`PgGraph`) + SQLite↔PostgreSQL migration CLI | |
 | `graph-pg-tls` | TLS-enabled `PgGraph` connections (`connect_native_tls` / `connect_tls` / `connect_config_tls`) | |
-| `mcp` | MCP server — JSON-RPC 2.0 (protocol 2025-06-18), stdio transport, tools/resources/prompts, `ping`, async handlers, Bearer auth | |
-| `mcp-http` | MCP remote transport — HTTP/SSE (axum + tokio) | |
+| `mcp` | MCP server — JSON-RPC 2.0 dual-era (2026-07-28 stateless + legacy 2025-06-18 → 2024-11-05), stdio transport, tools/resources/prompts, async handlers, Bearer auth | |
+| `mcp-http` | MCP remote transport — Streamable HTTP (axum + tokio) | |
 | `cache` | LLM response cache — `CacheClient` over `KvStore` | |
 | `tokens` | Token estimation, budgeting, and sentence-aware document chunking | |
 | `install` | AI tool installation wizard | |
@@ -588,7 +588,7 @@ llm-kernel is a **lightweight foundation layer** — compose it with rig or lang
 - **`EmbeddingProvider` trait** — unified interface for `FastembedProvider` (ONNX), `Qwen3Provider` (candle), `NomicMoeProvider` (candle), `OpenAIEmbeddingClient` (remote)
 - **`VectorIndex` trait** — unified interface for compressed vector indexes; `TurbovecIndex` (TurboQuant) implements 2-bit/4-bit quantized ANN search with SIMD kernels
 - **`ProviderIndex`** — zero-copy access to embedded catalog, queryable by provider or model
-- **`McpServer`** — JSON-RPC 2.0 server (protocol 2025-06-18) with stdio transport, Bearer auth, tools/resources/prompts registration, `ping`
+- **`McpServer`** — JSON-RPC 2.0 dual-era server (2026-07-28 stateless + legacy revisions) with stdio transport, Bearer auth, tools/resources/prompts registration
 - **`SecretVault`** — `HashMap<String, String>` with dotenv load/save and symlink guards
 - **`graph`** — SQLite knowledge graph with FTS5 search, composite scoring recall, BFS traversal, importance decay, and pure-Rust CSR graph algorithms (PageRank, connected components, label propagation, Dijkstra, Jaccard/Adamic-Adar similarity)
 - **`TelemetryEvent`** — enum-gated variants for structured observability (no PII)

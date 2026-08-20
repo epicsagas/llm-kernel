@@ -58,7 +58,7 @@ llm-kernel 为 Rust 中构建 LLM 驱动的工具、代理和服务器提供基�
 | `graph-pg` | PostgreSQL GraphBackend（PgGraph）+ SQLite<->PostgreSQL 迁移 CLI | |
 | `graph-pg-tls` | TLS-enabled `PgGraph` connections (`connect_native_tls` / `connect_tls` / `connect_config_tls`) | |
 | `mcp` | MCP 服务器 — JSON-RPC 2.0、stdio 传输、Bearer 认证 | |
-| `mcp-http` | MCP remote transport — HTTP/SSE (axum + tokio) | |
+| `mcp-http` | MCP remote transport — Streamable HTTP (axum + tokio) | |
 | `cache` | LLM response cache — `CacheClient` over `KvStore` | |
 | `tokens` | token 估算、预算管理与按句子边界的文档分块 | |
 | `install` | AI 工具安装向导 | |
