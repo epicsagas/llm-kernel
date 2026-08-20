@@ -42,8 +42,8 @@ pub use auth::BearerAuth;
 pub use schema::{PromptArgument, PromptDescription, ResourceDescription, ToolDescription};
 pub use server::{
     AsyncToolHandler, Handler, LATEST_PROTOCOL_VERSION, LEGACY_LATEST_PROTOCOL_VERSION,
-    META_PROTOCOL_VERSION, META_SERVER_INFO, META_SUBSCRIPTION_ID, McpServer,
-    SUPPORTED_PROTOCOL_VERSIONS, request_protocol_version,
+    LEGACY_PROTOCOL_VERSIONS, META_PROTOCOL_VERSION, META_SERVER_INFO, META_SUBSCRIPTION_ID,
+    McpServer, SUPPORTED_PROTOCOL_VERSIONS, request_protocol_version,
 };
 pub use transport::JsonRpcDispatcher;
 

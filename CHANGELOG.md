@@ -7,8 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
+### ⚠️ Changed (breaking — minor on the 0.x track)
+- **mcp**: `PromptArgument` gains an optional `type` field (`arg_type` in Rust,
+  serialized as `type`, omitted when `None`) for typed prompt arguments. Struct
+  literals must add `arg_type: None`; serialized form is unchanged for untyped
+  arguments. Also on the transport surface: notification-only HTTP POSTs now
+  answer `202 Accepted` (was `204 No Content`), and the nonstandard
+  `POST /mcp/sse` endpoint is gone — the Streamable HTTP transport serves
+  everything on `POST /mcp`.
 
+### Added
+- **mcp**: dual-era spec conformance. The server now implements the `2026-07-28`
+  revision (stateless, per-request `_meta` protocol version) alongside the
+  legacy `initialize`-handshake revisions (`2025-06-18` / `2025-03-26` /
+  `2024-11-05`):
+  - `server/discover` — supported versions, capabilities, `_meta` serverInfo,
+    cacheable per `CacheableResult` (`ttlMs` + `cacheScope`).
+  - Modern results are stamped `resultType: "complete"`; cacheable list/read
+    results also carry `ttlMs`/`cacheScope`.
+  - Version gate: an unsupported `_meta` version answers `-32022` with
+    `data.supported` (HTTP: 400), so the client can retry with a mutually
+    supported version.
+  - Streamable HTTP request-header validation for modern requests
+    (`MCP-Protocol-Version`, `Mcp-Method`, `Mcp-Name` with `=?base64?…?=`
+    sentinel decoding); violations answer 400 + `-32020` HeaderMismatch, and
+    unknown modern methods answer 404 + `-32601`.
+  - `subscriptions/listen` — acknowledgment notification + graceful-closure
+    result (two lines on stdio, an SSE stream with `X-Accel-Buffering: no` on
+    HTTP). This server advertises `listChanged: false`, so subscriptions close
+    immediately.
+  - `ping` is rejected for modern requests (removed in `2026-07-28`) and kept
+    for legacy ones; a modern request inside a JSON-RPC batch rejects the batch
+    (`-32600`) on both transports.
 - **`embedding-metal` feature** — Metal GPU acceleration for the candle-based
   embedding providers (`Qwen3Provider`, `NomicMoeProvider`) on Apple Silicon,
   via candle-core's `metal` feature. New `new_metal()` constructors route
@@ -19,6 +49,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   native macOS GPU path. `ort` has no Metal EP, so CoreML is the only ONNX
   route; MLX was evaluated and rejected (the `mlx-rs` binding is an Array
   framework with no embedding forward path and requires a full Xcode build).
+
+### Fixed
+- **mcp**: `initialize` negotiation echoes legacy revisions only — a handshake
+  client is never handed a stateless revision (new
+  `LEGACY_PROTOCOL_VERSIONS` / `LEGACY_LATEST_PROTOCOL_VERSION` constants).
+- **mcp**: auth/origin failures on HTTP answer at the HTTP level — 401 with
+  `WWW-Authenticate: Bearer realm="mcp"` (RFC 6750) and 403 — before any body
+  is produced.
+- **mcp**: the stdio line cap is enforced *during* reading (bounded
+  `fill_buf`/`consume` reader) instead of after the line was fully buffered, so
+  a peer that never sends `\n` can no longer grow memory toward the cap.
+- **mcp**: stdio enforces the initialize-first lifecycle (`-32002`), bypassed
+  by stateless modern requests.
+- **mcp**: unknown resource → `-32602` (was `-32603`); `Authorization` scheme
+  matched case-insensitively (RFC 7235).
 
 ## [0.24.0] - 2026-08-07
 

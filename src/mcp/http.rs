@@ -62,6 +62,8 @@ pub async fn serve(server: Arc<McpServer>, addr: SocketAddr) -> std::io::Result<
     Ok(())
 }
 
+/// JSON-RPC code for "invalid request" (a modern request inside a batch).
+const ERR_INVALID_REQUEST: i32 = -32600;
 /// JSON-RPC code for "method not found".
 const ERR_METHOD_NOT_FOUND: i32 = -32601;
 /// JSON-RPC code for invalid params (unknown tool / prompt / resource).
@@ -475,6 +477,24 @@ async fn rpc_handler(
     // validation, the 404 unknown-method rule, and the SSE subscription
     // stream. `initialize` always selects legacy semantics; notifications
     // (no id) have no header requirements in this revision.
+    //
+    // A modern request inside a JSON-RPC batch rejects the whole batch, as on
+    // stdio — batches were removed from the spec after `2024-11-05`, and a
+    // modern-era client must not be served one.
+    if let Some(batch) = req.as_array()
+        && batch.iter().any(|r| request_protocol_version(r).is_some())
+    {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(rpc_error(
+                id,
+                ERR_INVALID_REQUEST,
+                "Invalid Request: JSON-RPC batches are not supported by protocol revisions after 2024-11-05",
+                None,
+            )),
+        )
+            .into_response();
+    }
     let method = req.get("method").and_then(|v| v.as_str()).unwrap_or("");
     let modern = if method == "initialize" {
         None
@@ -879,6 +899,25 @@ mod tests {
         )
         .await;
         assert!(response.contains("404 Not Found"), "response: {response}");
+    }
+
+    /// A modern request inside a JSON-RPC batch rejects the batch (batches
+    /// were removed from the spec after 2024-11-05) — same rule as stdio.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn modern_request_inside_batch_rejects_the_batch() {
+        let batch = format!("[{}]", modern_body("tools/list", 9));
+        let response = post_raw(&[], &batch).await;
+        assert!(response.contains("400 Bad Request"), "response: {response}");
+        assert!(response.contains("-32600"), "response: {response}");
+    }
+
+    /// A legacy batch (no `_meta` version anywhere) is still served.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn legacy_batch_is_served() {
+        let batch = r#"[{"jsonrpc":"2.0","id":1,"method":"tools/list"},{"jsonrpc":"2.0","id":2,"method":"ping"}]"#;
+        let response = post_raw(&[], batch).await;
+        assert!(response.contains("200 OK"), "response: {response}");
+        assert!(response.contains("\"tools\""), "response: {response}");
     }
 
     /// `tools/call` carries an `Mcp-Name` header that must match the body.

@@ -12,12 +12,17 @@ use crate::mcp::schema::{PromptDescription, ResourceDescription, ToolDescription
 /// MCP protocol versions this server understands, newest first.
 ///
 /// `2026-07-28` is a *modern* (stateless, per-request `_meta`) revision served
-/// alongside the *legacy* (initialize-handshake) revisions `2025-11-25` and
-/// earlier — this is a dual-era server. A request carrying
+/// alongside the *legacy* (initialize-handshake) revisions in
+/// [`LEGACY_PROTOCOL_VERSIONS`] — this is a dual-era server. A request carrying
 /// `_meta["io.modelcontextprotocol/protocolVersion"]` is served statelessly;
 /// an `initialize` request selects legacy semantics.
 pub const SUPPORTED_PROTOCOL_VERSIONS: &[&str] =
     &["2026-07-28", "2025-06-18", "2025-03-26", "2024-11-05"];
+
+/// The legacy (initialize-handshake) revisions this server implements, newest
+/// first — [`SUPPORTED_PROTOCOL_VERSIONS`] minus its modern head. The `initialize`
+/// handshake negotiates among these only.
+pub const LEGACY_PROTOCOL_VERSIONS: &[&str] = &["2025-06-18", "2025-03-26", "2024-11-05"];
 
 /// The newest MCP protocol revision this server implements (modern, stateless).
 pub const LATEST_PROTOCOL_VERSION: &str = "2026-07-28";
@@ -25,7 +30,7 @@ pub const LATEST_PROTOCOL_VERSION: &str = "2026-07-28";
 /// The newest *legacy* (initialize-handshake) revision this server implements.
 ///
 /// Used as the fallback in `initialize` responses: a legacy client that asked
-/// for an unknown version must not be handed `2026-07-28`, which predates its
+/// for an unknown version must not be handed `2026-07-28`, which postdates its
 /// handshake-based world.
 pub const LEGACY_LATEST_PROTOCOL_VERSION: &str = "2025-06-18";
 
@@ -414,11 +419,8 @@ impl McpServer {
     /// handed a modern revision — statelessness would contradict the
     /// handshake it just performed.
     pub fn negotiate_protocol_version(&self, requested: Option<&str>) -> &'static str {
-        // The modern head of SUPPORTED_PROTOCOL_VERSIONS is excluded: the
-        // handshake path negotiates legacy revisions only.
-        let legacy_versions = &SUPPORTED_PROTOCOL_VERSIONS[1..];
         match requested {
-            Some(v) => legacy_versions
+            Some(v) => LEGACY_PROTOCOL_VERSIONS
                 .iter()
                 .find(|&&s| s == v)
                 .copied()
