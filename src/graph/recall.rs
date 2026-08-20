@@ -337,6 +337,7 @@ mod tests {
             importance,
             access_count: 0,
             accessed_at: String::new(),
+            ..Default::default()
         }
     }
 

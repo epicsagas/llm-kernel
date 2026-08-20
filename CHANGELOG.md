@@ -39,16 +39,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `ping` is rejected for modern requests (removed in `2026-07-28`) and kept
     for legacy ones; a modern request inside a JSON-RPC batch rejects the batch
     (`-32600`) on both transports.
-- **`embedding-metal` feature** — Metal GPU acceleration for the candle-based
-  embedding providers (`Qwen3Provider`, `NomicMoeProvider`) on Apple Silicon,
-  via candle-core's `metal` feature. New `new_metal()` constructors route
-  inference to the Metal device (F16). This is the same path Hugging Face's
-  Text Embeddings Inference uses (`-F metal`). Combined with the existing
-  `embedding-fastembed-coreml` execution provider (CoreML EP for the ONNX
-  models bge-small / bge-m3), both embedding backend families now have a
-  native macOS GPU path. `ort` has no Metal EP, so CoreML is the only ONNX
-  route; MLX was evaluated and rejected (the `mlx-rs` binding is an Array
-  framework with no embedding forward path and requires a full Xcode build).
 
 ### Fixed
 - **mcp**: `initialize` negotiation echoes legacy revisions only — a handshake
@@ -64,6 +54,98 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   by stateless modern requests.
 - **mcp**: unknown resource → `-32602` (was `-32603`); `Authorization` scheme
   matched case-insensitively (RFC 7235).
+
+## [0.26.2] - 2026-08-19
+
+### Fixed
+
+- Docs: `SqliteGraph::with_tx` nesting footgun — `append_edges` and
+  `delete_node` open their own transaction and fail inside a `with_tx`
+  closure ("cannot start a transaction within a transaction"). Their
+  single-item counterparts are safe; documented on both sides.
+
+## [0.26.1] - 2026-08-18
+
+### Added
+
+- `SqliteGraph::with_tx(f)` — run multi-step sequences (e.g. edge
+  delete-then-insert replacement) in one transaction; commits on `Ok`,
+  rolls back on `Err`. Exposes the `unchecked_transaction` pattern already
+  used internally by `store.rs`.
+
+## [0.26.0] - 2026-08-18
+
+### Added
+
+- **Graph temporal validity** (closes #92): `GraphNode.valid_until` /
+  `GraphNode.last_verified` (ISO 8601, empty string = unset / never verified).
+  - Schema v4 on SQLite and both Postgres backends — existing v3 databases
+    upgrade in place, no data loss (validated against a live 1k-node DB).
+  - `mark_verified()` / `count_expired_nodes()` lifecycle functions, exported
+    via prelude; `SqliteGraph::mark_verified` / `SqliteGraph::count_expired_nodes`
+    wrappers so callers don't need their own connection.
+
+### Breaking (semver minor)
+
+- `GraphNode` gained two fields — exhaustive struct literals in downstream
+  code must add `..Default::default()` (or the new fields). Serde is
+  unaffected (`#[serde(default)]`).
+
+## [0.25.0] - 2026-08-12
+
+### Changed
+
+- **⚠️ `query_prefix()` now returns the BGE instruction prefix for BGE-en-v1.5
+  (small/base/large), mxbai-embed-large and Snowflake Arctic — previously
+  `None`.** These are asymmetric models that expect the prefix on the query
+  side, so omitting it silently degraded retrieval quality.
+
+  **Migration — existing indexes need re-embedding.** `embed()` now prepends
+  the prefix for these models, so queries land in a different region of the
+  embedding space than vectors stored with ≤ 0.24.0. Mixing the two degrades
+  recall *silently* — no error, no dimension mismatch, just worse results.
+  Either re-embed the corpus with 0.25.0, or pin to 0.24.0 until you can.
+  Unaffected: E5 and Nomic (already prefixed), and every symmetric model
+  (MiniLM, paraphrase-ML, mpnet), which still return `None`.
+
+  `cargo-semver-checks` does not flag this — the signature is unchanged and
+  only the returned value differs.
+
+### Added
+
+- **`embedding-mlx` feature** — Rust-native MLX embedding provider
+  (`MlxEmbeddingProvider`) running a BERT encoder forward pass on the Apple
+  Silicon GPU via unified memory, complementing `embedding-metal` (which wins
+  on single-embed latency) on the batch-throughput path. macOS/aarch64 only:
+  `mlx-rs` and friends sit behind a `target.'cfg(...)'` dependency section, so
+  `full` stays resolvable on Linux CI.
+
+  Covers 13 vanilla-BERT models (21 catalog variants): BGE-en-v1.5
+  small/base/large, bge-small-zh-v1.5, all-MiniLM-L6/L12,
+  paraphrase-multilingual-MiniLM, multilingual-e5-small, Snowflake Arctic
+  xs/s/m/l and mxbai-embed-large. Membership is not guesswork — each candidate's
+  original weight repo was probed (`config.json` + safetensors header) and
+  admitted only if it is `architectures: ["BertModel"]` with absolute position
+  embeddings, gelu, and the standard `encoder.layer.N.*` tensor layout. See
+  `EmbeddingModel::mlx_supported` for the exclusion list (NomicBert, XLM-R,
+  MPNet, JinaBert, GTE `NewModel`, ModernBERT, Gemma, CLIP, plus
+  `BGELargeZHV15`, which ships no safetensors).
+
+  New catalog accessors: `mlx_supported()`, `uses_cls_pooling()`, `mlx_repo()`.
+  Weights load from F32, F16 or BF16; any other dtype is an explicit error
+  rather than a silent misread.
+
+- **`embedding-metal` feature** — Metal GPU acceleration for the candle-based
+  embedding providers (`Qwen3Provider`, `NomicMoeProvider`) on Apple Silicon,
+  via candle-core's `metal` feature. New `new_metal()` constructors route
+  inference to the Metal device (F16). This is the same path Hugging Face's
+  Text Embeddings Inference uses (`-F metal`). Combined with the existing
+  `embedding-fastembed-coreml` execution provider (CoreML EP for the ONNX
+  models bge-small / bge-m3), both embedding backend families now have a
+  native macOS GPU path. `ort` has no Metal EP, so CoreML is the only ONNX
+  route. (MLX was initially rejected here because `mlx-rs` ships no embedding
+  forward path; `embedding-mlx` above supersedes that by assembling the BERT
+  encoder from `mlx-rs` `nn` primitives directly.)
 
 ## [0.24.0] - 2026-08-07
 

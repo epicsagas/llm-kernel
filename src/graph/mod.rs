@@ -50,6 +50,7 @@
 //!     importance: 0.8,
 //!     access_count: 0,
 //!     accessed_at: String::new(),
+//!     ..Default::default()
 //! }).unwrap();
 //!
 //! let results = smart_recall(&conn, Some("my-project"), Some("ownership"), 5).unwrap();
@@ -99,7 +100,10 @@ pub use algo::{
 };
 pub use backend::{GraphBackend, SqliteGraph};
 pub use dedup::{find_duplicate, upsert_node_dedup};
-pub use lifecycle::{compute_stats, decay_importance, tag_stale_nodes, touch_node, touch_nodes};
+pub use lifecycle::{
+    compute_stats, count_expired_nodes, decay_importance, mark_verified, tag_stale_nodes,
+    touch_node, touch_nodes,
+};
 pub use recall::{RecallOptions, smart_recall, smart_recall_with};
 pub use schema::{GRAPH_SCHEMA_VERSION, init_graph_schema, migrate_graph, schema_version};
 pub use search::{
