@@ -46,7 +46,7 @@ Cada módulo está detrás de un flag de característica para que solo pagues po
 |----------------|-------------|-------------|
 | `provider` | Catálogo de proveedores, descriptores de modelos, precios | ✅ |
 | `rustls-aws-lc-rs` | Proveedor TLS para todas las funciones basadas en reqwest (aws-lc-rs; la compilación cruzada requiere una cadena C) | ✅ |
-| `rustls-ring` | Proveedor TLS `ring` en Rust puro (#93) — compilación cruzada sin cadena C; llm-kernel instala el proveedor por defecto del proceso. Excluyente con `rustls-aws-lc-rs`; requiere `default-features = false` | |
+| `rustls-ring` | Proveedor TLS `ring` (#93) — compilación cruzada sin cmake/nasm (basta un compilador C); llm-kernel instala el proveedor por defecto del proceso. Excluyente con `rustls-aws-lc-rs`; requiere `default-features = false` | |
 | `client-async` | Cliente LLM asíncrono (reqwest) con streaming | |
 | `discovery` | Descubrimiento dinámico de modelos (models.dev, Ollama, OpenAI-compat) | |
 | `discovery-async` | Descubrimiento asíncrono de modelos — trait `DiscoverySource` sobre reqwest | |

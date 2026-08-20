@@ -38,10 +38,11 @@ provider = ["dep:serde_json"]
 # on native hosts, painful for cross-compilation.
 rustls-aws-lc-rs = ["reqwest/rustls"]
 
-# Pure-Rust ring provider (#93): reqwest `rustls-no-provider` plus a
+# ring provider (#93): reqwest `rustls-no-provider` plus a
 # process-default ring provider that llm-kernel installs itself before
 # building any HTTP client (reqwest 0.13 panics at client-build time when no
-# provider is installed). Cross-compiles without a C toolchain — use for
+# provider is installed). Cross-compiles without cmake/nasm (ring still
+# builds some C/assembly; a plain C compiler suffices) — use for
 # multi-arch release binaries. Mutually exclusive with `rustls-aws-lc-rs`;
 # NOT part of `full` (combine feature flags explicitly instead).
 rustls-ring = ["reqwest/rustls-no-provider", "dep:rustls", "rustls/ring", "rustls/std", "rustls/tls12"]

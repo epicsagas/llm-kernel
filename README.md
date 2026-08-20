@@ -41,7 +41,7 @@ Each module is gated behind a feature flag so you only pay for what you use.
 |---------|-------------|---------|
 | `provider` | Provider catalog, model descriptors, pricing | ✅ |
 | `rustls-aws-lc-rs` | TLS provider for every reqwest-backed feature (aws-lc-rs; needs a C toolchain to cross-compile) | ✅ |
-| `rustls-ring` | Pure-Rust ring TLS provider — cross-compiles without cmake/nasm; llm-kernel installs the process-default provider itself (**mutually exclusive with `rustls-aws-lc-rs`**, not in `full`; see #93) | |
+| `rustls-ring` | ring TLS provider — no cmake/nasm (a plain C compiler suffices); llm-kernel installs the process-default provider itself (**mutually exclusive with `rustls-aws-lc-rs`**, not in `full`; see #93) | |
 | `client-async` | Async LLM client (reqwest) with streaming | |
 | `discovery` | Dynamic model discovery (models.dev, Ollama, OpenAI-compat) | |
 | `discovery-async` | Async model discovery — `DiscoverySource` trait over reqwest | |
@@ -112,11 +112,13 @@ For local embedding (ONNX, no API key):
 llm-kernel = { version = "0.19.0", features = ["embedding-fastembed"] }
 ```
 
-### Cross-compilation (no C toolchain)
+### Cross-compilation (no cmake/nasm)
 
 aws-lc-rs (the default TLS provider) needs cmake — and nasm on some targets —
-to cross-compile. For multi-arch release binaries, switch to the pure-Rust
-ring provider (llm-kernel installs it at runtime; no code changes needed):
+to cross-compile. The ring provider builds a small amount of C/assembly and
+needs only a plain C compiler, which cross toolchains (e.g. `zig cc`) already
+provide. For multi-arch release binaries, switch to it (llm-kernel installs
+the provider at runtime; no code changes needed):
 
 ```toml
 [dependencies]

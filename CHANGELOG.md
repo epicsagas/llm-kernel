@@ -32,9 +32,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   provider) into a clear build error.
 
 ### Added
-- **rustls-ring** (#93): pure-Rust ring TLS provider for the reqwest-backed
-  features — cross-compiles without cmake/nasm (aws-lc-sys is a C/C++ library
-  that needs a C toolchain). reqwest is switched to `rustls-no-provider` and
+- **rustls-ring** (#93): ring TLS provider for the reqwest-backed
+  features — cross-compiles without cmake/nasm (aws-lc-sys needs cmake, and
+  nasm on some targets; ring builds some C/assembly but a plain C compiler
+  suffices). reqwest is switched to `rustls-no-provider` and
   llm-kernel installs the process-default ring provider before building any
   HTTP client, so no application code changes are needed. Mutually exclusive
   with `rustls-aws-lc-rs` (enforced by `compile_error!`) and not part of

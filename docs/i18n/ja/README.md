@@ -46,7 +46,7 @@ llm-kernelは、RustでLLM搭載ツール、エージェント、サーバーを
 |---------|-------------|---------|
 | `provider` | プロバイダーカタログ、モデル記述子、価格情報 | ✅ |
 | `rustls-aws-lc-rs` | reqwest ベース全機能の TLS プロバイダー（aws-lc-rs、クロスコンパイルに C ツールチェーン必要） | ✅ |
-| `rustls-ring` | 純 Rust 製 ring TLS プロバイダー — cmake/nasm 不要でクロスコンパイル可能。プロセス既定プロバイダーは llm-kernel が自動インストール（`rustls-aws-lc-rs` と排他、`full` には非包含、#93） | |
+| `rustls-ring` | ring TLS プロバイダー — cmake/nasm 不要(C コンパイラのみ必要)でクロスコンパイル可能。プロセス既定プロバイダーは llm-kernel が自動インストール（`rustls-aws-lc-rs` と排他、`full` には非包含、#93） | |
 | `client-async` | 非同期LLMクライアント（reqwest）、ストリーミング対応 | |
 | `discovery` | 動的モデル検出（models.dev、Ollama、OpenAI互換） | |
 | `discovery-async` | 非同期モデル検出 — reqwest 上の `DiscoverySource` トレイト | |

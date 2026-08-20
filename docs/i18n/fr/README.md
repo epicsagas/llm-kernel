@@ -46,7 +46,7 @@ Chaque module est derriere un indicateur de fonctionnalite afin que vous ne payi
 |----------------|-------------|------------|
 | `provider` | Catalogue de fournisseurs, descripteurs de modeles, tarification | Oui |
 | `rustls-aws-lc-rs` | Fournisseur TLS de toutes les fonctionnalités reqwest (aws-lc-rs ; la cross-compilation exige une chaîne C) | ✅ |
-| `rustls-ring` | Fournisseur TLS `ring` en Rust pur (#93) — cross-compilable sans chaîne C ; llm-kernel installe lui-même le fournisseur par défaut du processus. Exclusif avec `rustls-aws-lc-rs` ; nécessite `default-features = false` | |
+| `rustls-ring` | Fournisseur TLS `ring` (#93) — cross-compilable sans cmake/nasm (un simple compilateur C suffit) ; llm-kernel installe lui-même le fournisseur par défaut du processus. Exclusif avec `rustls-aws-lc-rs` ; nécessite `default-features = false` | |
 | `client-async` | Client LLM asynchrone (reqwest) avec streaming | |
 | `discovery` | Decouverte dynamique de modeles (models.dev, Ollama, OpenAI-compat) | |
 | `discovery-async` | Decouverte asynchrone de modeles — trait `DiscoverySource` sur reqwest | |
