@@ -8,15 +8,19 @@
 //! installed provider (e.g. the application's own choice) wins, and the
 //! `Err` from the redundant install is ignored.
 
-#[cfg(feature = "rustls-ring")]
+/// Only compiled when a reqwest-backed feature is active — otherwise the
+/// no-op body would trip `dead_code` under `-D warnings`. Without
+/// `rustls-ring` this is a no-op: the `rustls-aws-lc-rs` (default) path ships
+/// the aws-lc-rs provider inside reqwest and needs no runtime install.
+#[cfg(any(
+    feature = "client-async",
+    feature = "discovery-async",
+    feature = "elastic"
+))]
 pub(crate) fn ensure_tls_provider() {
+    #[cfg(feature = "rustls-ring")]
     let _ = rustls::crypto::ring::default_provider().install_default();
 }
-
-/// No-op without `rustls-ring`: the `rustls-aws-lc-rs` (default) path ships
-/// the aws-lc-rs provider inside reqwest and needs no runtime install.
-#[cfg(not(feature = "rustls-ring"))]
-pub(crate) fn ensure_tls_provider() {}
 
 #[cfg(all(test, feature = "rustls-ring", feature = "client-async"))]
 mod tests {

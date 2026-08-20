@@ -26,6 +26,11 @@ jobs:
         run: sudo apt-get install -y libopenblas-dev
       - name: Clippy (full)
         run: cargo clippy --features full -- -D warnings
+      # Reqwest-less builds (default `provider`-only) are not covered by
+      # `--features full` — v0.28.0 shipped a dead_code error that only this
+      # combo catches.
+      - name: Clippy (no default features)
+        run: cargo clippy --no-default-features -- -D warnings
       - name: Format
         run: cargo fmt --all -- --check
 
