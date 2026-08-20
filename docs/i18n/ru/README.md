@@ -45,6 +45,8 @@ llm-kernel предоставляет базовый слой для созда�
 | Функция | Описание | По умолчанию |
 |---------|----------|--------------|
 | `provider` | Каталог провайдеров, дескрипторы моделей, цены | ✅ |
+| `rustls-aws-lc-rs` | TLS-провайдер для всех функций на reqwest (aws-lc-rs; для кросс-компиляции нужна C-toolchain) | ✅ |
+| `rustls-ring` | Чистый Rust TLS-провайдер `ring` (#93) — кросс-компиляция без C-toolchain; llm-kernel сам устанавливает процесс-провайдер по умолчанию. Взаимоисключающ с `rustls-aws-lc-rs`; требует `default-features = false` | |
 | `client-async` | Асинхронный LLM-клиент (reqwest) со стримингом | |
 | `discovery` | Динамическое обнаружение моделей (models.dev, Ollama, OpenAI-compat) | |
 | `discovery-async` | Асинхронное обнаружение моделей — трейт `DiscoverySource` поверх reqwest | |

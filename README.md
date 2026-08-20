@@ -40,6 +40,8 @@ Each module is gated behind a feature flag so you only pay for what you use.
 | Feature | Description | Default |
 |---------|-------------|---------|
 | `provider` | Provider catalog, model descriptors, pricing | ✅ |
+| `rustls-aws-lc-rs` | TLS provider for every reqwest-backed feature (aws-lc-rs; needs a C toolchain to cross-compile) | ✅ |
+| `rustls-ring` | Pure-Rust ring TLS provider — cross-compiles without cmake/nasm; llm-kernel installs the process-default provider itself (**mutually exclusive with `rustls-aws-lc-rs`**, not in `full`; see #93) | |
 | `client-async` | Async LLM client (reqwest) with streaming | |
 | `discovery` | Dynamic model discovery (models.dev, Ollama, OpenAI-compat) | |
 | `discovery-async` | Async model discovery — `DiscoverySource` trait over reqwest | |
@@ -109,6 +111,20 @@ For local embedding (ONNX, no API key):
 [dependencies]
 llm-kernel = { version = "0.19.0", features = ["embedding-fastembed"] }
 ```
+
+### Cross-compilation (no C toolchain)
+
+aws-lc-rs (the default TLS provider) needs cmake — and nasm on some targets —
+to cross-compile. For multi-arch release binaries, switch to the pure-Rust
+ring provider (llm-kernel installs it at runtime; no code changes needed):
+
+```toml
+[dependencies]
+llm-kernel = { version = "0.28.0", default-features = false, features = ["provider", "client-async", "rustls-ring"] }
+```
+
+Make sure nothing else in your tree enables reqwest's `rustls` feature —
+Cargo feature unification would pull aws-lc-rs back in.
 
 ## Usage
 

@@ -42,9 +42,12 @@ jobs:
           - "--no-default-features --features secrets"
           - "--no-default-features --features store"
           - "--no-default-features --features config"
-          - "--no-default-features --features client-async"
-          - "--no-default-features --features cache"
-          - "--no-default-features --features discovery-async"
+          # reqwest-backed features require an explicit TLS provider feature
+          # (rustls-aws-lc-rs / rustls-ring) since 0.28 — see src/lib.rs guards.
+          - "--no-default-features --features client-async,rustls-aws-lc-rs"
+          - "--no-default-features --features cache,rustls-aws-lc-rs"
+          - "--no-default-features --features discovery-async,rustls-aws-lc-rs"
+          - "--no-default-features --features client-async,rustls-ring"
           - "--no-default-features --features graph"
           - "--no-default-features --features graph-async"
           - "--no-default-features --features graph-pool"
@@ -63,7 +66,7 @@ jobs:
           - "--no-default-features --features vector-index"
           - "--no-default-features --features install"
           - "--no-default-features --features qdrant"
-          - "--no-default-features --features elastic"
+          - "--no-default-features --features elastic,rustls-aws-lc-rs"
           - "--no-default-features --features pgvector"
           - "--no-default-features --features full"
     steps:

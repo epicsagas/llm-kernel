@@ -35,6 +35,8 @@ platform constraints per feature — v1.0.0 ROADMAP #6.
 | Feature | What it enables |
 |---|---|
 | `client-async` | Async LLM client (OpenAI/Anthropic), SSE streaming, retry/middleware/cache hooks. `redact_http_body` masks error bodies when `safety` is also on. |
+| `rustls-aws-lc-rs` | Default TLS provider for every reqwest-backed feature (aws-lc-rs; needs cmake/nasm to cross-compile) |
+| `rustls-ring` | Pure-Rust ring TLS provider (#93) — cross-compiles with no C toolchain; llm-kernel installs the process-default provider at runtime. Mutually exclusive with `rustls-aws-lc-rs`; requires `default-features = false` |
 | `cache` | LLM response cache on `KvStore` (`cache = ["client-async","store"]`) |
 | `search` | `SearchProvider` trait, RRF + weighted-sum + CombMNZ fusion |
 | `federation` | Cross-engine `FederatedSearch` (qdrant + elastic + TurboVec) |

@@ -45,6 +45,8 @@ llm-kernel 为 Rust 中构建 LLM 驱动的工具、代理和服务器提供基�
 | 特性 | 说明 | 默认 |
 |------|------|------|
 | `provider` | 供应商目录、模型描述符、定价 | ✅ |
+| `rustls-aws-lc-rs` | 所有 reqwest 功能的 TLS 提供程序（aws-lc-rs；交叉编译需要 C 工具链） | ✅ |
+| `rustls-ring` | 纯 Rust ring TLS 提供程序 — 无需 cmake/nasm 即可交叉编译；进程默认提供程序由 llm-kernel 自动安装（与 `rustls-aws-lc-rs` 互斥，不含于 `full`；#93） | |
 | `client-async` | 异步 LLM 客户端（reqwest），支持流式传输 | |
 | `discovery` | 动态模型发现（models.dev、Ollama、OpenAI 兼容） | |
 | `discovery-async` | 异步模型发现 — 基于 reqwest 的 `DiscoverySource` trait | |

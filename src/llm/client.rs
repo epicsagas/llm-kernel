@@ -83,6 +83,7 @@ fn anthropic_output_config(rf: &ResponseFormat) -> Option<serde_json::Value> {
 
 /// Build a `reqwest::Client` with connect and total timeouts.
 fn http_client() -> Result<reqwest::Client> {
+    crate::tls::ensure_tls_provider();
     reqwest::Client::builder()
         .connect_timeout(Duration::from_secs(10))
         .timeout(Duration::from_secs(120))

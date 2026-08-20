@@ -45,6 +45,8 @@ Jedes Modul wird durch ein Feature-Flag gesteuert, sodass Sie nur bezahlen, was 
 | Feature | Beschreibung | Standard |
 |---------|-------------|----------|
 | `provider` | Provider-Katalog, Modellbeschreibungen, Preise | ✅ |
+| `rustls-aws-lc-rs` | TLS-Provider für alle reqwest-basierten Features (aws-lc-rs; Cross-Kompilierung braucht eine C-Toolchain) | ✅ |
+| `rustls-ring` | Reiner Rust-`ring`-TLS-Provider (#93) — cross-kompilierbar ohne C-Toolchain; llm-kernel installiert den Prozess-Standard-Provider selbst. Schließt `rustls-aws-lc-rs` aus; erfordert `default-features = false` | |
 | `client-async` | Async LLM-Client (reqwest) mit Streaming | |
 | `discovery` | Dynamische Modellermittlung (models.dev, Ollama, OpenAI-kompatibel) | |
 | `discovery-async` | Asynchrone Modellermittlung — `DiscoverySource`-Trait über reqwest | |

@@ -65,6 +65,7 @@ mod inner {
         }
 
         async fn discover(&self) -> Result<Vec<crate::discovery::ModelEntry>> {
+            crate::tls::ensure_tls_provider();
             let client = reqwest::Client::builder()
                 .timeout(Duration::from_secs(10))
                 // Do not follow redirects: the base URL is a trusted catalog

@@ -45,6 +45,8 @@ llm-kernel은 Rust로 LLM 기반 도구, 에이전트, 서버를 구축하기 �
 | 기능 | 설명 | 기본 |
 |------|------|------|
 | `provider` | 프로바이더 카탈로그, 모델 설명자, 가격 | ✅ |
+| `rustls-aws-lc-rs` | reqwest 기반 모든 기능의 TLS 프로바이더 (aws-lc-rs; 크로스컴파일에 C 툴체인 필요) | ✅ |
+| `rustls-ring` | 순수 Rust ring TLS 프로바이더 — cmake/nasm 없이 크로스컴파일 가능, 프로세스 기본 프로바이더를 llm-kernel이 직접 설치 (`rustls-aws-lc-rs`와 상호 배타, `full` 미포함; #93) | |
 | `client-async` | 비동기 LLM 클라이언트 (reqwest), 스트리밍 | |
 | `discovery` | 동적 모델 탐색 (models.dev, Ollama, OpenAI-compat) | |
 | `discovery-async` | 비동기 모델 탐색 — reqwest 기반 `DiscoverySource` trait | |

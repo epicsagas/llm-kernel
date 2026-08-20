@@ -49,6 +49,34 @@ compile_error!(
      unification that silently disables the static link path (#50/#55). Enable exactly one."
 );
 
+// Every reqwest-backed feature needs a TLS crypto provider. reqwest 0.13's
+// `rustls` feature pins aws-lc-rs (needs cmake/nasm to cross-compile); the
+// `rustls-ring` feature swaps in the pure-Rust ring provider (#93). Without
+// one of them the build succeeds but reqwest panics at runtime when the
+// first client is built — force a hard build error instead.
+#[cfg(all(
+    any(
+        feature = "client-async",
+        feature = "discovery-async",
+        feature = "elastic"
+    ),
+    not(any(feature = "rustls-aws-lc-rs", feature = "rustls-ring"))
+))]
+compile_error!(
+    "client-async / discovery-async / elastic require a TLS provider feature: \
+     enable `rustls-aws-lc-rs` (default; aws-lc-rs needs a C toolchain) or \
+     `rustls-ring` (pure Rust, cross-compiles without cmake/nasm). \
+     With default-features = false you must add one of them explicitly."
+);
+
+// Enabling both unifies reqwest to `rustls` + `rustls-no-provider`, where the
+// aws-lc-rs feature silently wins and `rustls-ring` is ignored. Reject it.
+#[cfg(all(feature = "rustls-ring", feature = "rustls-aws-lc-rs"))]
+compile_error!("rustls-ring and rustls-aws-lc-rs are mutually exclusive; enable exactly one.");
+
+/// TLS provider bootstrap (`rustls-ring`). Internal.
+pub(crate) mod tls;
+
 /// Error types and result alias for llm-kernel.
 pub mod error;
 

@@ -68,6 +68,7 @@ impl ElasticsearchVectorIndex {
     /// similarity.
     pub async fn new(url: &str, index: &str, dim: usize) -> Result<Self> {
         validate_index_name(index)?;
+        crate::tls::ensure_tls_provider();
         let client = reqwest::Client::builder()
             // Guard direct (non-federated) callers against an unresponsive node.
             // `FederatedSearch` additionally wraps each call in
