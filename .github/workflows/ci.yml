@@ -130,6 +130,11 @@ jobs:
         run: cargo check --features embedding-fastembed-directml
       - name: Clippy DirectML feature (Windows native)
         run: cargo clippy --features embedding-fastembed-directml -- -D warnings
+      # rustls-ring was never compiled on Windows until this step — the test
+      # matrix runs ubuntu-only and the other Windows jobs use the default
+      # aws-lc-rs path (#93). Verifies ring's C/assembly builds under MSVC.
+      - name: Check rustls-ring (Windows native)
+        run: cargo check --no-default-features --features client-async,rustls-ring
 
   # Release-link regression guard for the statically-linked ONNX Runtime path
   # (#55). ort-sys downloads + links a prebuilt static archive at build time, so
