@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.28.0] - 2026-08-21
+
+### ⚠️ Changed (breaking — minor on the 0.x track)
+- **features**: reqwest-backed features (`client-async`, `discovery-async`,
+  `elastic`) now require an explicit TLS provider feature. `default` gained
+  `rustls-aws-lc-rs`, so default-feature builds are unchanged — but
+  `default-features = false` users must add `rustls-aws-lc-rs` (aws-lc-rs, the
+  previous implicit provider) or `rustls-ring`. A `compile_error!` guard in
+  `src/lib.rs` turns what was a silent runtime panic (reqwest 0.13
+  `rustls-no-provider` panics at client-build time without an installed
+  provider) into a clear build error.
+
+### Added
+- **rustls-ring** (#93): pure-Rust ring TLS provider for the reqwest-backed
+  features — cross-compiles without cmake/nasm (aws-lc-sys is a C/C++ library
+  that needs a C toolchain). reqwest is switched to `rustls-no-provider` and
+  llm-kernel installs the process-default ring provider before building any
+  HTTP client, so no application code changes are needed. Mutually exclusive
+  with `rustls-aws-lc-rs` (enforced by `compile_error!`) and not part of
+  `full` — combine feature flags explicitly. Caveat: Cargo feature
+  unification means any other dependency enabling reqwest's `rustls` feature
+  pulls aws-lc-rs back into the tree.
+
 ## [0.27.0] - 2026-08-20
 
 ### ⚠️ Changed (breaking — minor on the 0.x track)
