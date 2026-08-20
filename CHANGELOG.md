@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.27.0] - 2026-08-20
+
 ### ⚠️ Changed (breaking — minor on the 0.x track)
 - **mcp**: `PromptArgument` gains an optional `type` field (`arg_type` in Rust,
   serialized as `type`, omitted when `None`) for typed prompt arguments. Struct
