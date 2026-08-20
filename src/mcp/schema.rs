@@ -48,6 +48,10 @@ pub struct PromptArgument {
     /// Whether the argument must be supplied.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub required: bool,
+    /// Argument value type (e.g. `"string"`, `"number"`, `"array"`), per the
+    /// typed prompt arguments in the 2026-07-28 server-concepts schema.
+    #[serde(rename = "type", default, skip_serializing_if = "Option::is_none")]
+    pub arg_type: Option<String>,
 }
 
 /// Describes an MCP prompt (a reusable, parameterized message template) that a
@@ -116,12 +120,14 @@ mod tests {
                 name: "text".into(),
                 description: Some("The text to summarize".into()),
                 required: true,
+                arg_type: Some("string".into()),
             }],
         };
         let json = serde_json::to_value(&prompt).unwrap();
         assert_eq!(json["name"], "summarize");
         assert_eq!(json["arguments"][0]["name"], "text");
         assert_eq!(json["arguments"][0]["required"], true);
+        assert_eq!(json["arguments"][0]["type"], "string");
     }
 
     #[test]
@@ -130,9 +136,11 @@ mod tests {
             name: "opt".into(),
             description: None,
             required: false,
+            arg_type: None,
         };
         let json = serde_json::to_value(&arg).unwrap();
         assert!(json.get("required").is_none(), "false required is omitted");
         assert!(json.get("description").is_none());
+        assert!(json.get("type").is_none(), "untyped argument omits type");
     }
 }

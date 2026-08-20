@@ -58,7 +58,7 @@ llm-kernel предоставляет базовый слой для созда�
 | `graph-pg` | GraphBackend на PostgreSQL (PgGraph) + CLI миграции SQLite ↔ PostgreSQL | |
 | `graph-pg-tls` | TLS-enabled `PgGraph` connections (`connect_native_tls` / `connect_tls` / `connect_config_tls`) | |
 | `mcp` | MCP-сервер — JSON-RPC 2.0, транспорт stdio, аутентификация Bearer | |
-| `mcp-http` | MCP remote transport — HTTP/SSE (axum + tokio) | |
+| `mcp-http` | MCP remote transport — Streamable HTTP (axum + tokio) | |
 | `cache` | LLM response cache — `CacheClient` over `KvStore` | |
 | `tokens` | Оценка токенов, бюджетирование и разбиение документов по границам предложений | |
 | `install` | Мастер установки AI-инструментов | |

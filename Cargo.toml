@@ -75,7 +75,7 @@ graph-pg-sqlx = ["graph", "dep:sqlx", "dep:async-trait"]
 mcp = ["dep:serde_json", "dep:async-trait", "dep:getrandom"]
 
 # MCP remote transport over HTTP with optional SSE (axum + tokio)
-mcp-http = ["mcp", "dep:axum", "dep:tokio", "dep:tokio-stream", "tokio/net", "tokio/io-util"]
+mcp-http = ["mcp", "dep:axum", "dep:tokio", "dep:tokio-stream", "dep:base64", "tokio/net", "tokio/io-util"]
 
 # Token estimation (zero-dep heuristic)
 tokens = []
@@ -213,6 +213,7 @@ rusqlite    = { version = "0.32", features = ["bundled"], optional = true }
 toml        = { version = "1", optional = true }
 tokio       = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"], optional = true }
 tokio-stream = { version = "0.1", optional = true }
+base64      = { version = "0.22", optional = true }
 futures-core = { version = "0.3", optional = true }
 futures-util = { version = "0.3", optional = true }
 async-trait = { version = "0.1", optional = true }

@@ -5,12 +5,54 @@
 
 use std::io::{self, BufRead, Write};
 
-use crate::mcp::server::McpServer;
+use crate::mcp::server::{
+    McpServer, SUPPORTED_PROTOCOL_VERSIONS, request_protocol_version, shape_modern_result,
+};
 
-/// Cap on a single stdio JSON-RPC line. `BufRead::lines` grows without bound,
-/// so a peer that never sends `\n` can exhaust memory — fatal under a
-/// `panic = "abort"` release profile.
+/// Cap on a single stdio JSON-RPC line. Reading is bounded by
+/// [`read_limited_line`], so a peer that never sends `\n` can never make the
+/// process buffer more than this many bytes — fatal under a
+/// `panic = "abort"` release profile otherwise.
 const MAX_LINE_BYTES: usize = 16 * 1024 * 1024;
+
+/// JSON-RPC error code for a request sent before `initialize` (MCP lifecycle).
+const ERR_NOT_INITIALIZED: i32 = -32002;
+
+/// Read one line (up to and including `\n`) into `buf`, capping input at
+/// `max` bytes per line.
+///
+/// Unlike `BufRead::lines`, memory use is bounded *before* the newline
+/// arrives: once `max` bytes accumulate without one, the read fails instead of
+/// the buffer growing. Returns bytes read (`0` at EOF); fails with
+/// `InvalidData` on an over-long line.
+fn read_limited_line<R: BufRead>(
+    reader: &mut R,
+    max: usize,
+    buf: &mut Vec<u8>,
+) -> io::Result<usize> {
+    buf.clear();
+    let mut total = 0usize;
+    loop {
+        let available = reader.fill_buf()?;
+        if available.is_empty() {
+            return Ok(total); // EOF
+        }
+        let newline = available.iter().position(|&b| b == b'\n');
+        let take = newline.map_or(available.len(), |i| i + 1);
+        if total + take > max {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("JSON-RPC line exceeds {max} bytes"),
+            ));
+        }
+        buf.extend_from_slice(&available[..take]);
+        reader.consume(take);
+        total += take;
+        if newline.is_some() {
+            return Ok(total);
+        }
+    }
+}
 
 /// JSON-RPC 2.0 dispatcher for MCP stdio transport.
 pub struct JsonRpcDispatcher<'a> {
@@ -46,10 +88,12 @@ impl<'a> JsonRpcDispatcher<'a> {
     }
 
     /// Dispatch a JSON-RPC request (single or batch) and return the response.
+    ///
+    /// JSON-RPC batches were removed from the MCP spec in `2025-06-18`; they
+    /// are still accepted here for clients negotiating `2024-11-05`.
     pub fn dispatch(&self, request: &str) -> Option<String> {
         let trimmed = request.trim();
         if trimmed.starts_with('[') {
-            // Batch request
             let reqs: Vec<serde_json::Value> = match serde_json::from_str(trimmed) {
                 Ok(v) => v,
                 Err(e) => {
@@ -60,6 +104,16 @@ impl<'a> JsonRpcDispatcher<'a> {
                     ));
                 }
             };
+            // Batches were removed from the MCP spec in `2025-06-18`; they are
+            // tolerated for `2024-11-05` clients only. A modern request inside
+            // a batch is a protocol violation and rejects the whole batch.
+            if reqs.iter().any(|r| request_protocol_version(r).is_some()) {
+                return Some(self.error_response(
+                    serde_json::Value::Null,
+                    -32600,
+                    "Invalid Request: JSON-RPC batches are not supported by protocol revisions after 2024-11-05",
+                ));
+            }
             let responses: Vec<String> = reqs
                 .iter()
                 .filter_map(|req| self.dispatch_single(req))
@@ -102,6 +156,39 @@ impl<'a> JsonRpcDispatcher<'a> {
         let id = req.get("id").cloned().unwrap_or(serde_json::Value::Null);
         let method = req.get("method").and_then(|v| v.as_str()).unwrap_or("");
 
+        // Era selection (dual-era server): a request declaring its protocol
+        // version in `_meta` is served statelessly; `initialize` always
+        // selects legacy handshake semantics, even when it carries `_meta`.
+        let modern = if method == "initialize" {
+            None
+        } else {
+            request_protocol_version(req)
+        };
+        if let Some(version) = modern {
+            if let Some(err) = self.check_modern_version(&id, version) {
+                return Some(err);
+            }
+            // Methods that exist only in modern revisions (or were removed
+            // there) are answered before the shared handler table.
+            match method {
+                "server/discover" => {
+                    let mut result = self.server.discover_response();
+                    shape_modern_result(version, method, &mut result);
+                    return Some(self.success_response(id, result));
+                }
+                "subscriptions/listen" => return Some(self.subscription_close(&id)),
+                // `ping` was removed in 2026-07-28; it is legacy-only.
+                "ping" => {
+                    return Some(self.error_response(
+                        id,
+                        -32601,
+                        "Method not found: ping (removed in protocol 2026-07-28)",
+                    ));
+                }
+                _ => {}
+            }
+        }
+
         let result = match method {
             "initialize" => {
                 let requested = req
@@ -124,15 +211,52 @@ impl<'a> JsonRpcDispatcher<'a> {
                 "prompts": self.server.prompts()
             })),
             "prompts/get" => self.handle_prompt_get(req),
-            "tools/call" => return Some(self.handle_tool_call(&id, req)),
+            "tools/call" => return Some(self.handle_tool_call(&id, req, modern)),
             "resources/read" => self.handle_resource_read(req),
             _ => Err((-32601, format!("Method not found: {method}"))),
         };
 
         match result {
-            Ok(value) => Some(self.success_response(id, value)),
+            Ok(mut value) => {
+                if let Some(version) = modern {
+                    shape_modern_result(version, method, &mut value);
+                }
+                Some(self.success_response(id, value))
+            }
             Err((code, message)) => Some(self.error_response(id, code, &message)),
         }
+    }
+
+    /// Version gate for modern requests: a version outside
+    /// [`SUPPORTED_PROTOCOL_VERSIONS`] is rejected with `-32022`
+    /// (UnsupportedProtocolVersion) listing what this server does support,
+    /// so the client can retry with a mutually supported version.
+    fn check_modern_version(&self, id: &serde_json::Value, requested: &str) -> Option<String> {
+        if SUPPORTED_PROTOCOL_VERSIONS.contains(&requested) {
+            return None;
+        }
+        let mut error = self.error_response(id.clone(), -32022, "Unsupported protocol version");
+        // Splice a `data` member into the serialized error response.
+        if let Ok(mut v) = serde_json::from_str::<serde_json::Value>(&error) {
+            v["error"]["data"] = serde_json::json!({
+                "supported": SUPPORTED_PROTOCOL_VERSIONS,
+                "requested": requested,
+            });
+            error = serde_json::to_string(&v).unwrap_or(error);
+        }
+        Some(error)
+    }
+
+    /// Answer `subscriptions/listen` on stdio: the acknowledgment
+    /// notification and the graceful-closure result, one JSON-RPC message per
+    /// line (the stdio framing is newline-delimited).
+    fn subscription_close(&self, id: &serde_json::Value) -> String {
+        let (ack, close) = self.server.subscription_ack_and_close(id);
+        format!(
+            "{}\n{}",
+            serde_json::to_string(&ack).unwrap_or_default(),
+            self.success_response(id.clone(), close)
+        )
     }
 
     /// Dispatch a JSON-RPC request, awaiting async tool handlers.
@@ -203,12 +327,51 @@ impl<'a> JsonRpcDispatcher<'a> {
         if req.get("method").and_then(|v| v.as_str()) == Some("tools/call") {
             req.get("id")?;
             let id = req.get("id").cloned().unwrap_or(serde_json::Value::Null);
-            return Some(self.handle_tool_call_async(&id, req).await);
+            let modern = request_protocol_version(req);
+            if let Some(version) = modern
+                && let Some(err) = self.check_modern_version(&id, version)
+            {
+                return Some(err);
+            }
+            return Some(self.handle_tool_call_async(&id, req, modern).await);
         }
         self.dispatch_single(req)
     }
 
+    /// Lifecycle gate for connection-oriented transports: the MCP spec
+    /// requires clients to send no requests other than `initialize` before
+    /// the server has answered initialization.
+    ///
+    /// Returns the `-32002` error response to send, or `None` when the
+    /// request may proceed. Modern (stateless, `_meta`-carrying) requests
+    /// bypass the gate — 2026-07-28 has no handshake at all. Notifications
+    /// never trigger the gate, and a pre-initialization batch is likewise
+    /// passed through, as batches are a `2024-11-05` compatibility feature
+    /// this dispatcher accepts leniently.
+    fn check_initialized(&self, parsed: &serde_json::Value, initialized: bool) -> Option<String> {
+        if initialized || !parsed.is_object() {
+            return None;
+        }
+        if request_protocol_version(parsed).is_some() {
+            return None; // modern era: stateless, no handshake to await
+        }
+        if parsed.get("method").and_then(|v| v.as_str()) == Some("initialize") {
+            return None;
+        }
+        // Notifications (no id) get no response — nothing to reject.
+        parsed.get("id")?;
+        let id = parsed.get("id").cloned().unwrap_or(serde_json::Value::Null);
+        Some(self.error_response(
+            id,
+            ERR_NOT_INITIALIZED,
+            "Server not initialized: send an initialize request first",
+        ))
+    }
+
     /// Run the stdio transport loop: read lines from stdin, dispatch, write to stdout.
+    ///
+    /// Enforces the MCP lifecycle: requests arriving before `initialize` are
+    /// rejected with `-32002`.
     ///
     /// Tools registered with `set_async_handler` are NOT callable from this
     /// loop — use [`Self::run_stdio_async`] when the server has any.
@@ -228,19 +391,35 @@ impl<'a> JsonRpcDispatcher<'a> {
             ));
         }
         let stdin = io::stdin();
+        let mut reader = io::BufReader::new(stdin.lock());
         let mut stdout = io::stdout().lock();
+        let mut initialized = false;
+        let mut raw = Vec::new();
 
-        for line in stdin.lock().lines() {
-            let line = line?;
-            if line.len() > MAX_LINE_BYTES {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    format!("JSON-RPC line exceeds {MAX_LINE_BYTES} bytes"),
-                ));
+        loop {
+            let n = read_limited_line(&mut reader, MAX_LINE_BYTES, &mut raw)?;
+            if n == 0 {
+                break; // EOF
             }
+            let line = std::str::from_utf8(&raw).map_err(|_| {
+                io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "JSON-RPC line is not valid UTF-8",
+                )
+            })?;
             let trimmed = line.trim();
             if trimmed.is_empty() {
                 continue;
+            }
+            if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(trimmed) {
+                if let Some(err) = self.check_initialized(&parsed, initialized) {
+                    writeln!(stdout, "{err}")?;
+                    stdout.flush()?;
+                    continue;
+                }
+                if parsed.get("method").and_then(|m| m.as_str()) == Some("initialize") {
+                    initialized = true;
+                }
             }
             if let Some(response) = self.dispatch(trimmed) {
                 writeln!(stdout, "{response}")?;
@@ -252,24 +431,41 @@ impl<'a> JsonRpcDispatcher<'a> {
 
     /// [`Self::run_stdio`] for servers with async tool handlers.
     ///
-    /// Reads stdin with blocking I/O between awaits — an MCP stdio server is
-    /// a dedicated process, so occupying the calling task is intended. Drive
-    /// it from a runtime's blocking-friendly context (e.g. a dedicated task).
+    /// Enforces the MCP lifecycle like [`Self::run_stdio`] does. Reads stdin
+    /// with blocking I/O between awaits — an MCP stdio server is a dedicated
+    /// process, so occupying the calling task is intended. Drive it from a
+    /// runtime's blocking-friendly context (e.g. a dedicated task).
     pub async fn run_stdio_async(&self) -> io::Result<()> {
         let stdin = io::stdin();
+        let mut reader = io::BufReader::new(stdin.lock());
         let mut stdout = io::stdout().lock();
+        let mut initialized = false;
+        let mut raw = Vec::new();
 
-        for line in stdin.lock().lines() {
-            let line = line?;
-            if line.len() > MAX_LINE_BYTES {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    format!("JSON-RPC line exceeds {MAX_LINE_BYTES} bytes"),
-                ));
+        loop {
+            let n = read_limited_line(&mut reader, MAX_LINE_BYTES, &mut raw)?;
+            if n == 0 {
+                break; // EOF
             }
+            let line = std::str::from_utf8(&raw).map_err(|_| {
+                io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "JSON-RPC line is not valid UTF-8",
+                )
+            })?;
             let trimmed = line.trim();
             if trimmed.is_empty() {
                 continue;
+            }
+            if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(trimmed) {
+                if let Some(err) = self.check_initialized(&parsed, initialized) {
+                    writeln!(stdout, "{err}")?;
+                    stdout.flush()?;
+                    continue;
+                }
+                if parsed.get("method").and_then(|m| m.as_str()) == Some("initialize") {
+                    initialized = true;
+                }
             }
             if let Some(response) = self.dispatch_async(trimmed).await {
                 writeln!(stdout, "{response}")?;
@@ -284,6 +480,7 @@ impl<'a> JsonRpcDispatcher<'a> {
         &self,
         id: &serde_json::Value,
         req: &serde_json::Value,
+        modern: Option<&str>,
     ) -> String {
         let tool_name = req
             .get("params")
@@ -303,22 +500,20 @@ impl<'a> JsonRpcDispatcher<'a> {
             return self.error_response(id.clone(), -32602, &e);
         }
 
-        match self.server.call_tool_async(tool_name, params).await {
-            Ok(result) => self.success_response(
-                id.clone(),
-                serde_json::json!({
-                    "content": [{ "type": "text", "text": result.to_string() }],
-                    "isError": false
-                }),
-            ),
-            Err(e) => self.success_response(
-                id.clone(),
-                serde_json::json!({
-                    "content": [{ "type": "text", "text": e.to_string() }],
-                    "isError": true
-                }),
-            ),
+        let mut result = match self.server.call_tool_async(tool_name, params).await {
+            Ok(result) => serde_json::json!({
+                "content": [{ "type": "text", "text": result.to_string() }],
+                "isError": false
+            }),
+            Err(e) => serde_json::json!({
+                "content": [{ "type": "text", "text": e.to_string() }],
+                "isError": true
+            }),
+        };
+        if let Some(version) = modern {
+            shape_modern_result(version, "tools/call", &mut result);
         }
+        self.success_response(id.clone(), result)
     }
 
     /// Handle `tools/call`. Returns a full JSON-RPC response string.
@@ -327,7 +522,12 @@ impl<'a> JsonRpcDispatcher<'a> {
     /// tool that runs and **fails** is reported in-band as a successful result
     /// with `isError: true`, per the MCP spec — so the model sees the error and
     /// can adapt rather than the whole request failing at the transport layer.
-    fn handle_tool_call(&self, id: &serde_json::Value, req: &serde_json::Value) -> String {
+    fn handle_tool_call(
+        &self,
+        id: &serde_json::Value,
+        req: &serde_json::Value,
+        modern: Option<&str>,
+    ) -> String {
         let tool_name = req
             .get("params")
             .and_then(|p| p.get("name"))
@@ -347,22 +547,20 @@ impl<'a> JsonRpcDispatcher<'a> {
             return self.error_response(id.clone(), -32602, &e);
         }
 
-        match self.server.call_tool(tool_name, params) {
-            Ok(result) => self.success_response(
-                id.clone(),
-                serde_json::json!({
-                    "content": [{ "type": "text", "text": result.to_string() }],
-                    "isError": false
-                }),
-            ),
-            Err(e) => self.success_response(
-                id.clone(),
-                serde_json::json!({
-                    "content": [{ "type": "text", "text": e.to_string() }],
-                    "isError": true
-                }),
-            ),
+        let mut result = match self.server.call_tool(tool_name, params) {
+            Ok(result) => serde_json::json!({
+                "content": [{ "type": "text", "text": result.to_string() }],
+                "isError": false
+            }),
+            Err(e) => serde_json::json!({
+                "content": [{ "type": "text", "text": e.to_string() }],
+                "isError": true
+            }),
+        };
+        if let Some(version) = modern {
+            shape_modern_result(version, "tools/call", &mut result);
         }
+        self.success_response(id.clone(), result)
     }
 
     /// Handle `prompts/get`: render a registered prompt with the given
@@ -405,7 +603,7 @@ impl<'a> JsonRpcDispatcher<'a> {
                     }]
                 })
             })
-            .map_err(|e| (-32603, e.to_string()))
+            .map_err(|e| (-32602, e.to_string()))
     }
 
     fn success_response(&self, id: serde_json::Value, result: serde_json::Value) -> String {
@@ -802,5 +1000,195 @@ mod tests {
             .unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&resp).unwrap();
         assert!(parsed["result"]["serverInfo"].is_object());
+    }
+
+    #[test]
+    fn read_limited_line_bounds_memory_before_newline() {
+        // A 40-byte "line" with no newline against a 10-byte cap must fail —
+        // the buffer never grows past the cap waiting for `\n`.
+        let mut reader = io::Cursor::new(vec![b'x'; 40]);
+        let mut buf = Vec::new();
+        let err = read_limited_line(&mut reader, 10, &mut buf).unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData, "{err}");
+        assert!(buf.len() <= 10, "buffer grew past the cap: {}", buf.len());
+    }
+
+    #[test]
+    fn read_limited_line_reads_normal_lines() {
+        let mut reader = io::Cursor::new(b"{\"a\":1}\n{\"b\":2}\ntrailing".to_vec());
+        let mut buf = Vec::new();
+        assert_eq!(read_limited_line(&mut reader, 1024, &mut buf).unwrap(), 8);
+        assert_eq!(buf, b"{\"a\":1}\n");
+        assert_eq!(read_limited_line(&mut reader, 1024, &mut buf).unwrap(), 8);
+        assert_eq!(buf, b"{\"b\":2}\n");
+        // Final unterminated line, then EOF (0).
+        assert_eq!(read_limited_line(&mut reader, 1024, &mut buf).unwrap(), 8);
+        assert_eq!(buf, b"trailing");
+        assert_eq!(read_limited_line(&mut reader, 1024, &mut buf).unwrap(), 0);
+    }
+
+    #[test]
+    fn pre_initialize_requests_are_rejected() {
+        let server = test_server();
+        let dispatcher = JsonRpcDispatcher::new(&server);
+        let parsed: serde_json::Value =
+            serde_json::from_str(r#"{"jsonrpc":"2.0","id":5,"method":"tools/list"}"#).unwrap();
+        let err = dispatcher
+            .check_initialized(&parsed, false)
+            .expect("gate must reject");
+        assert!(err.contains("-32002"), "{err}");
+
+        // initialize itself always passes …
+        let init: serde_json::Value =
+            serde_json::from_str(r#"{"jsonrpc":"2.0","id":1,"method":"initialize"}"#).unwrap();
+        assert!(dispatcher.check_initialized(&init, false).is_none());
+        // … and everything passes once initialized.
+        assert!(dispatcher.check_initialized(&parsed, true).is_none());
+
+        // Notifications (no id) are never answered, so the gate ignores them.
+        let notif: serde_json::Value =
+            serde_json::from_str(r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#)
+                .unwrap();
+        assert!(dispatcher.check_initialized(&notif, false).is_none());
+
+        // Modern (stateless) requests bypass the gate: 2026-07-28 has no
+        // handshake to await.
+        let modern: serde_json::Value = serde_json::from_str(
+            r#"{"jsonrpc":"2.0","id":9,"method":"tools/list","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28"}}}"#,
+        )
+        .unwrap();
+        assert!(dispatcher.check_initialized(&modern, false).is_none());
+    }
+
+    /// A modern (stateless, `_meta`-carrying) request, one per test constant.
+    fn modern_request(method: &str, id: i64, version: &str) -> String {
+        format!(
+            r#"{{"jsonrpc":"2.0","id":{id},"method":"{method}","params":{{"_meta":{{"io.modelcontextprotocol/protocolVersion":"{version}"}}}}}}"#
+        )
+    }
+
+    #[test]
+    fn modern_server_discover_answers_versions_and_identity() {
+        let server = test_server();
+        let dispatcher = JsonRpcDispatcher::new(&server);
+        let resp = dispatcher
+            .dispatch(&modern_request("server/discover", 1, "2026-07-28"))
+            .unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&resp).unwrap();
+        assert_eq!(
+            parsed["result"]["supportedVersions"][0],
+            crate::mcp::server::LATEST_PROTOCOL_VERSION
+        );
+        assert_eq!(
+            parsed["result"]["_meta"]["io.modelcontextprotocol/serverInfo"]["name"],
+            "test-server"
+        );
+        // CacheableResult: discover responses carry ttlMs + cacheScope.
+        assert!(parsed["result"]["ttlMs"].is_u64(), "{parsed}");
+        assert_eq!(parsed["result"]["resultType"], "complete");
+    }
+
+    #[test]
+    fn modern_unsupported_version_lists_supported() {
+        let server = test_server();
+        let dispatcher = JsonRpcDispatcher::new(&server);
+        let resp = dispatcher
+            .dispatch(&modern_request("tools/list", 2, "1999-01-01"))
+            .unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&resp).unwrap();
+        assert_eq!(parsed["error"]["code"], -32022, "{parsed}");
+        assert_eq!(parsed["error"]["data"]["requested"], "1999-01-01");
+        assert!(
+            parsed["error"]["data"]["supported"]
+                .as_array()
+                .unwrap()
+                .contains(&serde_json::json!("2025-06-18"))
+        );
+    }
+
+    #[test]
+    fn modern_ping_is_method_not_found() {
+        let server = test_server();
+        let dispatcher = JsonRpcDispatcher::new(&server);
+        let resp = dispatcher
+            .dispatch(&modern_request("ping", 3, "2026-07-28"))
+            .unwrap();
+        assert!(resp.contains("-32601"), "{resp}");
+        // Legacy ping still works.
+        let resp = dispatcher
+            .dispatch(r#"{"jsonrpc":"2.0","id":4,"method":"ping"}"#)
+            .unwrap();
+        assert!(resp.contains("result"), "{resp}");
+    }
+
+    #[test]
+    fn modern_results_carry_result_type_and_cache_fields() {
+        let mut server = test_server();
+        server.set_handler("echo", Ok);
+        let dispatcher = JsonRpcDispatcher::new(&server);
+
+        let list = dispatcher
+            .dispatch(&modern_request("tools/list", 1, "2026-07-28"))
+            .unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&list).unwrap();
+        assert_eq!(parsed["result"]["resultType"], "complete");
+        assert!(parsed["result"]["ttlMs"].is_u64());
+        assert_eq!(parsed["result"]["cacheScope"], "private");
+
+        let call = format!(
+            r#"{{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{{"name":"echo","arguments":{{}},"_meta":{{"io.modelcontextprotocol/protocolVersion":"2026-07-28"}}}}}}"#
+        );
+        let call = dispatcher.dispatch(&call).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&call).unwrap();
+        assert_eq!(parsed["result"]["resultType"], "complete", "{parsed}");
+        assert!(
+            parsed["result"].get("ttlMs").is_none(),
+            "tools/call is not cacheable"
+        );
+
+        // A modern request naming a LEGACY version is served without modern
+        // result shaping (the client speaks that revision's schema).
+        let legacy_shaped = dispatcher
+            .dispatch(&modern_request("tools/list", 3, "2025-06-18"))
+            .unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&legacy_shaped).unwrap();
+        assert!(parsed["result"].get("resultType").is_none(), "{parsed}");
+    }
+
+    #[test]
+    fn modern_subscriptions_listen_acks_then_closes() {
+        let server = test_server();
+        let dispatcher = JsonRpcDispatcher::new(&server);
+        let resp = dispatcher
+            .dispatch(&modern_request("subscriptions/listen", 7, "2026-07-28"))
+            .unwrap();
+        // Two newline-delimited messages: the acknowledgment notification,
+        // then the graceful-closure result response.
+        let lines: Vec<&str> = resp.lines().collect();
+        assert_eq!(lines.len(), 2, "{resp}");
+        let ack: serde_json::Value = serde_json::from_str(lines[0]).unwrap();
+        assert_eq!(ack["method"], "notifications/subscriptions/acknowledged");
+        // The agreed subset is empty: nothing was requested that we support.
+        assert_eq!(ack["params"]["notifications"], serde_json::json!({}));
+        assert_eq!(
+            ack["params"]["_meta"]["io.modelcontextprotocol/subscriptionId"],
+            7
+        );
+        let close: serde_json::Value = serde_json::from_str(lines[1]).unwrap();
+        assert_eq!(close["id"], 7);
+        assert_eq!(close["result"]["resultType"], "complete");
+        assert_eq!(
+            close["result"]["_meta"]["io.modelcontextprotocol/subscriptionId"],
+            7
+        );
+    }
+
+    #[test]
+    fn modern_request_inside_batch_rejects_the_batch() {
+        let server = test_server();
+        let dispatcher = JsonRpcDispatcher::new(&server);
+        let batch = format!("[{}]", modern_request("tools/list", 1, "2026-07-28"));
+        let resp = dispatcher.dispatch(&batch).unwrap();
+        assert!(resp.contains("-32600"), "{resp}");
     }
 }

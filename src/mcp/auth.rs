@@ -66,11 +66,15 @@ impl BearerAuth {
     }
 
     /// Validate a bearer token from an Authorization header.
+    ///
+    /// The auth scheme is matched case-insensitively, as RFC 7235 requires
+    /// (`bearer x` and `Bearer x` are equivalent).
     pub fn validate(&self, header_value: &str) -> bool {
-        if let Some(token) = header_value.strip_prefix("Bearer ") {
-            constant_time_eq(token.trim(), &self.token)
-        } else {
-            false
+        match header_value.split_once(' ') {
+            Some((scheme, token)) if scheme.eq_ignore_ascii_case("Bearer") => {
+                constant_time_eq(token.trim(), &self.token)
+            }
+            _ => false,
         }
     }
 
@@ -101,6 +105,14 @@ mod tests {
         let auth = BearerAuth::new("token");
         assert!(!auth.validate("token"));
         assert!(!auth.validate("Basic token"));
+    }
+
+    #[test]
+    fn scheme_match_is_case_insensitive() {
+        let auth = BearerAuth::new("token");
+        assert!(auth.validate("bearer token"));
+        assert!(auth.validate("BEARER token"));
+        assert!(auth.validate("Bearer token"));
     }
 
     #[test]

@@ -11,12 +11,78 @@ use crate::mcp::schema::{PromptDescription, ResourceDescription, ToolDescription
 
 /// MCP protocol versions this server understands, newest first.
 ///
-/// During `initialize` the server echoes the client's requested version when it
-/// appears here, otherwise it falls back to [`LATEST_PROTOCOL_VERSION`].
-pub const SUPPORTED_PROTOCOL_VERSIONS: &[&str] = &["2025-06-18", "2025-03-26", "2024-11-05"];
+/// `2026-07-28` is a *modern* (stateless, per-request `_meta`) revision served
+/// alongside the *legacy* (initialize-handshake) revisions `2025-11-25` and
+/// earlier — this is a dual-era server. A request carrying
+/// `_meta["io.modelcontextprotocol/protocolVersion"]` is served statelessly;
+/// an `initialize` request selects legacy semantics.
+pub const SUPPORTED_PROTOCOL_VERSIONS: &[&str] =
+    &["2026-07-28", "2025-06-18", "2025-03-26", "2024-11-05"];
 
-/// The newest MCP protocol version this server implements.
-pub const LATEST_PROTOCOL_VERSION: &str = "2025-06-18";
+/// The newest MCP protocol revision this server implements (modern, stateless).
+pub const LATEST_PROTOCOL_VERSION: &str = "2026-07-28";
+
+/// The newest *legacy* (initialize-handshake) revision this server implements.
+///
+/// Used as the fallback in `initialize` responses: a legacy client that asked
+/// for an unknown version must not be handed `2026-07-28`, which predates its
+/// handshake-based world.
+pub const LEGACY_LATEST_PROTOCOL_VERSION: &str = "2025-06-18";
+
+/// The `_meta` key carrying a modern request's protocol version.
+pub const META_PROTOCOL_VERSION: &str = "io.modelcontextprotocol/protocolVersion";
+
+/// The `_meta` key carrying the server identity in results (`server/discover`).
+pub const META_SERVER_INFO: &str = "io.modelcontextprotocol/serverInfo";
+
+/// The `_meta` key tagging subscription-stream messages with the JSON-RPC id
+/// of the `subscriptions/listen` request that opened them.
+pub const META_SUBSCRIPTION_ID: &str = "io.modelcontextprotocol/subscriptionId";
+
+/// Extract the modern-era protocol version from a request's
+/// `params._meta`, if present. `None` means the request speaks legacy.
+pub fn request_protocol_version(req: &serde_json::Value) -> Option<&str> {
+    req.pointer("/params/_meta")
+        .and_then(|m| m.get(META_PROTOCOL_VERSION))
+        .and_then(|v| v.as_str())
+}
+
+/// Methods whose results are cacheable and therefore require `ttlMs` and
+/// `cacheScope` (the `CacheableResult` interface of the 2026-07-28 revision).
+fn is_cacheable_method(method: &str) -> bool {
+    matches!(
+        method,
+        "server/discover"
+            | "tools/list"
+            | "resources/list"
+            | "resources/templates/list"
+            | "prompts/list"
+            | "resources/read"
+    )
+}
+
+/// Stamp a modern (2026-07-28) result with the fields the revision requires:
+/// `resultType: "complete"` on every result, plus `ttlMs`/`cacheScope` on
+/// cacheable ones. Results for other revisions are returned untouched.
+pub(crate) fn shape_modern_result(
+    protocol_version: &str,
+    method: &str,
+    result: &mut serde_json::Value,
+) {
+    if protocol_version != LATEST_PROTOCOL_VERSION {
+        return;
+    }
+    if let Some(obj) = result.as_object_mut() {
+        obj.entry("resultType")
+            .or_insert_with(|| serde_json::json!("complete"));
+        if is_cacheable_method(method) {
+            obj.entry("ttlMs")
+                .or_insert_with(|| serde_json::json!(3_600_000));
+            obj.entry("cacheScope")
+                .or_insert_with(|| serde_json::json!("private"));
+        }
+    }
+}
 
 /// Handler function type for MCP tool calls (synchronous).
 pub type Handler =
@@ -26,7 +92,7 @@ pub type Handler =
 ///
 /// Object-safe via `async_trait`, so an [`McpServer`] can store
 /// `Arc<dyn AsyncToolHandler>` and await it from an async transport
-/// (e.g. the HTTP/SSE transport).
+/// (e.g. the Streamable HTTP transport).
 #[async_trait]
 pub trait AsyncToolHandler: Send + Sync {
     /// Invoke the handler with the tool call parameters.
@@ -322,7 +388,7 @@ impl McpServer {
 
     /// Call a tool by name, awaiting an async handler if one is registered and
     /// otherwise falling back to the synchronous handler. Errors if the tool is
-    /// unknown. This is the entry point used by async transports (e.g. HTTP/SSE).
+    /// unknown. This is the entry point used by async transports (e.g. Streamable HTTP).
     pub async fn call_tool_async(
         &self,
         name: &str,
@@ -341,18 +407,79 @@ impl McpServer {
 
     /// Resolve the protocol version to report in `initialize`.
     ///
-    /// Echoes `requested` when it is one of [`SUPPORTED_PROTOCOL_VERSIONS`];
-    /// otherwise returns [`LATEST_PROTOCOL_VERSION`] (per the MCP spec, the
-    /// server proposes its own latest when it cannot honor the client's).
+    /// `initialize` selects legacy (handshake) semantics, so only legacy
+    /// revisions may be negotiated here: echo `requested` when it is a legacy
+    /// version from [`SUPPORTED_PROTOCOL_VERSIONS`], otherwise fall back to
+    /// [`LEGACY_LATEST_PROTOCOL_VERSION`]. A handshake client must never be
+    /// handed a modern revision — statelessness would contradict the
+    /// handshake it just performed.
     pub fn negotiate_protocol_version(&self, requested: Option<&str>) -> &'static str {
+        // The modern head of SUPPORTED_PROTOCOL_VERSIONS is excluded: the
+        // handshake path negotiates legacy revisions only.
+        let legacy_versions = &SUPPORTED_PROTOCOL_VERSIONS[1..];
         match requested {
-            Some(v) => SUPPORTED_PROTOCOL_VERSIONS
+            Some(v) => legacy_versions
                 .iter()
                 .find(|&&s| s == v)
                 .copied()
-                .unwrap_or(LATEST_PROTOCOL_VERSION),
-            None => LATEST_PROTOCOL_VERSION,
+                .unwrap_or(LEGACY_LATEST_PROTOCOL_VERSION),
+            None => LEGACY_LATEST_PROTOCOL_VERSION,
         }
+    }
+
+    /// The capabilities object shared by `initialize` and `server/discover`.
+    fn capabilities(&self) -> serde_json::Value {
+        let mut capabilities = serde_json::json!({
+            "tools": { "listChanged": false },
+            "resources": { "subscribe": false, "listChanged": false },
+        });
+        if !self.prompts.is_empty() {
+            capabilities["prompts"] = serde_json::json!({ "listChanged": false });
+        }
+        capabilities
+    }
+
+    /// Build the `server/discover` response (modern revisions): supported
+    /// versions, capabilities, and identity, cacheable per the
+    /// `CacheableResult` interface.
+    pub fn discover_response(&self) -> serde_json::Value {
+        serde_json::json!({
+            "supportedVersions": SUPPORTED_PROTOCOL_VERSIONS,
+            "capabilities": self.capabilities(),
+            "_meta": {
+                META_SERVER_INFO: {
+                    "name": self.server_name,
+                    "version": self.server_version,
+                }
+            },
+            "ttlMs": 3_600_000,
+            "cacheScope": "private",
+        })
+    }
+
+    /// The two messages that answer a `subscriptions/listen` request: the
+    /// mandatory acknowledgment, then the graceful-closure result.
+    ///
+    /// This server advertises `listChanged: false` everywhere and never emits
+    /// change notifications, so the agreed notification subset is empty and
+    /// the subscription is closed immediately on the spec's graceful-closure
+    /// path (server-initiated end, signaled by the empty result).
+    pub fn subscription_ack_and_close(
+        &self,
+        id: &serde_json::Value,
+    ) -> (serde_json::Value, serde_json::Value) {
+        let subscription_tag = serde_json::json!({ META_SUBSCRIPTION_ID: id });
+        let ack = serde_json::json!({
+            "jsonrpc": "2.0",
+            "method": "notifications/subscriptions/acknowledged",
+            "params": {
+                "_meta": subscription_tag,
+                "notifications": {},
+            }
+        });
+        let mut close = serde_json::json!({ "_meta": subscription_tag });
+        shape_modern_result(LATEST_PROTOCOL_VERSION, "subscriptions/listen", &mut close);
+        (ack, close)
     }
 
     /// Build the `initialize` response, negotiating the protocol version against
@@ -362,16 +489,9 @@ impl McpServer {
     /// `tools` and `resources` are always present; `prompts` is included only
     /// when at least one prompt is registered.
     pub fn initialize_response(&self, requested_version: Option<&str>) -> serde_json::Value {
-        let mut capabilities = serde_json::json!({
-            "tools": { "listChanged": false },
-            "resources": { "subscribe": false, "listChanged": false },
-        });
-        if !self.prompts.is_empty() {
-            capabilities["prompts"] = serde_json::json!({ "listChanged": false });
-        }
         serde_json::json!({
             "protocolVersion": self.negotiate_protocol_version(requested_version),
-            "capabilities": capabilities,
+            "capabilities": self.capabilities(),
             "serverInfo": {
                 "name": self.server_name,
                 "version": self.server_version,
@@ -412,7 +532,9 @@ mod tests {
         let server = McpServer::new("my-server", "2.0.0");
         let resp = server.initialize_response(None);
         assert_eq!(resp["serverInfo"]["name"], "my-server");
-        assert_eq!(resp["protocolVersion"], LATEST_PROTOCOL_VERSION);
+        // The handshake path proposes the newest LEGACY version — a modern
+        // revision is meaningless to an initialize-speaking client.
+        assert_eq!(resp["protocolVersion"], LEGACY_LATEST_PROTOCOL_VERSION);
         // No prompts registered → no prompts capability advertised.
         assert!(resp["capabilities"].get("prompts").is_none());
     }
@@ -425,11 +547,57 @@ mod tests {
             server.initialize_response(Some("2024-11-05"))["protocolVersion"],
             "2024-11-05"
         );
-        // An unsupported version falls back to the server's latest.
+        // A modern revision is NOT negotiable over the handshake path —
+        // initialize selects legacy semantics, so it falls back.
+        assert_eq!(
+            server.initialize_response(Some("2026-07-28"))["protocolVersion"],
+            LEGACY_LATEST_PROTOCOL_VERSION
+        );
+        // An unknown version also falls back to the newest LEGACY version.
         assert_eq!(
             server.initialize_response(Some("1999-01-01"))["protocolVersion"],
-            LATEST_PROTOCOL_VERSION
+            LEGACY_LATEST_PROTOCOL_VERSION
         );
+    }
+
+    #[test]
+    fn discover_response_lists_versions_and_identity() {
+        let mut server = McpServer::new("my-server", "2.0.0");
+        server.register_prompt(PromptDescription {
+            name: "greet".into(),
+            description: None,
+            arguments: Vec::new(),
+        });
+        let resp = server.discover_response();
+        assert_eq!(
+            resp["supportedVersions"][0], LATEST_PROTOCOL_VERSION,
+            "newest first: {resp}"
+        );
+        assert!(resp["capabilities"]["prompts"].is_object());
+        assert_eq!(resp["_meta"][META_SERVER_INFO]["name"], "my-server");
+        assert!(resp["ttlMs"].is_u64(), "cacheable result: {resp}");
+        assert_eq!(resp["cacheScope"], "private");
+    }
+
+    #[test]
+    fn shape_modern_result_adds_required_fields() {
+        // Cacheable method → resultType + ttlMs + cacheScope.
+        let mut list = serde_json::json!({ "tools": [] });
+        shape_modern_result(LATEST_PROTOCOL_VERSION, "tools/list", &mut list);
+        assert_eq!(list["resultType"], "complete");
+        assert!(list["ttlMs"].is_u64());
+        assert_eq!(list["cacheScope"], "private");
+
+        // Non-cacheable method → resultType only.
+        let mut call = serde_json::json!({ "content": [], "isError": false });
+        shape_modern_result(LATEST_PROTOCOL_VERSION, "tools/call", &mut call);
+        assert_eq!(call["resultType"], "complete");
+        assert!(call.get("ttlMs").is_none());
+
+        // Legacy version → untouched.
+        let mut legacy = serde_json::json!({ "tools": [] });
+        shape_modern_result("2025-06-18", "tools/list", &mut legacy);
+        assert!(legacy.get("resultType").is_none());
     }
 
     #[test]
@@ -454,6 +622,7 @@ mod tests {
                 name: "name".into(),
                 description: None,
                 required: true,
+                arg_type: None,
             }],
         });
         server.set_prompt_handler("greet", |params| {
