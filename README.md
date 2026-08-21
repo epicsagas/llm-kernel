@@ -77,7 +77,9 @@ Each module is gated behind a feature flag so you only pay for what you use.
 | `federation` | Cross-engine federation — concurrent query over multiple `AsyncVectorIndex` backends with a per-backend timeout (RRF default) | |
 | `telemetry` | Enum-gated telemetry events, no PII | |
 | `safety` | Secret masking, error classification, output sanitization, prompt-injection detection | |
-| `eval` | Quality evaluation CLI — tokens, safety, embedding, search | |
+| `dlp` | Data-loss prevention — deterministic content scan (secrets, Korean PII, filesystem paths), provider data policy (`DataPolicy` on `ServiceDescriptor`) | |
+| `dlp-fingerprint` | DLP L2 — cosine fingerprint matching of registered sensitive documents over any `EmbeddingProvider` | |
+| `eval` | Quality evaluation CLI — tokens, safety, dlp, embedding, search | |
 | `eval-full` | All eval modules including graph | |
 | `catalog-sync` | Catalog sync CLI — refresh `catalog.json` from models.dev | |
 | `full` | All features | |
@@ -611,6 +613,7 @@ llm-kernel is a **lightweight foundation layer** — compose it with rig or lang
 - **`graph`** — SQLite knowledge graph with FTS5 search, composite scoring recall, BFS traversal, importance decay, and pure-Rust CSR graph algorithms (PageRank, connected components, label propagation, Dijkstra, Jaccard/Adamic-Adar similarity)
 - **`TelemetryEvent`** — enum-gated variants for structured observability (no PII)
 - **`safety`** — secret masking, error classification, bidi/ANSI/null sanitization, prompt-injection detection
+- **`dlp`** — data-loss prevention: `scan()` finds secrets/Korean PII/filesystem paths with byte spans and a `Sensitivity` grade; `DataPolicy` on `ServiceDescriptor` + `policy::lookup` resolve Allow/Redact/Warn/ReRoute/Block; `dlp-fingerprint` adds cosine matching of registered sensitive documents; `ContentClassifier` is the optional local-model seam
 - **`SearchProvider`** — unified sync interface for ranking backends; `KeywordIndex` reference impl plus RRF / weighted-sum / CombMNZ fusion
 - **`PromptTemplate`** — `{{variable}}` substitution with few-shot examples and serde round-trip
 - **`detect_injection`** — coarse prompt-injection risk scoring over weighted regex signals

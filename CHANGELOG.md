@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **dlp** (new feature): data-loss-prevention primitives for outbound LLM
+  traffic — L1 deterministic scan (`scan` → `ScanReport` with byte spans,
+  categories, severity, and a `Sensitivity` grade; secrets, Korean PII with
+  RRN checksum gating, filesystem paths), L2 fingerprint matching over any
+  kernel `EmbeddingProvider` (`dlp-fingerprint`, cosine against registered
+  sensitive documents), an L3 `ContentClassifier` trait (optional local
+  model seam), and `policy::lookup` resolving `DataPolicy` + `Sensitivity`
+  → `PolicyAction` (Allow/Redact/Warn/ReRoute/Block).
+- **provider**: `ServiceDescriptor` gains an optional `data_policy` field
+  (`Option<DataPolicy>` — `Sensitivity`, `PolicyAction`, `ImagePolicy`,
+  `PolicyThreshold` live in `provider::policy`). Absent in the shipped
+  catalog; `DataPolicy::default_for` supplies code-level defaults (local
+  providers permissive, cloud: Restricted → Block, Confidential → ReRoute
+  `"ollama"`, Internal → Warn). Additive — `ServiceDescriptor` is
+  `#[non_exhaustive]` with `Default`.
+- **eval**: new `dlp` eval module (category precision/recall/F1 +
+  sensitivity exact-match, dataset `eval/datasets/dlp.jsonl`); runs under
+  the existing `eval` feature and `all`.
+
 ## [0.28.1] - 2026-08-21
 
 ### Fixed

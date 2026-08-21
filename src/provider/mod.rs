@@ -17,6 +17,8 @@ pub mod capability;
 pub mod catalog;
 /// Provider-id mapping between the catalog and the models.dev upstream.
 pub mod mapping;
+/// Provider data policy (DLP vocabulary carried on `ServiceDescriptor`).
+pub mod policy;
 /// Catalog sync tooling — merge models.dev into the embedded catalog.
 #[cfg(feature = "catalog-sync")]
 pub mod sync;
@@ -27,3 +29,4 @@ pub use catalog::{
     ServiceDescriptor,
 };
 pub use mapping::{Mapping, resolve};
+pub use policy::{DataPolicy, ImagePolicy, PolicyAction, PolicyThreshold, Sensitivity};

@@ -45,6 +45,8 @@ enum Commands {
     Tokens,
     /// Safety masking completeness
     Safety,
+    /// DLP content-scan detection quality
+    Dlp,
     /// Embedding cosine similarity correctness
     Embedding,
     /// Prompt-injection detection accuracy
@@ -333,6 +335,128 @@ mod eval_safety {
         }
 
         (tp, fp, fn_)
+    }
+}
+
+// ── DLP eval ─────────────────────────────────────────────────────────────────
+
+mod eval_dlp {
+    use super::*;
+
+    #[derive(serde::Deserialize)]
+    struct Entry {
+        input: String,
+        expected_categories: Vec<String>,
+        expected_sensitivity: String,
+    }
+
+    pub fn run(datasets_dir: &Path) -> EvalReport {
+        let path = datasets_dir.join("dlp.jsonl");
+        let entries: Vec<Entry> = match load_jsonl(&path) {
+            Ok(e) => e,
+            Err(e) => {
+                return EvalReport {
+                    module: "dlp".into(),
+                    metrics: serde_json::json!({"error": format!("Failed to load {}: {e}", path.display())}),
+                    passed: false,
+                };
+            }
+        };
+
+        if entries.is_empty() {
+            return EvalReport {
+                module: "dlp".into(),
+                metrics: serde_json::json!({"error": "empty dataset"}),
+                passed: false,
+            };
+        }
+
+        // Micro-averaged per-category precision/recall over entry-level
+        // category sets, plus sensitivity exact-match rate.
+        let mut tp = 0usize;
+        let mut fp = 0usize;
+        let mut fn_ = 0usize;
+        let mut sensitivity_match = 0usize;
+
+        for entry in &entries {
+            let report = llm_kernel::dlp::scan(&entry.input);
+            let actual: Vec<String> = category_labels(&report);
+            let expected = &entry.expected_categories;
+
+            for c in &actual {
+                if expected.contains(c) {
+                    tp += 1;
+                } else {
+                    fp += 1;
+                }
+            }
+            for c in expected {
+                if !actual.contains(c) {
+                    fn_ += 1;
+                }
+            }
+            if sensitivity_label(report.sensitivity) == entry.expected_sensitivity {
+                sensitivity_match += 1;
+            }
+        }
+
+        let n = entries.len();
+        let precision = if tp + fp > 0 {
+            tp as f64 / (tp + fp) as f64
+        } else {
+            1.0
+        };
+        let recall = if tp + fn_ > 0 {
+            tp as f64 / (tp + fn_) as f64
+        } else {
+            1.0
+        };
+        let f1 = if precision + recall > 0.0 {
+            2.0 * precision * recall / (precision + recall)
+        } else {
+            0.0
+        };
+        let sensitivity_rate = sensitivity_match as f64 / n as f64;
+
+        EvalReport {
+            module: "dlp".into(),
+            metrics: serde_json::json!({
+                "entries": n,
+                "category_precision": precision,
+                "category_recall": recall,
+                "category_f1": f1,
+                "sensitivity_exact_match_rate": sensitivity_rate,
+            }),
+            passed: f1 >= 0.90 && sensitivity_rate >= 0.90,
+        }
+    }
+
+    fn category_labels(report: &llm_kernel::dlp::ScanReport) -> Vec<String> {
+        let mut labels: Vec<String> = report
+            .findings
+            .iter()
+            .map(|f| match f.category {
+                llm_kernel::dlp::FindingCategory::Secret => "secret",
+                llm_kernel::dlp::FindingCategory::KoreanPii => "korean_pii",
+                llm_kernel::dlp::FindingCategory::FileSystemPath => "file_system_path",
+                _ => "other",
+            })
+            .map(str::to_string)
+            .collect();
+        labels.sort();
+        labels.dedup();
+        labels
+    }
+
+    fn sensitivity_label(s: llm_kernel::dlp::Sensitivity) -> &'static str {
+        use llm_kernel::dlp::Sensitivity;
+        match s {
+            Sensitivity::Public => "public",
+            Sensitivity::Internal => "internal",
+            Sensitivity::Confidential => "confidential",
+            Sensitivity::Restricted => "restricted",
+            _ => "other",
+        }
     }
 }
 
@@ -1158,6 +1282,9 @@ fn main() {
     }
     if should_run(&Commands::Safety) {
         reports.push(eval_safety::run(&cli.datasets_dir));
+    }
+    if should_run(&Commands::Dlp) {
+        reports.push(eval_dlp::run(&cli.datasets_dir));
     }
     if should_run(&Commands::Embedding) {
         reports.push(eval_embedding::run());

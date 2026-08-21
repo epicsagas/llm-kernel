@@ -123,6 +123,7 @@ mod tests {
             npm_package: None,
             doc_url: None,
             models: vec![],
+            data_policy: None,
         }
     }
 

@@ -77,6 +77,14 @@ pub use crate::safety::{
     FailureCategory, classify_failure, mask_secrets, sanitize_output, strip_ansi,
 };
 
+// --- DLP ---
+
+#[cfg(feature = "dlp")]
+pub use crate::dlp::{
+    DataPolicy, Finding, FindingCategory, PolicyAction, ScanReport, Sensitivity, Severity, Span,
+    lookup, scan,
+};
+
 // --- Discovery ---
 
 #[cfg(feature = "discovery")]

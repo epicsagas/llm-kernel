@@ -22,6 +22,7 @@
 //! | `embedding`   | [`embedding`] | Embedding provider trait + cosine similarity |
 //! | `telemetry`   | [`telemetry`] | Telemetry framework — enum-gated events, no PII |
 //! | `safety`      | [`safety`]    | Secret masking, error classification, output sanitization |
+//! | `dlp`         | [`dlp`]       | Data-loss prevention — content scan, provider data policy |
 //!
 //! ## Quick start
 //!
@@ -122,6 +123,9 @@ pub mod telemetry;
 
 #[cfg(feature = "safety")]
 pub mod safety;
+
+#[cfg(feature = "dlp")]
+pub mod dlp;
 
 pub mod prelude;
 

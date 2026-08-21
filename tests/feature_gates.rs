@@ -96,3 +96,21 @@ fn test_embedding_mlx_feature() {
     fn _assert_impl<T: EmbeddingProvider>() {}
     _assert_impl::<MlxEmbeddingProvider>();
 }
+
+/// DLP content scan finds a credential and a path without any other feature.
+#[cfg(feature = "dlp")]
+#[test]
+fn test_dlp_feature() {
+    let report = llm_kernel::dlp::scan("export AWS_KEY=AKIAIOSFODNN7EXAMPLE and ~/notes.md");
+    assert!(!report.findings.is_empty());
+    assert_eq!(report.sensitivity, llm_kernel::dlp::Sensitivity::Restricted);
+}
+
+/// Compile-time check that `FingerprintIndex` is usable without a live model.
+#[cfg(feature = "dlp-fingerprint")]
+#[test]
+fn test_dlp_fingerprint_feature() {
+    use llm_kernel::dlp::fingerprint::FingerprintIndex;
+    fn _assert_impl<T: Send + Sync>() {}
+    _assert_impl::<FingerprintIndex>();
+}

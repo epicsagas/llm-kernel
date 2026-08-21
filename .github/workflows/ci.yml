@@ -63,6 +63,8 @@ jobs:
           - "--no-default-features --features mcp-http"
           - "--no-default-features --features tokens"
           - "--no-default-features --features safety"
+          - "--no-default-features --features dlp"
+          - "--no-default-features --features dlp-fingerprint"
           - "--no-default-features --features telemetry"
           - "--no-default-features --features search"
           - "--no-default-features --features federation"

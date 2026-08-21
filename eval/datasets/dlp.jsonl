@@ -1,0 +1,33 @@
+{"input":"Authorization: Bearer abcdefghijklmnopqrstuvwxyz012345","expected_categories":["secret"],"expected_sensitivity":"restricted"}
+{"input":"Authorization: Bearer short","expected_categories":[],"expected_sensitivity":"public"}
+{"input":"db_password=supersecret123","expected_categories":["secret"],"expected_sensitivity":"confidential"}
+{"input":"key=mode","expected_categories":[],"expected_sensitivity":"public"}
+{"input":"-----BEGIN OPENSSH PRIVATE KEY-----","expected_categories":["secret"],"expected_sensitivity":"restricted"}
+{"input":"export AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE","expected_categories":["secret"],"expected_sensitivity":"restricted"}
+{"input":"ASIAIOSFODNN7EXAMPLE","expected_categories":["secret"],"expected_sensitivity":"restricted"}
+{"input":"AKIAIOSFODNN7EXAMPL","expected_categories":[],"expected_sensitivity":"public"}
+{"input":"aws_secret_access_key=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY","expected_categories":["secret"],"expected_sensitivity":"restricted"}
+{"input":"ghp_0123456789abcdefghijklmnopqrstuvwxyzAB","expected_categories":["secret"],"expected_sensitivity":"restricted"}
+{"input":"ghp_tooshort","expected_categories":[],"expected_sensitivity":"public"}
+{"input":"sk-proj-abc123def456ghi789jkl","expected_categories":["secret"],"expected_sensitivity":"restricted"}
+{"input":"figd_0123456789abcdefghijklmnop","expected_categories":["secret"],"expected_sensitivity":"restricted"}
+{"input":"xoxb-1234567890abcdefGHIJK","expected_categories":["secret"],"expected_sensitivity":"restricted"}
+{"input":"postgres://admin:hunter2@db.internal/prod","expected_categories":["secret"],"expected_sensitivity":"restricted"}
+{"input":"redis://svc:pass1234@cache.internal:6379","expected_categories":["secret"],"expected_sensitivity":"restricted"}
+{"input":"postgres://db.internal/prod","expected_categories":[],"expected_sensitivity":"public"}
+{"input":"주민등록번호 900101-1234568 확인 부탁드립니다","expected_categories":["korean_pii"],"expected_sensitivity":"restricted"}
+{"input":"주문번호 900101-1234567 입니다","expected_categories":[],"expected_sensitivity":"public"}
+{"input":"계좌 번호: 123-456-789012","expected_categories":["korean_pii"],"expected_sensitivity":"confidential"}
+{"input":"account number 301-0123-4567","expected_categories":["korean_pii"],"expected_sensitivity":"confidential"}
+{"input":"연락처는 010-1234-5678 입니다","expected_categories":["korean_pii"],"expected_sensitivity":"internal"}
+{"input":"fax 011-123-4567","expected_categories":["korean_pii"],"expected_sensitivity":"internal"}
+{"input":"01012345678","expected_categories":[],"expected_sensitivity":"public"}
+{"input":"log at /Users/hackme/secret.env line 3","expected_categories":["file_system_path"],"expected_sensitivity":"internal"}
+{"input":"/home/ubuntu/deploy.conf","expected_categories":["file_system_path"],"expected_sensitivity":"internal"}
+{"input":"C:\\Users\\kim\\tax_2025.pdf","expected_categories":["file_system_path"],"expected_sensitivity":"internal"}
+{"input":"check ~/Documents/bank.xlsx please","expected_categories":["file_system_path"],"expected_sensitivity":"internal"}
+{"input":"주민번호 900101-1234568 와 연락처 010-1111-2222 모두 수정해주세요","expected_categories":["korean_pii"],"expected_sensitivity":"restricted"}
+{"input":"오늘 날씨가 좋네요. 산책 갈까요?","expected_categories":[],"expected_sensitivity":"public"}
+{"input":"Explain the CAP theorem in simple terms.","expected_categories":[],"expected_sensitivity":"public"}
+{"input":"sk-ant-api03-0123456789abcdefGHIJKL","expected_categories":["secret"],"expected_sensitivity":"restricted"}
+{"input":"{\"api_key\": \"abc123def456ghi789\"}","expected_categories":["secret"],"expected_sensitivity":"confidential"}

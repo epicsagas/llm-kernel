@@ -165,6 +165,10 @@ pub struct ServiceDescriptor {
     /// Full list of models offered by this provider.
     #[serde(default)]
     pub models: Vec<ModelDescriptor>,
+    /// Data-loss-prevention policy for this provider. Absent in the shipped
+    /// catalog — `DataPolicy::default_for` supplies code-level defaults.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub data_policy: Option<crate::provider::policy::DataPolicy>,
 }
 
 /// Legacy model choice (claudy-specific: id + description).
@@ -276,6 +280,7 @@ impl ProviderIndex {
                         npm_package: None,
                         doc_url: None,
                         models: vec![],
+                        data_policy: None,
                     });
                     synth.models.push(model);
                 }
@@ -516,6 +521,7 @@ mod tests {
                 npm_package: None,
                 doc_url: None,
                 models: vec![],
+                data_policy: None,
             },
             ServiceDescriptor {
                 id: "p2".to_string(),

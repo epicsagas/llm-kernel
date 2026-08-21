@@ -312,6 +312,7 @@ mod tests {
             api_base_url: Some("https://existing.example/v1".to_string()),
             npm_package: None,
             doc_url: None,
+            data_policy: None,
             models: vec![ModelDescriptor {
                 id: "glm-5".to_string(),
                 name: "GLM-5 (stale)".to_string(),
