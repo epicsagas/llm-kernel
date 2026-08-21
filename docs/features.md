@@ -23,9 +23,11 @@ platform constraints per feature — v1.0.0 ROADMAP #6.
 ### Core / domain (no heavy deps)
 | Feature | What it enables |
 |---|---|
-| `provider` *(default)* | Model/provider catalog (`catalog.json`), capability profiles, models.dev mapping |
+| `provider` *(default)* | Model/provider catalog (`catalog.json`), capability profiles, models.dev mapping, data-policy vocabulary (`DataPolicy` on `ServiceDescriptor`) |
 | `tokens` | Unicode-aware token estimation, `TokenBudget`, sentence-aware chunking |
 | `safety` | Secret masking (`mask_secrets`), output sanitisation (Bidi/unicode attacks), prompt-injection detection. Owns the `regex` dep. |
+| `dlp` | Data-loss prevention — L1 content scan (`scan` → byte spans, categories, severity, `Sensitivity` grade; secrets, Korean PII with RRN checksum gating, filesystem paths), L3 `ContentClassifier` trait, `policy::lookup` (`DataPolicy` + `Sensitivity` → Allow/Redact/Warn/ReRoute/Block). `redact_spans` never consume JSON structure characters, so span-based redaction keeps bodies parseable. Shares the `regex` dep with `safety`. |
+| `dlp-fingerprint` | DLP L2 — cosine fingerprint matching of registered sensitive documents over any `EmbeddingProvider` (linear scan; `dlp-fingerprint = ["dlp", "embedding"]`). |
 | `secrets` | `.env` vault with atomic write + `0o600` |
 | `store` | SQLite init helpers + `KvStore` trait |
 | `config` | TOML config loader |
@@ -75,7 +77,7 @@ platform constraints per feature — v1.0.0 ROADMAP #6.
 |---|---|
 | `install` | AI-tool config wizard |
 | `catalog-sync` | `llm-kernel-sync-catalog` binary (refresh catalog from models.dev) |
-| `eval` / `eval-full` | `llm-kernel-eval` binary (quality regression). `eval-full` adds `graph` + `graph-cjk`. |
+| `eval` / `eval-full` | `llm-kernel-eval` binary (quality regression). `eval-full` adds `graph` + `graph-cjk` + `dlp` (the `dlp` eval module reports detection F1 plus a benign-corpus false-positive rate that must stay 0). |
 | `full` | Everything except the Windows-only and dev-only features below |
 
 ### Intentionally excluded from `full`

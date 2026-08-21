@@ -80,6 +80,8 @@ Jedes Modul wird durch ein Feature-Flag gesteuert, sodass Sie nur bezahlen, was 
 | `federation` | Übergreifende Föderation — gleichzeitige Abfrage mehrerer `AsyncVectorIndex`-Backends mit pro-Backend-Timeout (RRF-Standard) | |
 | `telemetry` | Enum-gesteuerte Telemetrie-Ereignisse, keine PII | |
 | `safety` | Geheimnismaskierung, Fehlerklassifizierung, Ausgabebereinigung, Prompt-Injection-Erkennung | |
+| `dlp` | Data-Loss-Prevention — deterministischer Inhalts-Scan (Secrets, koreanische PII, Dateipfade), Provider-Datenschutzrichtlinie | |
+| `dlp-fingerprint` | DLP L2 — Kosinus-Fingerprint-Abgleich registrierter sensibler Dokumente über jeden `EmbeddingProvider` | |
 | `eval` | Qualitätsbewertungs-CLI — Tokens, Sicherheit, Embedding, Suche | |
 | `eval-full` | Alle Evaluationsmodule einschließlich Graph | |
 | `catalog-sync` | Katalog-Sync-CLI — `catalog.json` von models.dev auffrischen | |
@@ -575,6 +577,7 @@ llm-kernel ist eine **leichtgewichtige Grundlagenschicht** — kombinieren Sie e
 - **`graph`** — SQLite-Wissensgraph mit FTS5-Suche, zusammengesetzter Bewertungs-Recall, BFS-Traversierung, Wichtigkeitsverfall
 - **`TelemetryEvent`** — Enum-gesteuerte Varianten für strukturierte Observabilität (keine PII)
 - **`safety`** — Geheimnismaskierung, Fehlerklassifizierung, bidi/ANSI/null-Bereinigung
+- **`dlp`** — Data-Loss-Prevention: `scan()` findet Secrets/koreanische PII/Dateipfade mit Byte-Spans und `Sensitivity`-Grad; `DataPolicy` auf `ServiceDescriptor` + `policy::lookup` → Allow/Redact/Warn/ReRoute/Block; `dlp-fingerprint` ergänzt Kosinus-Matching; `ContentClassifier` als optionales Local-Model-Seam
 
 ## Qualitätsbewertung
 
@@ -598,6 +601,7 @@ cargo run --bin llm-kernel-eval --features eval -- --format json all
 |-------|----------|
 | tokens | MAE, max_error, %±3, %±10%, Aufschlüsselung nach Kategorie |
 | safety | exact_match_rate, precision, recall, F1, missed_secrets |
+| dlp | Kategorie Precision/Recall/F1, Sensitivity-Genauigkeit, False-Positive-Rate auf Benign-Korpus (nur eval-full) |
 | embedding | identity_accuracy, orthogonality, symmetry, bounds |
 | search | precision@5, recall@5, MRR |
 | graph | precision, recall, F1 nach Abfragetyp |

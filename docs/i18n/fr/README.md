@@ -80,6 +80,8 @@ Chaque module est derriere un indicateur de fonctionnalite afin que vous ne payi
 | `federation` | Fédération multi-moteurs — requête concurrente sur plusieurs backends `AsyncVectorIndex` avec délai par backend (RRF par défaut) | |
 | `telemetry` | Evenements de telemetrie gates par enum, sans PII | |
 | `safety` | Masquage de secrets, classification d'erreurs, nettoyage de sorties, détection d'injection de prompt | |
+| `dlp` | Prévention des fuites de données — analyse déterministe du contenu (secrets, PII coréennes, chemins de fichiers), politique de données par fournisseur | |
+| `dlp-fingerprint` | DLP L2 — correspondance d'empreintes par cosinus de documents sensibles enregistrés, via n'importe quel `EmbeddingProvider` | |
 | `eval` | CLI d'evaluation de qualite -- tokens, securite, embedding, recherche | |
 | `eval-full` | Tous les modules d'evaluation, y compris le graphe | |
 | `catalog-sync` | CLI de synchronisation du catalogue — rafraichit `catalog.json` depuis models.dev | |
@@ -576,6 +578,7 @@ llm-kernel est une **couche fondatrice legere** -- composez-le avec rig ou langc
 - **`graph`** -- graphe de connaissances SQLite avec recherche FTS5, rappel a score composite, parcours BFS et decroissance d'importance
 - **`TelemetryEvent`** -- variantes gates par enum pour l'observabilite structuree (sans PII)
 - **`safety`** -- masquage de secrets, classification d'erreurs, nettoyage bidi/ANSI/null
+- **`dlp`** — prévention des fuites de données : `scan()` détecte secrets/PII coréennes/chemins avec spans d'octets et niveau de `Sensitivity` ; `DataPolicy` sur `ServiceDescriptor` + `policy::lookup` renvoie Allow/Redact/Warn/ReRoute/Block ; `dlp-fingerprint` ajoute la correspondance par cosinus ; `ContentClassifier` est l'interface optionnelle pour modèle local
 
 ## Evaluation de qualite
 
@@ -599,6 +602,7 @@ cargo run --bin llm-kernel-eval --features eval -- --format json all
 |--------|-----------|
 | tokens | MAE, max_error, %±3, %±10%, ventilation par categorie |
 | safety | exact_match_rate, precision, recall, F1, missed_secrets |
+| dlp | précision/rappel/F1 par catégorie, exactitude de sensibilité, taux de faux positifs sur corpus bénin (eval-full uniquement) |
 | embedding | identity_accuracy, orthogonality, symmetry, bounds |
 | search | precision@5, recall@5, MRR |
 | graph | precision, recall, F1 par type de requete |

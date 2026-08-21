@@ -80,6 +80,8 @@ Cada módulo é controlado por uma feature flag para que você só pague pelo qu
 | `federation` | Federação entre motores — consulta simultânea em vários backends `AsyncVectorIndex` com tempo limite por backend (RRF padrão) | |
 | `telemetry` | Eventos de telemetria com gate por enum, sem PII | |
 | `safety` | Mascaramento de segredos, classificação de erros, sanitização de saída, detecção de prompt-injection | |
+| `dlp` | Prevenção de perda de dados — varredura determinística de conteúdo (segredos, PII coreana, caminhos de arquivos), política de dados por provedor | |
+| `dlp-fingerprint` | DLP L2 — correspondência de impressões por cosseno de documentos sensíveis registrados sobre qualquer `EmbeddingProvider` | |
 | `eval` | CLI de avaliação de qualidade — tokens, segurança, embedding, busca | |
 | `eval-full` | Todos os módulos de avaliação, incluindo grafo | |
 | `catalog-sync` | CLI de sincronização do catálogo — atualiza `catalog.json` a partir do models.dev | |
@@ -575,6 +577,7 @@ llm-kernel é uma **camada fundamental leve** — combine com rig ou langchain-r
 - **`graph`** — grafo de conhecimento SQLite com busca FTS5, recall por scoring composto, travessia BFS, decaimento de importância
 - **`TelemetryEvent`** — variantes com gate por enum para observabilidade estruturada (sem PII)
 - **`safety`** — mascaramento de segredos, classificação de erros, sanitização bidi/ANSI/null
+- **`dlp`** — prevenção de perda de dados: `scan()` encontra segredos/PII coreana/caminhos com spans de bytes e grau de `Sensitivity`; `DataPolicy` em `ServiceDescriptor` + `policy::lookup` resolve Allow/Redact/Warn/ReRoute/Block; `dlp-fingerprint` adiciona correspondência por cosseno; `ContentClassifier` é a interface opcional para modelos locais
 
 ## Avaliação de qualidade
 
@@ -598,6 +601,7 @@ cargo run --bin llm-kernel-eval --features eval -- --format json all
 |--------|----------|
 | tokens | MAE, max_error, %±3, %±10%, detalhamento por categoria |
 | safety | exact_match_rate, precision, recall, F1, missed_secrets |
+| dlp | precisão/revocação/F1 por categoria, exatidão de sensibilidade, taxa de falsos positivos em corpus benigno (apenas eval-full) |
 | embedding | identity_accuracy, orthogonality, symmetry, bounds |
 | search | precision@5, recall@5, MRR |
 | graph | precision, recall, F1 por tipo de consulta |

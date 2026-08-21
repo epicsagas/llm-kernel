@@ -80,6 +80,8 @@ llm-kernel 为 Rust 中构建 LLM 驱动的工具、代理和服务器提供基�
 | `federation` | 跨引擎联邦 — 并发查询多个 `AsyncVectorIndex` 后端，带每后端超时（默认 RRF） | |
 | `telemetry` | 枚举门控遥测事件，不含 PII | |
 | `safety` | 密钥遮蔽、错误分类、输出净化、提示词注入检测 | |
+| `dlp` | 数据防泄漏 — 确定性内容扫描（密钥、韩国 PII、文件系统路径）、提供商数据策略 | |
+| `dlp-fingerprint` | DLP L2 — 对已注册敏感文档的余弦指纹匹配（任意 `EmbeddingProvider`） | |
 | `eval` | 质量评估 CLI — token、安全、嵌入、搜索 | |
 | `eval-full` | 包含图谱的全部评估模块 | |
 | `catalog-sync` | 目录同步 CLI — 从 models.dev 刷新 `catalog.json` | |
@@ -570,6 +572,7 @@ llm-kernel 是一个**轻量级基础层** — 当你需要链式调用、代理
 - **`graph`** — SQLite 知识图谱，包含 FTS5 搜索、复合评分召回、BFS 遍历、重要性衰减
 - **`TelemetryEvent`** — 枚举门控变体，用于结构化可观测性（不含 PII）
 - **`safety`** — 密钥遮蔽、错误分类、双向/ANSI/null 净化
+- **`dlp`** — 数据防泄漏： `scan()` 以字节跨度和 `Sensitivity` 等级检出密钥／韩国 PII／文件路径；`ServiceDescriptor` 上的 `DataPolicy` + `policy::lookup` 决定 Allow/Redact/Warn/ReRoute/Block；`dlp-fingerprint` 增加余弦匹配，`ContentClassifier` 是可选的本地模型接口
 
 ## 质量评估
 
@@ -593,6 +596,7 @@ cargo run --bin llm-kernel-eval --features eval -- --format json all
 |------|------|
 | tokens | MAE, max_error, %±3, %±10%, 按类别分析 |
 | safety | exact_match_rate, precision, recall, F1, missed_secrets |
+| dlp | 按类别的 precision/recall/F1、敏感度准确率、正常流量语料 false_positive_rate（仅 eval-full） |
 | embedding | identity_accuracy, orthogonality, symmetry, bounds |
 | search | precision@5, recall@5, MRR |
 | graph | precision, recall, F1（按查询类型） |

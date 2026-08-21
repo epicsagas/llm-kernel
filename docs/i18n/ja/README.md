@@ -80,6 +80,8 @@ llm-kernelは、RustでLLM搭載ツール、エージェント、サーバーを
 | `federation` | クロスエンジン連携 — 複数の `AsyncVectorIndex` バックエンドを同時クエリ、バックエンド別タイムアウト付き（デフォルト RRF） | |
 | `telemetry` | enumゲート方式のテレメトリイベント、PIIなし | |
 | `safety` | シークレットマスキング、エラー分類、出力サニタイズ、プロンプトインジェクション検出 | |
+| `dlp` | データ漏洩防止 — 決定論的コンテンツスキャン（シークレット、韓国PII、ファイルパス）、プロバイダーデータポリシー | |
+| `dlp-fingerprint` | DLP L2 — 登録済み機密文書のコサインフィンガープリント照合（任意の `EmbeddingProvider`） | |
 | `eval` | 品質評価CLI — トークン、セーフティ、エンベディング、検索 | |
 | `eval-full` | グラフを含む全評価モジュール | |
 | `catalog-sync` | カタログ同期CLI — models.dev から `catalog.json` を更新 | |
@@ -570,6 +572,7 @@ llm-kernelは**軽量な基盤レイヤー**です — チェーン、エージ�
 - **`graph`** — SQLiteナレッジグラフ、FTS5検索、複合スコアリングリコール、BFSトラバーサル、重要度減衰
 - **`TelemetryEvent`** — 構造化オブザーバビリティのためのenumゲートバリアント（PIIなし）
 - **`safety`** — シークレットマスキング、エラー分類、双方向/ANSI/nullサニタイズ
+- **`dlp`** — データ漏洩防止： `scan()` がシークレット／韓国PII／ファイルパスをバイトスパンと `Sensitivity` グレードで検出。`ServiceDescriptor` の `DataPolicy` + `policy::lookup` が Allow/Redact/Warn/ReRoute/Block を解決。`dlp-fingerprint` はコサイン照合を追加、`ContentClassifier` はローカルモデル用のオプションインターフェース
 
 ## 品質評価
 
@@ -593,6 +596,7 @@ cargo run --bin llm-kernel-eval --features eval -- --format json all
 |------|--------|
 | tokens | MAE, max_error, %±3, %±10%, カテゴリ別内訳 |
 | safety | exact_match_rate, precision, recall, F1, missed_secrets |
+| dlp | カテゴリ別 precision/recall/F1、感度一致率、良性コーパスの false_positive_rate（eval-full のみ） |
 | embedding | identity_accuracy, orthogonality, symmetry, bounds |
 | search | precision@5, recall@5, MRR |
 | graph | precision, recall, F1（クエリタイプ別） |

@@ -80,6 +80,8 @@ Ogni modulo è protetto da una flag di feature, così paghi solo per ciò che ut
 | `federation` | Federazione multi-motore — query simultanea su più backend `AsyncVectorIndex` con timeout per backend (RRF predefinito) | |
 | `telemetry` | Eventi di telemetria con gating enum, senza PII | |
 | `safety` | Mascheramento segreti, classificazione errori, sanificazione output, rilevamento di prompt-injection | |
+| `dlp` | Prevenzione della perdita di dati — scansione deterministica del contenuto (segreti, PII coreane, percorsi file), policy dei dati per provider | |
+| `dlp-fingerprint` | DLP L2 — corrispondenza di impronte coseno di documenti sensibili registrati su qualsiasi `EmbeddingProvider` | |
 | `eval` | CLI di valutazione qualità — token, sicurezza, embedding, ricerca | |
 | `eval-full` | Tutti i moduli di valutazione incluso il grafo | |
 | `catalog-sync` | CLI di sincronizzazione catalogo — aggiorna `catalog.json` da models.dev | |
@@ -573,6 +575,7 @@ llm-kernel è uno **strato fondamentale leggero** — componilo con rig o langch
 - **`graph`** — grafo di conoscenza SQLite con ricerca FTS5, richiamo con punteggio composito, attraversamento BFS, decadimento dell'importanza
 - **`TelemetryEvent`** — varianti con gating enum per osservabilità strutturata (senza PII)
 - **`safety`** — mascheramento segreti, classificazione errori, sanificazione bidi/ANSI/null
+- **`dlp`** — prevenzione della perdita di dati: `scan()` rileva segreti/PII coreane/percorsi con span di byte e grado di `Sensitivity`; `DataPolicy` su `ServiceDescriptor` + `policy::lookup` restituisce Allow/Redact/Warn/ReRoute/Block; `dlp-fingerprint` aggiunge la corrispondenza coseno; `ContentClassifier` è l'interfaccia opzionale per modelli locali
 
 ## Valutazione qualità
 
@@ -596,6 +599,7 @@ cargo run --bin llm-kernel-eval --features eval -- --format json all
 |--------|----------|
 | tokens | MAE, max_error, %±3, %±10%, analisi per categoria |
 | safety | exact_match_rate, precision, recall, F1, missed_secrets |
+| dlp | precision/recall/F1 per categoria, accuratezza della sensibilità, tasso di falsi positivi su corpus benigno (solo eval-full) |
 | embedding | identity_accuracy, orthogonality, symmetry, bounds |
 | search | precision@5, recall@5, MRR |
 | graph | precision, recall, F1 per tipo di query |

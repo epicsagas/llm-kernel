@@ -80,6 +80,8 @@ llm-kernel은 Rust로 LLM 기반 도구, 에이전트, 서버를 구축하기 �
 | `federation` | 크로스 엔진 연합 — 여러 `AsyncVectorIndex` 백엔드 동시 쿼리, 백엔드별 타임아웃(기본 RRF) | |
 | `telemetry` | enum 게이트 원격 측정 이벤트, PII 미포함 | |
 | `safety` | 비밀 마스킹, 오류 분류, 출력 새니타이제이션, 프롬프트 인젝션 탐지 | |
+| `dlp` | 데이터 유출 방지 — 결정론적 콘텐츠 스캔(시크릿, 한국 PII, 파일 시스템 경로), 프로바이더 데이터 정책 | |
+| `dlp-fingerprint` | DLP L2 — 등록된 민감 문서의 코사인 지문 매칭(임의의 `EmbeddingProvider`) | |
 | `eval` | 품질 평가 CLI — 토큰, 안전, 임베딩, 검색 | |
 | `eval-full` | 그래프 포함 전체 평가 모듈 | |
 | `catalog-sync` | 카탈로그 동기화 CLI — models.dev에서 `catalog.json` 갱신 | |
@@ -571,6 +573,7 @@ llm-kernel은 **경량 기반 계층**입니다 — 체인, 에이전트 또는 
 - **`graph`** — FTS5 검색, 복합 점수 리콜, BFS 순회, 중요도 감쇠를 갖춘 SQLite 지식 그래프
 - **`TelemetryEvent`** — 구조화된 관측 가능성을 위한 enum 게이트 변형 (PII 미포함)
 - **`safety`** — 비밀 마스킹, 오류 분류, 양방향/ANSI/null 새니타이제이션
+- **`dlp`** — 데이터 유출 방지: `scan()`이 시크릿/한국 PII/파일 경로를 바이트 스팬과 `Sensitivity` 등급으로 탐지. `ServiceDescriptor`의 `DataPolicy` + `policy::lookup`이 Allow/Redact/Warn/ReRoute/Block을 결정. `dlp-fingerprint`는 코사인 매칭 추가, `ContentClassifier`는 로컬 모델용 선택 인터페이스
 
 ## 품질 평가
 
@@ -594,6 +597,7 @@ cargo run --bin llm-kernel-eval --features eval -- --format json all
 |------|--------|
 | tokens | MAE, max_error, %±3, %±10%, 카테고리별 분석 |
 | safety | exact_match_rate, precision, recall, F1, missed_secrets |
+| dlp | 카테고리별 정밀도/재현율/F1, 민감도 정확도, 정상 트래픽 코퍼스 false_positive_rate (eval-full 전용) |
 | embedding | identity_accuracy, orthogonality, symmetry, bounds |
 | search | precision@5, recall@5, MRR |
 | graph | precision, recall, F1 (쿼리 유형별) |
