@@ -14,6 +14,7 @@
 | `cargo bench` | Run criterion benchmarks |
 | `cargo doc --features full --no-deps` | Build docs |
 | `cargo run --bin llm-kernel-eval --features eval -- all` | Quality eval (tokens, safety, injection, embedding, search) |
+| `cargo run --bin llm-kernel-eval --features eval-full -- dlp` | DLP scan eval (detection F1 + benign-corpus false-positive rate) |
 | `cargo run --bin llm-kernel-eval --features eval-full -- --baseline eval/baseline.json all` | Regression check vs baseline |
 | `cargo run --bin llm-kernel-sync-catalog --features catalog-sync -- --check` | Detect catalog drift vs models.dev (no write) |
 | `cargo run --bin llm-kernel-sync-catalog --features catalog-sync` | Refresh `catalog.json` from models.dev (atomic write) |
@@ -65,7 +66,7 @@ Live integration tests for all four gate on `LLMKERNEL_PG_URL` / `LLMKERNEL_QDRA
 - Every module has inline `#[cfg(test)] mod tests` — no separate test files except `tests/feature_gates.rs`
 - SQLite graph tests use `mem_db()` helper pattern (in-memory + `init_graph_schema`)
 - Errors: `KernelError` enum via thiserror, `Result<T>` alias
-- Eval features: `eval` (tokens+safety+injection+embedding+search), `eval-full` (eval+graph) — gated behind `clap` optional dep
+- Eval features: `eval` (tokens+safety+injection+embedding+search), `eval-full` (eval+graph+dlp) — gated behind `clap` optional dep
 - Feature gate: `default = ["provider"]`, `full` enables everything
 - Edition 2024, MSRV 1.92
 

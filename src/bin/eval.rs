@@ -45,7 +45,8 @@ enum Commands {
     Tokens,
     /// Safety masking completeness
     Safety,
-    /// DLP content-scan detection quality
+    /// DLP content-scan detection quality (feature `dlp`)
+    #[cfg(feature = "dlp")]
     Dlp,
     /// Embedding cosine similarity correctness
     Embedding,
@@ -340,6 +341,7 @@ mod eval_safety {
 
 // ── DLP eval ─────────────────────────────────────────────────────────────────
 
+#[cfg(feature = "dlp")]
 mod eval_dlp {
     use super::*;
 
@@ -348,6 +350,15 @@ mod eval_dlp {
         input: String,
         expected_categories: Vec<String>,
         expected_sensitivity: String,
+    }
+
+    /// Benign dev-traffic corpus — every entry must come back `Public`
+    /// with zero findings (false-positive visibility).
+    #[derive(serde::Deserialize)]
+    struct BenignEntry {
+        input: String,
+        #[allow(dead_code)]
+        note: String,
     }
 
     pub fn run(datasets_dir: &Path) -> EvalReport {
@@ -370,6 +381,23 @@ mod eval_dlp {
                 passed: false,
             };
         }
+
+        let benign: Vec<BenignEntry> =
+            load_jsonl(&datasets_dir.join("dlp_benign.jsonl")).unwrap_or_default();
+        let mut benign_flagged = 0usize;
+        for entry in &benign {
+            let report = llm_kernel::dlp::scan(&entry.input);
+            if !report.findings.is_empty()
+                || report.sensitivity != llm_kernel::dlp::Sensitivity::Public
+            {
+                benign_flagged += 1;
+            }
+        }
+        let fp_rate = if benign.is_empty() {
+            0.0
+        } else {
+            benign_flagged as f64 / benign.len() as f64
+        };
 
         // Micro-averaged per-category precision/recall over entry-level
         // category sets, plus sensitivity exact-match rate.
@@ -422,12 +450,14 @@ mod eval_dlp {
             module: "dlp".into(),
             metrics: serde_json::json!({
                 "entries": n,
+                "benign_entries": benign.len(),
+                "false_positive_rate": fp_rate,
                 "category_precision": precision,
                 "category_recall": recall,
                 "category_f1": f1,
                 "sensitivity_exact_match_rate": sensitivity_rate,
             }),
-            passed: f1 >= 0.90 && sensitivity_rate >= 0.90,
+            passed: f1 >= 0.90 && sensitivity_rate >= 0.90 && fp_rate == 0.0,
         }
     }
 
@@ -1283,6 +1313,7 @@ fn main() {
     if should_run(&Commands::Safety) {
         reports.push(eval_safety::run(&cli.datasets_dir));
     }
+    #[cfg(feature = "dlp")]
     if should_run(&Commands::Dlp) {
         reports.push(eval_dlp::run(&cli.datasets_dir));
     }

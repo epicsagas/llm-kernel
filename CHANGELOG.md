@@ -24,8 +24,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `"ollama"`, Internal → Warn). Additive — `ServiceDescriptor` is
   `#[non_exhaustive]` with `Default`.
 - **eval**: new `dlp` eval module (category precision/recall/F1 +
-  sensitivity exact-match, dataset `eval/datasets/dlp.jsonl`); runs under
-  the existing `eval` feature and `all`.
+  sensitivity exact-match on `eval/datasets/dlp.jsonl`, plus a
+  benign-corpus false-positive rate over `eval/datasets/dlp_benign.jsonl`
+  that must be 0 to pass). Gated behind feature `dlp` within the eval
+  binary — plain `eval` stays lean (no provider dependency);
+  `eval-full` includes it.
 
 ## [0.28.1] - 2026-08-21
 

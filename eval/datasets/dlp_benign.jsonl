@@ -1,0 +1,15 @@
+{"input":"use the api_key parameter to authenticate requests","note":"keyword without separator/value"}
+{"input":"let total = calculate(x, y); return total;","note":"plain code"}
+{"input":"{\"model\": \"gpt-4o-mini\", \"tokens\": 1024, \"temperature\": 0.7}","note":"JSON body without secrets"}
+{"input":"kubectl get pods -n production && kubectl logs -f deploy/api","note":"kubectl session"}
+{"input":"SELECT * FROM users WHERE id = 42 ORDER BY created_at DESC;","note":"SQL"}
+{"input":"docker run -p 8080:80 --name web nginx:alpine","note":"docker command"}
+{"input":"https://api.example.com/v1/models?limit=10","note":"URL without credentials"}
+{"input":"Authorization 헤더에 Bearer 토큰을 넣어야 합니다","note":"Korean explanation, no value"}
+{"input":"error[E0277]: the trait bound `Sized` is not satisfied","note":"rustc error"}
+{"input":"git commit -m 'fix: parse edge case in header folding'","note":"git command"}
+{"input":"버전 2.3.1에서 해당 버그가 수정되었습니다","note":"Korean release note"}
+{"input":"sk-로 시작하는 키를 환경변수에 설정하세요","note":"key prefix mention without material"}
+{"input":"export PATH=$PATH:/usr/local/bin","note":"PATH export, not a home path"}
+{"input":"{\"timeout\": 30, \"retries\": 3, \"debug\": false}","note":"config JSON"}
+{"input":"password 필드는 필수 입력입니다","note":"keyword mention without value"}

@@ -79,7 +79,7 @@ Each module is gated behind a feature flag so you only pay for what you use.
 | `safety` | Secret masking, error classification, output sanitization, prompt-injection detection | |
 | `dlp` | Data-loss prevention — deterministic content scan (secrets, Korean PII, filesystem paths), provider data policy (`DataPolicy` on `ServiceDescriptor`) | |
 | `dlp-fingerprint` | DLP L2 — cosine fingerprint matching of registered sensitive documents over any `EmbeddingProvider` | |
-| `eval` | Quality evaluation CLI — tokens, safety, dlp, embedding, search | |
+| `eval` | Quality evaluation CLI — tokens, safety, embedding, search | |
 | `eval-full` | All eval modules including graph | |
 | `catalog-sync` | Catalog sync CLI — refresh `catalog.json` from models.dev | |
 | `full` | All features | |
@@ -626,7 +626,7 @@ Built-in evaluation CLI measures module quality against curated test datasets:
 # Run all evaluations (tokens, safety, embedding, search)
 cargo run --bin llm-kernel-eval --features eval -- all
 
-# Include graph evaluation
+# Include graph + dlp evaluation
 cargo run --bin llm-kernel-eval --features eval-full -- all
 
 # Regression check against baseline snapshot (exit 1 on regression)
@@ -640,6 +640,7 @@ cargo run --bin llm-kernel-eval --features eval -- --format json all
 |--------|---------|
 | tokens | MAE, max_error, %±3, %±10%, by-category breakdown |
 | safety | exact_match_rate, precision, recall, F1, missed_secrets |
+| dlp | category precision/recall/F1, sensitivity exact-match, benign-corpus false_positive_rate (eval-full only) |
 | embedding | identity_accuracy, orthogonality, symmetry, bounds |
 | search | precision@5, recall@5, MRR |
 | graph | precision, recall, F1 by query type |

@@ -215,8 +215,8 @@ dlp = ["dep:regex", "provider"]
 dlp-fingerprint = ["dlp", "embedding"]
 
 # Quality evaluation CLI (datasets-based metrics)
-eval = ["dep:clap", "dep:anyhow", "tokens", "safety", "embedding", "search", "dlp"]
-eval-full = ["eval", "graph", "graph-cjk"]
+eval = ["dep:clap", "dep:anyhow", "tokens", "safety", "embedding", "search"]
+eval-full = ["eval", "graph", "graph-cjk", "dlp"]
 
 # Everything except Windows-only execution backends and dev-only CLI tooling.
 # Intentionally excluded:
