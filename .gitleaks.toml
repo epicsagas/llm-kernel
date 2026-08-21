@@ -1,0 +1,16 @@
+# Gitleaks allowlist — DLP detector test fixtures.
+#
+# src/dlp/ and eval/datasets/dlp*.jsonl exist to feed synthetic
+# secret-shaped strings (fake `ghp_…`, `"api_key": "…"`, …) to the scanner
+# on purpose. Every hit in these paths is a fixture by construction.
+# Keep the allowlist narrow: test/dataset files only, never source dirs
+# at large.
+[allowlist]
+description = "DLP detector test fixtures — synthetic secrets by design"
+paths = [
+  '''src/dlp/scan\.rs''',
+  '''src/bin/eval\.rs''',
+  '''tests/feature_gates\.rs''',
+  '''eval/datasets/dlp.*\.jsonl''',
+  '''eval/datasets/safety\.jsonl''',
+]
