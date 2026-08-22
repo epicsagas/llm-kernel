@@ -1777,6 +1777,210 @@
             "streaming": true
           },
           "knowledge": "2022-12"
+        },
+        {
+          "id": "gpt-5.6",
+          "name": "GPT-5.6",
+          "family": "gpt-sol",
+          "release_date": "2026-07-09",
+          "cost": {
+            "input": 5.0,
+            "output": 30.0,
+            "cache_read": 0.5,
+            "cache_write": 6.25
+          },
+          "limit": {
+            "context": 1050000,
+            "output": 128000
+          },
+          "modalities": {
+            "input": [
+              "text",
+              "image",
+              "pdf"
+            ],
+            "output": [
+              "text"
+            ]
+          },
+          "capabilities": {
+            "attachment": true,
+            "reasoning": true,
+            "temperature": false,
+            "tool_call": true,
+            "streaming": true
+          },
+          "knowledge": "2026-02-16"
+        },
+        {
+          "id": "gpt-5.6-luna",
+          "name": "GPT-5.6 Luna",
+          "family": "gpt-luna",
+          "release_date": "2026-07-09",
+          "cost": {
+            "input": 0.2,
+            "output": 1.2,
+            "cache_read": 0.02,
+            "cache_write": 0.25
+          },
+          "limit": {
+            "context": 1050000,
+            "output": 128000
+          },
+          "modalities": {
+            "input": [
+              "text",
+              "image",
+              "pdf"
+            ],
+            "output": [
+              "text"
+            ]
+          },
+          "capabilities": {
+            "attachment": true,
+            "reasoning": true,
+            "temperature": false,
+            "tool_call": true,
+            "streaming": true
+          },
+          "knowledge": "2026-02-16"
+        },
+        {
+          "id": "gpt-5.6-sol",
+          "name": "GPT-5.6 Sol",
+          "family": "gpt-sol",
+          "release_date": "2026-07-09",
+          "cost": {
+            "input": 5.0,
+            "output": 30.0,
+            "cache_read": 0.5,
+            "cache_write": 6.25
+          },
+          "limit": {
+            "context": 1050000,
+            "output": 128000
+          },
+          "modalities": {
+            "input": [
+              "text",
+              "image",
+              "pdf"
+            ],
+            "output": [
+              "text"
+            ]
+          },
+          "capabilities": {
+            "attachment": true,
+            "reasoning": true,
+            "temperature": false,
+            "tool_call": true,
+            "streaming": true
+          },
+          "knowledge": "2026-02-16"
+        },
+        {
+          "id": "gpt-5.6-terra",
+          "name": "GPT-5.6 Terra",
+          "family": "gpt-terra",
+          "release_date": "2026-07-09",
+          "cost": {
+            "input": 2.0,
+            "output": 12.0,
+            "cache_read": 0.2,
+            "cache_write": 2.5
+          },
+          "limit": {
+            "context": 1050000,
+            "output": 128000
+          },
+          "modalities": {
+            "input": [
+              "text",
+              "image",
+              "pdf"
+            ],
+            "output": [
+              "text"
+            ]
+          },
+          "capabilities": {
+            "attachment": true,
+            "reasoning": true,
+            "temperature": false,
+            "tool_call": true,
+            "streaming": true
+          },
+          "knowledge": "2026-02-16"
+        },
+        {
+          "id": "gpt-image-2",
+          "name": "gpt-image-2",
+          "family": "gpt-image",
+          "release_date": "2026-04-21",
+          "cost": {
+            "input": 5.0,
+            "output": 30.0,
+            "cache_read": 1.25,
+            "cache_write": null
+          },
+          "limit": {
+            "context": 0,
+            "output": 0
+          },
+          "modalities": {
+            "input": [
+              "text",
+              "image"
+            ],
+            "output": [
+              "image"
+            ]
+          },
+          "capabilities": {
+            "attachment": true,
+            "reasoning": false,
+            "temperature": false,
+            "tool_call": false,
+            "streaming": true
+          },
+          "knowledge": null
+        },
+        {
+          "id": "gpt-realtime-2.1",
+          "name": "GPT-Realtime-2.1",
+          "family": "gpt",
+          "release_date": "2026-07-06",
+          "cost": {
+            "input": 4.0,
+            "output": 24.0,
+            "cache_read": 0.4,
+            "cache_write": null
+          },
+          "limit": {
+            "context": 128000,
+            "output": 32000
+          },
+          "modalities": {
+            "input": [
+              "text",
+              "audio",
+              "image"
+            ],
+            "output": [
+              "text",
+              "audio"
+            ]
+          },
+          "capabilities": {
+            "attachment": true,
+            "reasoning": true,
+            "temperature": false,
+            "tool_call": true,
+            "streaming": true
+          },
+          "knowledge": "2024-09-30"
         }
       ]
     },
@@ -1802,7 +2006,7 @@
           "id": "gemini-2.5-pro",
           "name": "Gemini 2.5 Pro",
           "family": "gemini-pro",
-          "release_date": "2025-03-20",
+          "release_date": "2025-06-17",
           "cost": {
             "input": 1.25,
             "output": 10.0,
@@ -1838,7 +2042,7 @@
           "id": "gemini-2.5-flash",
           "name": "Gemini 2.5 Flash",
           "family": "gemini-flash",
-          "release_date": "2025-03-20",
+          "release_date": "2025-06-17",
           "cost": {
             "input": 0.3,
             "output": 2.5,
@@ -1974,7 +2178,7 @@
             "tool_call": false,
             "streaming": true
           },
-          "knowledge": "2025-06"
+          "knowledge": "2024-06"
         },
         {
           "id": "gemini-2.5-flash-lite",
@@ -2433,10 +2637,10 @@
           "id": "gemini-flash-latest",
           "name": "Gemini Flash Latest",
           "family": "gemini-flash",
-          "release_date": "2025-09-25",
+          "release_date": "2026-08-13",
           "cost": {
-            "input": 0.3,
-            "output": 2.5,
+            "input": 0.75,
+            "output": 3.75,
             "cache_read": 0.075,
             "cache_write": null
           },
@@ -2448,8 +2652,8 @@
             "input": [
               "text",
               "image",
-              "audio",
               "video",
+              "audio",
               "pdf"
             ],
             "output": [
@@ -2463,17 +2667,17 @@
             "tool_call": true,
             "streaming": true
           },
-          "knowledge": "2025-01"
+          "knowledge": "2026-03"
         },
         {
           "id": "gemini-flash-lite-latest",
           "name": "Gemini Flash-Lite Latest",
           "family": "gemini-flash-lite",
-          "release_date": "2025-09-25",
+          "release_date": "2026-07-21",
           "cost": {
-            "input": 0.1,
-            "output": 0.4,
-            "cache_read": 0.025,
+            "input": 0.3,
+            "output": 2.5,
+            "cache_read": 0.03,
             "cache_write": null
           },
           "limit": {
@@ -2484,8 +2688,8 @@
             "input": [
               "text",
               "image",
-              "audio",
               "video",
+              "audio",
               "pdf"
             ],
             "output": [
@@ -2499,7 +2703,7 @@
             "tool_call": true,
             "streaming": true
           },
-          "knowledge": "2025-01"
+          "knowledge": "2026-03"
         },
         {
           "id": "gemma-4-26b-a4b-it",
@@ -2614,6 +2818,684 @@
             "streaming": true
           },
           "knowledge": null
+        },
+        {
+          "id": "deep-research-max-preview-04-2026",
+          "name": "Deep Research Max Preview (Apr-21-2026)",
+          "family": "gemini-pro",
+          "release_date": "2026-04-21",
+          "cost": {
+            "input": 2.0,
+            "output": 12.0,
+            "cache_read": 0.2,
+            "cache_write": null
+          },
+          "limit": {
+            "context": 131072,
+            "output": 65536
+          },
+          "modalities": {
+            "input": [
+              "text",
+              "image",
+              "video",
+              "audio",
+              "pdf"
+            ],
+            "output": [
+              "text",
+              "image"
+            ]
+          },
+          "capabilities": {
+            "attachment": true,
+            "reasoning": true,
+            "temperature": true,
+            "tool_call": true,
+            "streaming": true
+          },
+          "knowledge": "2025-01"
+        },
+        {
+          "id": "deep-research-preview-04-2026",
+          "name": "Deep Research Preview (Apr-21-2026)",
+          "family": "gemini-pro",
+          "release_date": "2026-04-21",
+          "cost": {
+            "input": 2.0,
+            "output": 12.0,
+            "cache_read": 0.2,
+            "cache_write": null
+          },
+          "limit": {
+            "context": 131072,
+            "output": 65536
+          },
+          "modalities": {
+            "input": [
+              "text",
+              "image",
+              "video",
+              "audio",
+              "pdf"
+            ],
+            "output": [
+              "text",
+              "image"
+            ]
+          },
+          "capabilities": {
+            "attachment": true,
+            "reasoning": true,
+            "temperature": true,
+            "tool_call": true,
+            "streaming": true
+          },
+          "knowledge": "2025-01"
+        },
+        {
+          "id": "gemini-2.5-computer-use-preview-10-2025",
+          "name": "Gemini 2.5 Computer Use Preview 10-2025",
+          "family": "gemini-pro",
+          "release_date": "2025-10-07",
+          "cost": {
+            "input": 1.25,
+            "output": 10.0,
+            "cache_read": null,
+            "cache_write": null
+          },
+          "limit": {
+            "context": 131072,
+            "output": 65536
+          },
+          "modalities": {
+            "input": [
+              "text",
+              "image"
+            ],
+            "output": [
+              "text"
+            ]
+          },
+          "capabilities": {
+            "attachment": true,
+            "reasoning": true,
+            "temperature": true,
+            "tool_call": true,
+            "streaming": true
+          },
+          "knowledge": "2025-01"
+        },
+        {
+          "id": "gemini-3-pro-image",
+          "name": "Nano Banana Pro",
+          "family": "gemini-pro",
+          "release_date": "2026-05-28",
+          "cost": {
+            "input": 2.0,
+            "output": 120.0,
+            "cache_read": null,
+            "cache_write": null
+          },
+          "limit": {
+            "context": 131072,
+            "output": 32768
+          },
+          "modalities": {
+            "input": [
+              "text",
+              "image"
+            ],
+            "output": [
+              "text",
+              "image"
+            ]
+          },
+          "capabilities": {
+            "attachment": true,
+            "reasoning": true,
+            "temperature": true,
+            "tool_call": false,
+            "streaming": true
+          },
+          "knowledge": "2025-01"
+        },
+        {
+          "id": "gemini-3.1-flash-image",
+          "name": "Nano Banana 2",
+          "family": "gemini-flash",
+          "release_date": "2026-05-28",
+          "cost": {
+            "input": 0.5,
+            "output": 60.0,
+            "cache_read": null,
+            "cache_write": null
+          },
+          "limit": {
+            "context": 65536,
+            "output": 65536
+          },
+          "modalities": {
+            "input": [
+              "text",
+              "image",
+              "video",
+              "pdf"
+            ],
+            "output": [
+              "text",
+              "image"
+            ]
+          },
+          "capabilities": {
+            "attachment": true,
+            "reasoning": true,
+            "temperature": true,
+            "tool_call": false,
+            "streaming": true
+          },
+          "knowledge": "2025-01"
+        },
+        {
+          "id": "gemini-3.1-flash-lite-image",
+          "name": "Nano Banana 2 Lite",
+          "family": "gemini-flash-lite",
+          "release_date": "2026-06-30",
+          "cost": {
+            "input": 0.25,
+            "output": 30.0,
+            "cache_read": null,
+            "cache_write": null
+          },
+          "limit": {
+            "context": 65536,
+            "output": 65536
+          },
+          "modalities": {
+            "input": [
+              "text",
+              "image"
+            ],
+            "output": [
+              "text",
+              "image"
+            ]
+          },
+          "capabilities": {
+            "attachment": true,
+            "reasoning": true,
+            "temperature": true,
+            "tool_call": true,
+            "streaming": true
+          },
+          "knowledge": "2025-01"
+        },
+        {
+          "id": "gemini-3.1-flash-live-preview",
+          "name": "Gemini 3.1 Flash Live Preview",
+          "family": "gemini-flash",
+          "release_date": "2026-03-26",
+          "cost": {
+            "input": 0.75,
+            "output": 4.5,
+            "cache_read": null,
+            "cache_write": null
+          },
+          "limit": {
+            "context": 131072,
+            "output": 65536
+          },
+          "modalities": {
+            "input": [
+              "text",
+              "image",
+              "video",
+              "audio"
+            ],
+            "output": [
+              "text",
+              "audio"
+            ]
+          },
+          "capabilities": {
+            "attachment": true,
+            "reasoning": true,
+            "temperature": true,
+            "tool_call": true,
+            "streaming": true
+          },
+          "knowledge": "2025-01"
+        },
+        {
+          "id": "gemini-3.1-flash-tts-preview",
+          "name": "Gemini 3.1 Flash TTS Preview",
+          "family": "gemini-flash",
+          "release_date": "2026-04-15",
+          "cost": {
+            "input": 1.0,
+            "output": 20.0,
+            "cache_read": null,
+            "cache_write": null
+          },
+          "limit": {
+            "context": 8192,
+            "output": 16384
+          },
+          "modalities": {
+            "input": [
+              "text"
+            ],
+            "output": [
+              "audio"
+            ]
+          },
+          "capabilities": {
+            "attachment": false,
+            "reasoning": true,
+            "temperature": true,
+            "tool_call": false,
+            "streaming": true
+          },
+          "knowledge": "2025-01"
+        },
+        {
+          "id": "gemini-3.5-flash-lite",
+          "name": "Gemini 3.5 Flash Lite",
+          "family": "gemini-flash-lite",
+          "release_date": "2026-07-21",
+          "cost": {
+            "input": 0.3,
+            "output": 2.5,
+            "cache_read": 0.03,
+            "cache_write": null
+          },
+          "limit": {
+            "context": 1048576,
+            "output": 65536
+          },
+          "modalities": {
+            "input": [
+              "text",
+              "image",
+              "video",
+              "audio",
+              "pdf"
+            ],
+            "output": [
+              "text"
+            ]
+          },
+          "capabilities": {
+            "attachment": true,
+            "reasoning": true,
+            "temperature": true,
+            "tool_call": true,
+            "streaming": true
+          },
+          "knowledge": "2026-03"
+        },
+        {
+          "id": "gemini-3.5-live-translate-preview",
+          "name": "Gemini 3.5 Live Translate Preview",
+          "family": "gemini-pro",
+          "release_date": "2026-06-09",
+          "cost": {
+            "input": 3.5,
+            "output": 21.0,
+            "cache_read": null,
+            "cache_write": null
+          },
+          "limit": {
+            "context": 16384,
+            "output": 32768
+          },
+          "modalities": {
+            "input": [
+              "audio"
+            ],
+            "output": [
+              "audio",
+              "text"
+            ]
+          },
+          "capabilities": {
+            "attachment": false,
+            "reasoning": false,
+            "temperature": true,
+            "tool_call": false,
+            "streaming": true
+          },
+          "knowledge": "2025-01"
+        },
+        {
+          "id": "gemini-3.6-flash",
+          "name": "Gemini 3.6 Flash",
+          "family": "gemini-flash",
+          "release_date": "2026-07-21",
+          "cost": {
+            "input": 0.75,
+            "output": 3.75,
+            "cache_read": 0.075,
+            "cache_write": null
+          },
+          "limit": {
+            "context": 1048576,
+            "output": 65536
+          },
+          "modalities": {
+            "input": [
+              "text",
+              "image",
+              "video",
+              "audio",
+              "pdf"
+            ],
+            "output": [
+              "text"
+            ]
+          },
+          "capabilities": {
+            "attachment": true,
+            "reasoning": true,
+            "temperature": true,
+            "tool_call": true,
+            "streaming": true
+          },
+          "knowledge": "2026-03"
+        },
+        {
+          "id": "gemini-3.7-flash",
+          "name": "Gemini 3.7 Flash",
+          "family": "gemini-flash",
+          "release_date": "2026-08-13",
+          "cost": {
+            "input": 0.75,
+            "output": 3.75,
+            "cache_read": 0.075,
+            "cache_write": null
+          },
+          "limit": {
+            "context": 1048576,
+            "output": 65536
+          },
+          "modalities": {
+            "input": [
+              "text",
+              "image",
+              "video",
+              "audio",
+              "pdf"
+            ],
+            "output": [
+              "text"
+            ]
+          },
+          "capabilities": {
+            "attachment": true,
+            "reasoning": true,
+            "temperature": true,
+            "tool_call": true,
+            "streaming": true
+          },
+          "knowledge": "2026-03"
+        },
+        {
+          "id": "gemini-embedding-2",
+          "name": "Gemini Embedding 2",
+          "family": "gemini",
+          "release_date": "2026-04-22",
+          "cost": {
+            "input": 0.2,
+            "output": 0.0,
+            "cache_read": null,
+            "cache_write": null
+          },
+          "limit": {
+            "context": 8192,
+            "output": 1
+          },
+          "modalities": {
+            "input": [
+              "text",
+              "image",
+              "audio",
+              "video",
+              "pdf"
+            ],
+            "output": [
+              "text"
+            ]
+          },
+          "capabilities": {
+            "attachment": true,
+            "reasoning": false,
+            "temperature": false,
+            "tool_call": false,
+            "streaming": true
+          },
+          "knowledge": "2025-11"
+        },
+        {
+          "id": "gemini-omni-flash-preview",
+          "name": "Gemini Omni Flash Preview",
+          "family": "gemini",
+          "release_date": "2026-06-30",
+          "cost": {
+            "input": 1.5,
+            "output": 17.5,
+            "cache_read": null,
+            "cache_write": null
+          },
+          "limit": {
+            "context": 131072,
+            "output": 65536
+          },
+          "modalities": {
+            "input": [
+              "text",
+              "image",
+              "video"
+            ],
+            "output": [
+              "video"
+            ]
+          },
+          "capabilities": {
+            "attachment": true,
+            "reasoning": true,
+            "temperature": true,
+            "tool_call": false,
+            "streaming": true
+          },
+          "knowledge": null
+        },
+        {
+          "id": "gemini-robotics-er-1.6-preview",
+          "name": "Gemini Robotics-ER 1.6 Preview",
+          "family": "gemini",
+          "release_date": "2026-04-14",
+          "cost": {
+            "input": 1.0,
+            "output": 5.0,
+            "cache_read": null,
+            "cache_write": null
+          },
+          "limit": {
+            "context": 131072,
+            "output": 65536
+          },
+          "modalities": {
+            "input": [
+              "text",
+              "image",
+              "video",
+              "audio"
+            ],
+            "output": [
+              "text"
+            ]
+          },
+          "capabilities": {
+            "attachment": true,
+            "reasoning": true,
+            "temperature": true,
+            "tool_call": true,
+            "streaming": true
+          },
+          "knowledge": "2025-01"
+        },
+        {
+          "id": "lyria-3-clip-preview",
+          "name": "Lyria 3 Clip Preview",
+          "family": "lyria",
+          "release_date": "2026-03-25",
+          "cost": {
+            "input": 0.0,
+            "output": 0.0,
+            "cache_read": null,
+            "cache_write": null
+          },
+          "limit": {
+            "context": 1048576,
+            "output": 65536
+          },
+          "modalities": {
+            "input": [
+              "text",
+              "image"
+            ],
+            "output": [
+              "text",
+              "audio"
+            ]
+          },
+          "capabilities": {
+            "attachment": true,
+            "reasoning": false,
+            "temperature": true,
+            "tool_call": false,
+            "streaming": true
+          },
+          "knowledge": null
+        },
+        {
+          "id": "lyria-3-pro-preview",
+          "name": "Lyria 3 Pro Preview",
+          "family": "lyria",
+          "release_date": "2026-03-25",
+          "cost": {
+            "input": 0.0,
+            "output": 0.0,
+            "cache_read": null,
+            "cache_write": null
+          },
+          "limit": {
+            "context": 1048576,
+            "output": 65536
+          },
+          "modalities": {
+            "input": [
+              "text",
+              "image"
+            ],
+            "output": [
+              "text",
+              "audio"
+            ]
+          },
+          "capabilities": {
+            "attachment": true,
+            "reasoning": false,
+            "temperature": true,
+            "tool_call": false,
+            "streaming": true
+          },
+          "knowledge": null
+        },
+        {
+          "id": "veo-3.1-fast-generate-preview",
+          "name": "Veo 3.1 fast",
+          "family": "veo",
+          "release_date": "2025-10-15",
+          "cost": null,
+          "limit": {
+            "context": 480,
+            "output": 8192
+          },
+          "modalities": {
+            "input": [
+              "text",
+              "image",
+              "video"
+            ],
+            "output": [
+              "video"
+            ]
+          },
+          "capabilities": {
+            "attachment": true,
+            "reasoning": false,
+            "temperature": false,
+            "tool_call": false,
+            "streaming": true
+          },
+          "knowledge": null
+        },
+        {
+          "id": "veo-3.1-generate-preview",
+          "name": "Veo 3.1",
+          "family": "veo",
+          "release_date": "2025-10-15",
+          "cost": null,
+          "limit": {
+            "context": 480,
+            "output": 8192
+          },
+          "modalities": {
+            "input": [
+              "text",
+              "image"
+            ],
+            "output": [
+              "video"
+            ]
+          },
+          "capabilities": {
+            "attachment": true,
+            "reasoning": false,
+            "temperature": false,
+            "tool_call": false,
+            "streaming": true
+          },
+          "knowledge": null
+        },
+        {
+          "id": "veo-3.1-lite-generate-preview",
+          "name": "Veo 3.1 lite",
+          "family": "veo",
+          "release_date": "2026-03-31",
+          "cost": null,
+          "limit": {
+            "context": 480,
+            "output": 8192
+          },
+          "modalities": {
+            "input": [
+              "text",
+              "image"
+            ],
+            "output": [
+              "video"
+            ]
+          },
+          "capabilities": {
+            "attachment": true,
+            "reasoning": false,
+            "temperature": false,
+            "tool_call": false,
+            "streaming": true
+          },
+          "knowledge": null
         }
       ]
     },
@@ -2628,9 +3510,9 @@
       "base_url": "https://api.z.ai/api/anthropic",
       "default_model": "glm-5",
       "model_tiers": {
+        "sonnet": "glm-5",
         "haiku": "glm-5",
-        "opus": "glm-5",
-        "sonnet": "glm-5"
+        "opus": "glm-5"
       },
       "model_choices": [
         {
@@ -2661,7 +3543,7 @@
           "id": "glm-5",
           "name": "GLM-5",
           "family": "glm",
-          "release_date": "2026-02-11",
+          "release_date": "2026-02-12",
           "cost": {
             "input": 1.0,
             "output": 3.2,
@@ -2693,7 +3575,7 @@
           "id": "glm-5.1",
           "name": "GLM-5.1",
           "family": "glm",
-          "release_date": "2026-03-27",
+          "release_date": "2026-04-07",
           "cost": {
             "input": 1.4,
             "output": 4.4,
@@ -3079,6 +3961,38 @@
             "streaming": true
           },
           "knowledge": null
+        },
+        {
+          "id": "glm-5.2",
+          "name": "GLM-5.2",
+          "family": "glm",
+          "release_date": "2026-06-13",
+          "cost": {
+            "input": 1.4,
+            "output": 4.4,
+            "cache_read": 0.26,
+            "cache_write": 0.0
+          },
+          "limit": {
+            "context": 1000000,
+            "output": 131072
+          },
+          "modalities": {
+            "input": [
+              "text"
+            ],
+            "output": [
+              "text"
+            ]
+          },
+          "capabilities": {
+            "attachment": false,
+            "reasoning": true,
+            "temperature": true,
+            "tool_call": true,
+            "streaming": true
+          },
+          "knowledge": null
         }
       ]
     },
@@ -3093,9 +4007,9 @@
       "base_url": "https://open.bigmodel.cn/api/anthropic",
       "default_model": "glm-5",
       "model_tiers": {
-        "opus": "glm-5",
         "sonnet": "glm-5",
-        "haiku": "glm-5"
+        "haiku": "glm-5",
+        "opus": "glm-5"
       },
       "model_choices": [
         {
@@ -3126,7 +4040,7 @@
           "id": "glm-5",
           "name": "GLM-5",
           "family": "glm",
-          "release_date": "2026-02-11",
+          "release_date": "2026-02-12",
           "cost": {
             "input": 1.0,
             "output": 3.2,
@@ -3158,7 +4072,7 @@
           "id": "glm-5.1",
           "name": "GLM-5.1",
           "family": "glm",
-          "release_date": "2026-03-27",
+          "release_date": "2026-04-07",
           "cost": {
             "input": 1.4,
             "output": 4.4,
@@ -3538,6 +4452,38 @@
           },
           "capabilities": {
             "attachment": true,
+            "reasoning": true,
+            "temperature": true,
+            "tool_call": true,
+            "streaming": true
+          },
+          "knowledge": null
+        },
+        {
+          "id": "glm-5.2",
+          "name": "GLM-5.2",
+          "family": "glm",
+          "release_date": "2026-06-13",
+          "cost": {
+            "input": 1.4,
+            "output": 4.4,
+            "cache_read": 0.26,
+            "cache_write": 0.0
+          },
+          "limit": {
+            "context": 1000000,
+            "output": 131072
+          },
+          "modalities": {
+            "input": [
+              "text"
+            ],
+            "output": [
+              "text"
+            ]
+          },
+          "capabilities": {
+            "attachment": false,
             "reasoning": true,
             "temperature": true,
             "tool_call": true,
@@ -3814,6 +4760,70 @@
             "streaming": true
           },
           "knowledge": null
+        },
+        {
+          "id": "glm-5.2-highspeed",
+          "name": "GLM-5.2 Highspeed",
+          "family": "glm",
+          "release_date": "2026-06-13",
+          "cost": {
+            "input": 0.0,
+            "output": 0.0,
+            "cache_read": 0.0,
+            "cache_write": 0.0
+          },
+          "limit": {
+            "context": 1000000,
+            "output": 131072
+          },
+          "modalities": {
+            "input": [
+              "text"
+            ],
+            "output": [
+              "text"
+            ]
+          },
+          "capabilities": {
+            "attachment": false,
+            "reasoning": true,
+            "temperature": true,
+            "tool_call": true,
+            "streaming": true
+          },
+          "knowledge": null
+        },
+        {
+          "id": "glm-5.3",
+          "name": "GLM-5.3",
+          "family": "glm",
+          "release_date": "2026-08-14",
+          "cost": {
+            "input": 0.0,
+            "output": 0.0,
+            "cache_read": 0.0,
+            "cache_write": 0.0
+          },
+          "limit": {
+            "context": 1000000,
+            "output": 131072
+          },
+          "modalities": {
+            "input": [
+              "text"
+            ],
+            "output": [
+              "text"
+            ]
+          },
+          "capabilities": {
+            "attachment": false,
+            "reasoning": true,
+            "temperature": true,
+            "tool_call": true,
+            "streaming": true
+          },
+          "knowledge": null
         }
       ]
     },
@@ -3828,9 +4838,9 @@
       "base_url": "https://open.bigmodel.cn/api/anthropic",
       "default_model": "glm-5",
       "model_tiers": {
-        "haiku": "glm-5",
         "opus": "glm-5",
-        "sonnet": "glm-5"
+        "sonnet": "glm-5",
+        "haiku": "glm-5"
       },
       "model_choices": [
         {
@@ -4084,6 +5094,70 @@
             "streaming": true
           },
           "knowledge": null
+        },
+        {
+          "id": "glm-5.2-highspeed",
+          "name": "GLM-5.2 Highspeed",
+          "family": "glm",
+          "release_date": "2026-06-13",
+          "cost": {
+            "input": 0.0,
+            "output": 0.0,
+            "cache_read": 0.0,
+            "cache_write": 0.0
+          },
+          "limit": {
+            "context": 1000000,
+            "output": 131072
+          },
+          "modalities": {
+            "input": [
+              "text"
+            ],
+            "output": [
+              "text"
+            ]
+          },
+          "capabilities": {
+            "attachment": false,
+            "reasoning": true,
+            "temperature": true,
+            "tool_call": true,
+            "streaming": true
+          },
+          "knowledge": null
+        },
+        {
+          "id": "glm-5.3",
+          "name": "GLM-5.3",
+          "family": "glm",
+          "release_date": "2026-08-14",
+          "cost": {
+            "input": 0.0,
+            "output": 0.0,
+            "cache_read": 0.0,
+            "cache_write": 0.0
+          },
+          "limit": {
+            "context": 1000000,
+            "output": 131072
+          },
+          "modalities": {
+            "input": [
+              "text"
+            ],
+            "output": [
+              "text"
+            ]
+          },
+          "capabilities": {
+            "attachment": false,
+            "reasoning": true,
+            "temperature": true,
+            "tool_call": true,
+            "streaming": true
+          },
+          "knowledge": null
         }
       ]
     },
@@ -4099,9 +5173,9 @@
       "default_model": "MiniMax-M2.7",
       "model_tiers": {
         "opus": "MiniMax-M2.7",
+        "sonnet": "MiniMax-M2.7",
         "haiku": "MiniMax-M2.7",
-        "small": "MiniMax-M2.7",
-        "sonnet": "MiniMax-M2.7"
+        "small": "MiniMax-M2.7"
       },
       "model_choices": [
         {
@@ -4276,8 +5350,8 @@
           "cost": {
             "input": 0.3,
             "output": 1.2,
-            "cache_read": null,
-            "cache_write": null
+            "cache_read": 0.03,
+            "cache_write": 0.375
           },
           "limit": {
             "context": 204800,
@@ -4338,13 +5412,13 @@
           "family": "minimax",
           "release_date": "2026-06-01",
           "cost": {
-            "input": 0.6,
-            "output": 2.4,
-            "cache_read": 0.12,
+            "input": 0.3,
+            "output": 1.2,
+            "cache_read": 0.06,
             "cache_write": null
           },
           "limit": {
-            "context": 512000,
+            "context": 1000000,
             "output": 128000
           },
           "modalities": {
@@ -4379,10 +5453,10 @@
       "base_url": "https://api.minimaxi.com/anthropic",
       "default_model": "MiniMax-M2.7",
       "model_tiers": {
-        "sonnet": "MiniMax-M2.7",
-        "small": "MiniMax-M2.7",
         "haiku": "MiniMax-M2.7",
-        "opus": "MiniMax-M2.7"
+        "opus": "MiniMax-M2.7",
+        "sonnet": "MiniMax-M2.7",
+        "small": "MiniMax-M2.7"
       },
       "model_choices": [
         {
@@ -4525,8 +5599,8 @@
           "cost": {
             "input": 0.3,
             "output": 1.2,
-            "cache_read": null,
-            "cache_write": null
+            "cache_read": 0.03,
+            "cache_write": 0.375
           },
           "limit": {
             "context": 204800,
@@ -4619,13 +5693,13 @@
           "family": "minimax",
           "release_date": "2026-06-01",
           "cost": {
-            "input": 0.6,
-            "output": 2.4,
-            "cache_read": 0.12,
+            "input": 0.3,
+            "output": 1.2,
+            "cache_read": 0.06,
             "cache_write": null
           },
           "limit": {
-            "context": 512000,
+            "context": 1000000,
             "output": 128000
           },
           "modalities": {
@@ -4861,6 +5935,141 @@
             "streaming": true
           },
           "knowledge": "2025-07"
+        },
+        {
+          "id": "k3",
+          "name": "Kimi K3",
+          "family": "kimi-k3",
+          "release_date": "2026-07-16",
+          "cost": {
+            "input": 0.0,
+            "output": 0.0,
+            "cache_read": 0.0,
+            "cache_write": 0.0
+          },
+          "limit": {
+            "context": 1048576,
+            "output": 131072
+          },
+          "modalities": {
+            "input": [
+              "text",
+              "image",
+              "video"
+            ],
+            "output": [
+              "text"
+            ]
+          },
+          "capabilities": {
+            "attachment": false,
+            "reasoning": true,
+            "temperature": false,
+            "tool_call": true,
+            "streaming": true
+          },
+          "knowledge": null
+        },
+        {
+          "id": "k3-256k",
+          "name": "Kimi K3-256K",
+          "family": "kimi-k3",
+          "release_date": "2026-07-16",
+          "cost": {
+            "input": 0.0,
+            "output": 0.0,
+            "cache_read": 0.0,
+            "cache_write": 0.0
+          },
+          "limit": {
+            "context": 262144,
+            "output": 131072
+          },
+          "modalities": {
+            "input": [
+              "text",
+              "image"
+            ],
+            "output": [
+              "text"
+            ]
+          },
+          "capabilities": {
+            "attachment": false,
+            "reasoning": true,
+            "temperature": false,
+            "tool_call": true,
+            "streaming": true
+          },
+          "knowledge": null
+        },
+        {
+          "id": "kimi-for-coding",
+          "name": "Kimi K2.7 Code",
+          "family": "kimi-k2",
+          "release_date": "2026-06-12",
+          "cost": {
+            "input": 0.0,
+            "output": 0.0,
+            "cache_read": 0.0,
+            "cache_write": 0.0
+          },
+          "limit": {
+            "context": 262144,
+            "output": 32768
+          },
+          "modalities": {
+            "input": [
+              "text",
+              "image",
+              "video"
+            ],
+            "output": [
+              "text"
+            ]
+          },
+          "capabilities": {
+            "attachment": true,
+            "reasoning": true,
+            "temperature": false,
+            "tool_call": true,
+            "streaming": true
+          },
+          "knowledge": "2025-01"
+        },
+        {
+          "id": "kimi-for-coding-highspeed",
+          "name": "Kimi For Coding HighSpeed",
+          "family": "kimi-k2",
+          "release_date": "2026-06-12",
+          "cost": {
+            "input": 0.0,
+            "output": 0.0,
+            "cache_read": 0.0,
+            "cache_write": 0.0
+          },
+          "limit": {
+            "context": 262144,
+            "output": 32768
+          },
+          "modalities": {
+            "input": [
+              "text",
+              "image",
+              "video"
+            ],
+            "output": [
+              "text"
+            ]
+          },
+          "capabilities": {
+            "attachment": true,
+            "reasoning": true,
+            "temperature": false,
+            "tool_call": true,
+            "streaming": true
+          },
+          "knowledge": "2025-01"
         }
       ]
     },
@@ -5169,6 +6378,74 @@
             "streaming": true
           },
           "knowledge": "2025-01"
+        },
+        {
+          "id": "kimi-k2.7-code-highspeed",
+          "name": "Kimi K2.7 Code HighSpeed",
+          "family": "kimi-k2",
+          "release_date": "2026-06-12",
+          "cost": {
+            "input": 1.9,
+            "output": 8.0,
+            "cache_read": 0.38,
+            "cache_write": null
+          },
+          "limit": {
+            "context": 262144,
+            "output": 262144
+          },
+          "modalities": {
+            "input": [
+              "text",
+              "image",
+              "video"
+            ],
+            "output": [
+              "text"
+            ]
+          },
+          "capabilities": {
+            "attachment": true,
+            "reasoning": true,
+            "temperature": false,
+            "tool_call": true,
+            "streaming": true
+          },
+          "knowledge": "2025-01"
+        },
+        {
+          "id": "kimi-k3",
+          "name": "Kimi K3",
+          "family": "kimi-k3",
+          "release_date": "2026-07-16",
+          "cost": {
+            "input": 3.0,
+            "output": 15.0,
+            "cache_read": 0.3,
+            "cache_write": null
+          },
+          "limit": {
+            "context": 1048576,
+            "output": 131072
+          },
+          "modalities": {
+            "input": [
+              "text",
+              "image",
+              "video"
+            ],
+            "output": [
+              "text"
+            ]
+          },
+          "capabilities": {
+            "attachment": true,
+            "reasoning": true,
+            "temperature": false,
+            "tool_call": true,
+            "streaming": true
+          },
+          "knowledge": null
         }
       ]
     },
@@ -5389,7 +6666,7 @@
           "id": "deepseek-v4-flash",
           "name": "DeepSeek V4 Flash",
           "family": "deepseek-flash",
-          "release_date": "2026-04-24",
+          "release_date": "2026-07-31",
           "cost": {
             "input": 0.14,
             "output": 0.28,
@@ -5421,7 +6698,7 @@
           "id": "deepseek-v4-pro",
           "name": "DeepSeek V4 Pro",
           "family": "deepseek-thinking",
-          "release_date": "2026-04-24",
+          "release_date": "2026-08-12",
           "cost": {
             "input": 0.435,
             "output": 0.87,
@@ -5447,7 +6724,40 @@
             "tool_call": true,
             "streaming": true
           },
-          "knowledge": "2025-05"
+          "knowledge": null
+        },
+        {
+          "id": "deepseek-v4-flash-vision-exp",
+          "name": "DeepSeek V4 Flash Vision Exp",
+          "family": "deepseek-flash",
+          "release_date": "2026-08-21",
+          "cost": {
+            "input": 0.14,
+            "output": 0.28,
+            "cache_read": 0.0028,
+            "cache_write": null
+          },
+          "limit": {
+            "context": 1000000,
+            "output": 384000
+          },
+          "modalities": {
+            "input": [
+              "text",
+              "image"
+            ],
+            "output": [
+              "text"
+            ]
+          },
+          "capabilities": {
+            "attachment": true,
+            "reasoning": true,
+            "temperature": true,
+            "tool_call": true,
+            "streaming": true
+          },
+          "knowledge": null
         }
       ]
     },
@@ -7342,6 +8652,105 @@
             "streaming": true
           },
           "knowledge": "2024-04"
+        },
+        {
+          "id": "deepseek-v4-flash-0731",
+          "name": "DeepSeek V4 Flash 0731",
+          "family": "deepseek-flash",
+          "release_date": "2026-07-31",
+          "cost": {
+            "input": 0.2,
+            "output": 0.4,
+            "cache_read": 0.04,
+            "cache_write": null
+          },
+          "limit": {
+            "context": 1000000,
+            "output": 384000
+          },
+          "modalities": {
+            "input": [
+              "text"
+            ],
+            "output": [
+              "text"
+            ]
+          },
+          "capabilities": {
+            "attachment": false,
+            "reasoning": true,
+            "temperature": true,
+            "tool_call": true,
+            "streaming": true
+          },
+          "knowledge": "2025-05"
+        },
+        {
+          "id": "glm-5.2",
+          "name": "GLM-5.2",
+          "family": "glm",
+          "release_date": "2026-06-13",
+          "cost": {
+            "input": 1.4,
+            "output": 4.4,
+            "cache_read": 0.28,
+            "cache_write": 0.0
+          },
+          "limit": {
+            "context": 1000000,
+            "output": 131072
+          },
+          "modalities": {
+            "input": [
+              "text"
+            ],
+            "output": [
+              "text"
+            ]
+          },
+          "capabilities": {
+            "attachment": false,
+            "reasoning": true,
+            "temperature": true,
+            "tool_call": true,
+            "streaming": true
+          },
+          "knowledge": null
+        },
+        {
+          "id": "qwen3.8-max",
+          "name": "Qwen3.8 Max",
+          "family": "qwen",
+          "release_date": "2026-08-03",
+          "cost": {
+            "input": 2.0,
+            "output": 6.0,
+            "cache_read": 0.25,
+            "cache_write": 2.5
+          },
+          "limit": {
+            "context": 1000000,
+            "output": 131072
+          },
+          "modalities": {
+            "input": [
+              "text",
+              "image",
+              "video",
+              "pdf"
+            ],
+            "output": [
+              "text"
+            ]
+          },
+          "capabilities": {
+            "attachment": true,
+            "reasoning": true,
+            "temperature": true,
+            "tool_call": true,
+            "streaming": true
+          },
+          "knowledge": null
         }
       ]
     },
@@ -7356,9 +8765,9 @@
       "base_url": "https://coding-us.dashscope.aliyuncs.com/apps/anthropic",
       "default_model": "qwen3.5-plus",
       "model_tiers": {
-        "sonnet": "qwen3.5-plus",
         "haiku": "qwen3-coder-flash",
-        "opus": "qwen3.5-plus"
+        "opus": "qwen3.5-plus",
+        "sonnet": "qwen3.5-plus"
       },
       "model_choices": [
         {
@@ -9090,6 +10499,105 @@
             "streaming": true
           },
           "knowledge": "2024-04"
+        },
+        {
+          "id": "deepseek-v4-flash-0731",
+          "name": "DeepSeek V4 Flash 0731",
+          "family": "deepseek-flash",
+          "release_date": "2026-07-31",
+          "cost": {
+            "input": 0.2,
+            "output": 0.4,
+            "cache_read": 0.04,
+            "cache_write": null
+          },
+          "limit": {
+            "context": 1000000,
+            "output": 384000
+          },
+          "modalities": {
+            "input": [
+              "text"
+            ],
+            "output": [
+              "text"
+            ]
+          },
+          "capabilities": {
+            "attachment": false,
+            "reasoning": true,
+            "temperature": true,
+            "tool_call": true,
+            "streaming": true
+          },
+          "knowledge": "2025-05"
+        },
+        {
+          "id": "glm-5.2",
+          "name": "GLM-5.2",
+          "family": "glm",
+          "release_date": "2026-06-13",
+          "cost": {
+            "input": 1.4,
+            "output": 4.4,
+            "cache_read": 0.28,
+            "cache_write": 0.0
+          },
+          "limit": {
+            "context": 1000000,
+            "output": 131072
+          },
+          "modalities": {
+            "input": [
+              "text"
+            ],
+            "output": [
+              "text"
+            ]
+          },
+          "capabilities": {
+            "attachment": false,
+            "reasoning": true,
+            "temperature": true,
+            "tool_call": true,
+            "streaming": true
+          },
+          "knowledge": null
+        },
+        {
+          "id": "qwen3.8-max",
+          "name": "Qwen3.8 Max",
+          "family": "qwen",
+          "release_date": "2026-08-03",
+          "cost": {
+            "input": 2.0,
+            "output": 6.0,
+            "cache_read": 0.25,
+            "cache_write": 2.5
+          },
+          "limit": {
+            "context": 1000000,
+            "output": 131072
+          },
+          "modalities": {
+            "input": [
+              "text",
+              "image",
+              "video",
+              "pdf"
+            ],
+            "output": [
+              "text"
+            ]
+          },
+          "capabilities": {
+            "attachment": true,
+            "reasoning": true,
+            "temperature": true,
+            "tool_call": true,
+            "streaming": true
+          },
+          "knowledge": null
         }
       ]
     },
@@ -9104,9 +10612,9 @@
       "base_url": "https://coding.dashscope.aliyuncs.com/apps/anthropic",
       "default_model": "qwen3.5-plus",
       "model_tiers": {
+        "sonnet": "qwen3.5-plus",
         "opus": "qwen3.5-plus",
-        "haiku": "qwen3-coder-flash",
-        "sonnet": "qwen3.5-plus"
+        "haiku": "qwen3-coder-flash"
       },
       "model_choices": [
         {
@@ -11610,14 +13118,15 @@
           "modalities": {
             "input": [
               "text",
-              "image"
+              "image",
+              "video"
             ],
             "output": [
               "text"
             ]
           },
           "capabilities": {
-            "attachment": false,
+            "attachment": true,
             "reasoning": true,
             "temperature": true,
             "tool_call": true,
@@ -11848,6 +13357,107 @@
             "streaming": true
           },
           "knowledge": "2024-04"
+        },
+        {
+          "id": "glm-5.2",
+          "name": "GLM-5.2",
+          "family": "glm",
+          "release_date": "2026-06-13",
+          "cost": {
+            "input": 1.1,
+            "output": 3.851,
+            "cache_read": 0.275,
+            "cache_write": 0.0
+          },
+          "limit": {
+            "context": 1000000,
+            "output": 128000
+          },
+          "modalities": {
+            "input": [
+              "text"
+            ],
+            "output": [
+              "text"
+            ]
+          },
+          "capabilities": {
+            "attachment": false,
+            "reasoning": true,
+            "temperature": true,
+            "tool_call": true,
+            "streaming": true
+          },
+          "knowledge": null
+        },
+        {
+          "id": "qwen3.7-flash",
+          "name": "Qwen3.7 Flash",
+          "family": "qwen",
+          "release_date": "2026-07-15",
+          "cost": {
+            "input": 0.02962,
+            "output": 0.1185,
+            "cache_read": 0.002962,
+            "cache_write": 0.03703
+          },
+          "limit": {
+            "context": 1000000,
+            "output": 65536
+          },
+          "modalities": {
+            "input": [
+              "text",
+              "image",
+              "video"
+            ],
+            "output": [
+              "text"
+            ]
+          },
+          "capabilities": {
+            "attachment": true,
+            "reasoning": true,
+            "temperature": true,
+            "tool_call": true,
+            "streaming": true
+          },
+          "knowledge": null
+        },
+        {
+          "id": "qwen3.8-max",
+          "name": "Qwen3.8 Max",
+          "family": "qwen",
+          "release_date": "2026-08-03",
+          "cost": {
+            "input": 1.77744,
+            "output": 5.33231,
+            "cache_read": 0.22218,
+            "cache_write": 2.22179
+          },
+          "limit": {
+            "context": 1000000,
+            "output": 131072
+          },
+          "modalities": {
+            "input": [
+              "text",
+              "image",
+              "video",
+              "pdf"
+            ],
+            "output": [
+              "text"
+            ]
+          },
+          "capabilities": {
+            "attachment": true,
+            "reasoning": true,
+            "temperature": true,
+            "tool_call": true,
+            "streaming": true
+          },
+          "knowledge": null
         }
       ]
     },

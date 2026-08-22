@@ -124,7 +124,7 @@ the provider at runtime; no code changes needed):
 
 ```toml
 [dependencies]
-llm-kernel = { version = "0.28.0", default-features = false, features = ["provider", "client-async", "rustls-ring"] }
+llm-kernel = { version = "0.29", default-features = false, features = ["provider", "client-async", "rustls-ring"] }
 ```
 
 Make sure nothing else in your tree enables reqwest's `rustls` feature —

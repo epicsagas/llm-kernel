@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.0] - 2026-08-22
+
 ### Added
 - **dlp** (new feature): data-loss-prevention primitives for outbound LLM
   traffic — L1 deterministic scan (`scan` → `ScanReport` with byte spans,
@@ -29,6 +31,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that must be 0 to pass). Gated behind feature `dlp` within the eval
   binary — plain `eval` stays lean (no provider dependency);
   `eval-full` includes it.
+
+### Changed
+- **dependencies**: major bumps via dependabot, verified across the full
+  CI matrix — `base64` 0.22 → 0.23, `safetensors` 0.6 → 0.8,
+  `rusqlite` 0.32 → 0.40 (bundled SQLite), `getrandom` 0.3 → 0.4.
+- **catalog**: models.dev sync — gemini flash / flash-lite and
+  MiniMax-M3 pricing updates.
+- **eval**: `eval/baseline.json` regenerated with the `dlp` module (8
+  modules total).
 
 ## [0.28.1] - 2026-08-21
 
