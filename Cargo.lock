@@ -2664,7 +2664,7 @@ dependencies = [
  "fastembed",
  "futures-core",
  "futures-util",
- "getrandom 0.3.4",
+ "getrandom 0.4.3",
  "hf-hub",
  "indexmap",
  "mlx-rs",

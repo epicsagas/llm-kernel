@@ -240,7 +240,7 @@ anyhow      = { version = "1", optional = true }
 serde_json  = { version = "1", optional = true }
 ureq        = { version = "3", features = ["json"], optional = true }
 tempfile    = { version = "3", optional = true }
-getrandom   = { version = "0.3", optional = true }
+getrandom   = { version = "0.4", optional = true }
 zeroize     = { version = "1", optional = true }
 reqwest     = { version = "0.13", features = ["json", "stream"], default-features = false, optional = true }
 rustls      = { version = "0.23", default-features = false, optional = true }
