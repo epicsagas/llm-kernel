@@ -2684,7 +2684,7 @@ dependencies = [
  "reqwest 0.13.4",
  "rusqlite",
  "rustls",
- "safetensors 0.6.2",
+ "safetensors 0.8.0",
  "serde",
  "serde_json",
  "sqlx",
