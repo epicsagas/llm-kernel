@@ -252,9 +252,40 @@ pub enum ReasoningEffort {
     Max,
 }
 
+/// Verbosity of the model's response (OpenAI `verbosity`).
+///
+/// Wire values follow the official OpenAI Chat Completions parameter:
+/// `low`, `medium`, `high` (spec default `medium`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Verbosity {
+    /// More concise responses.
+    Low,
+    /// Balanced (spec default).
+    Medium,
+    /// More verbose responses.
+    High,
+}
+
+/// Summary style for reasoning models (Responses-API `reasoning.summary`,
+/// also accepted inside OpenRouter's `reasoning` object).
+///
+/// Wire values follow the official OpenAI spec: `auto`, `concise`,
+/// `detailed`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ReasoningSummary {
+    /// Model/provider picks the summary style.
+    Auto,
+    /// Compact reasoning summary (gpt-5+ reasoning models).
+    Concise,
+    /// Detailed reasoning summary.
+    Detailed,
+}
+
 /// Reasoning-model controls for a chat completion request.
 ///
-/// Two independent knobs, each serialized only when set:
+/// Three independent knobs, each serialized only when set:
 ///
 /// - `effort` maps to the official OpenAI Chat Completions `reasoning_effort`
 ///   parameter (accepted by OpenAI and most OpenAI-compatible gateways,
@@ -264,6 +295,10 @@ pub enum ReasoningEffort {
 ///   from emitting chain-of-thought into `content` (which would otherwise
 ///   also burn `max_tokens` on reasoning). This key is only sent when you
 ///   explicitly set it — pure-OpenAI endpoints never see it otherwise.
+/// - `summary` rides inside the same `reasoning` object; the key and its
+///   values (`auto`/`concise`/`detailed`) follow the official OpenAI
+///   Responses-API `reasoning.summary` parameter, which OpenRouter's chat
+///   completions endpoint also accepts.
 ///
 /// Forwarded by [`OpenAIClient`](crate::llm::OpenAIClient) in both `complete`
 /// and `stream_complete`. [`AnthropicClient`](crate::llm::AnthropicClient)
@@ -278,6 +313,9 @@ pub struct ReasoningConfig {
     /// How much the model reasons (OpenAI `reasoning_effort`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub effort: Option<ReasoningEffort>,
+    /// Reasoning summary style (OpenAI Responses `reasoning.summary`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub summary: Option<ReasoningSummary>,
 }
 
 impl ReasoningConfig {
@@ -287,6 +325,7 @@ impl ReasoningConfig {
         Self {
             enabled: Some(false),
             effort: None,
+            summary: None,
         }
     }
 
@@ -295,6 +334,7 @@ impl ReasoningConfig {
         Self {
             enabled: None,
             effort: Some(effort),
+            summary: None,
         }
     }
 }
@@ -344,10 +384,28 @@ pub struct LLMRequest {
     /// in [`LLMResponse::tool_calls`].
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tools: Option<Vec<crate::llm::ToolDefinition>>,
-    /// Reasoning-model controls (effort / on-off switch). `None` adds nothing
-    /// to the request body. See [`ReasoningConfig`].
+    /// Reasoning-model controls (effort / on-off switch / summary). `None`
+    /// adds nothing to the request body. See [`ReasoningConfig`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reasoning: Option<ReasoningConfig>,
+    /// Response verbosity (OpenAI `verbosity`: `low`/`medium`/`high`).
+    /// `None` adds nothing to the request body. Forwarded by
+    /// [`OpenAIClient`](crate::llm::OpenAIClient); ignored by
+    /// [`AnthropicClient`](crate::llm::AnthropicClient).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub verbosity: Option<Verbosity>,
+    /// Escape hatch for provider parameters the kernel does not model
+    /// natively (named after the OpenAI SDK's `extra_body` convention).
+    ///
+    /// Keys are merged into the OpenAI-compatible request body verbatim,
+    /// last-write-wins over natively forwarded fields — any official spec
+    /// parameter (`seed`, `stop`, `logprobs`, `parallel_tool_calls`,
+    /// `service_tier`, `web_search_options`, …) or provider extension can be
+    /// sent on demand. `None` adds nothing. Only
+    /// [`OpenAIClient`](crate::llm::OpenAIClient) forwards it;
+    /// [`AnthropicClient`](crate::llm::AnthropicClient) ignores it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extra_body: Option<serde_json::Map<String, serde_json::Value>>,
 }
 
 impl Default for LLMRequest {
@@ -363,6 +421,8 @@ impl Default for LLMRequest {
             response_format: None,
             tools: None,
             reasoning: None,
+            verbosity: None,
+            extra_body: None,
         }
     }
 }
@@ -421,6 +481,8 @@ pub struct LLMRequestBuilder {
     response_format: Option<ResponseFormat>,
     tools: Option<Vec<crate::llm::ToolDefinition>>,
     reasoning: Option<ReasoningConfig>,
+    verbosity: Option<Verbosity>,
+    extra_body: Option<serde_json::Map<String, serde_json::Value>>,
 }
 
 impl LLMRequestBuilder {
@@ -496,9 +558,22 @@ impl LLMRequestBuilder {
         self
     }
 
-    /// Set reasoning-model controls (effort / on-off switch).
+    /// Set reasoning-model controls (effort / on-off switch / summary).
     pub fn reasoning(mut self, cfg: ReasoningConfig) -> Self {
         self.reasoning = Some(cfg);
+        self
+    }
+
+    /// Set the response verbosity (OpenAI `verbosity`).
+    pub fn verbosity(mut self, verbosity: Verbosity) -> Self {
+        self.verbosity = Some(verbosity);
+        self
+    }
+
+    /// Merge extra provider parameters into the request body verbatim
+    /// (last-write-wins). Any official spec parameter or provider extension.
+    pub fn extra_body(mut self, extra: serde_json::Map<String, serde_json::Value>) -> Self {
+        self.extra_body = Some(extra);
         self
     }
 
@@ -513,6 +588,8 @@ impl LLMRequestBuilder {
             response_format: self.response_format,
             tools: self.tools,
             reasoning: self.reasoning,
+            verbosity: self.verbosity,
+            extra_body: self.extra_body,
         }
     }
 }
@@ -768,6 +845,8 @@ mod tests {
         assert!(from_default.response_format.is_none());
         assert!(from_default.tools.is_none());
         assert!(from_default.reasoning.is_none());
+        assert!(from_default.verbosity.is_none());
+        assert!(from_default.extra_body.is_none());
     }
 
     #[test]
@@ -803,12 +882,50 @@ mod tests {
     }
 
     #[test]
+    fn builder_verbosity_roundtrip() {
+        let req = LLMRequest::builder()
+            .user_message("hi")
+            .verbosity(Verbosity::Low)
+            .build();
+        assert_eq!(req.verbosity, Some(Verbosity::Low));
+        let json = serde_json::to_value(&req).unwrap();
+        assert_eq!(json["verbosity"], "low");
+        // Absent when None.
+        assert!(
+            serde_json::to_value(LLMRequest::default())
+                .unwrap()
+                .get("verbosity")
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn builder_extra_body_roundtrip() {
+        let mut extra = serde_json::Map::new();
+        extra.insert("seed".into(), 42.into());
+        extra.insert("stop".into(), ["\n\nUser:"].into());
+        let req = LLMRequest::builder()
+            .user_message("hi")
+            .extra_body(extra)
+            .build();
+        let json = serde_json::to_value(&req).unwrap();
+        assert_eq!(json["extra_body"]["seed"], 42);
+        assert!(
+            serde_json::to_value(LLMRequest::default())
+                .unwrap()
+                .get("extra_body")
+                .is_none()
+        );
+    }
+
+    #[test]
     fn llm_request_deserializes_without_reasoning_field() {
         // Payloads written before `reasoning` existed must still deserialize.
         let json =
             r#"{"system":null,"messages":[],"temperature":0.7,"max_tokens":null,"model":null}"#;
         let req: LLMRequest = serde_json::from_str(json).unwrap();
         assert!(req.reasoning.is_none());
+        assert!(req.verbosity.is_none());
     }
 
     #[test]

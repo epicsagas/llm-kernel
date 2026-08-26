@@ -20,7 +20,8 @@ pub use crate::provider::{
 pub use crate::llm::{
     AnthropicClient, ChatMessage, ContentPart, LLMClient, LLMRequest, LLMRequestBuilder,
     LLMResponse, LLMStream, MessageRole, ModelConfig, OpenAIClient, ReasoningConfig,
-    ReasoningEffort, ResponseFormat, StreamEvent, TokenUsage, ToolCall, ToolDefinition, ToolResult,
+    ReasoningEffort, ReasoningSummary, ResponseFormat, StreamEvent, TokenUsage, ToolCall,
+    ToolDefinition, ToolResult, Verbosity,
     json_extract::{JsonExtractor, extract_json, parse_json},
     prompt::render_prompt,
 };

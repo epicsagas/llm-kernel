@@ -6,7 +6,7 @@ use crate::error::{KernelError, Result};
 use crate::llm::tool::{ToolCall, ToolDefinition};
 use crate::llm::types::{
     LLMRequest, LLMResponse, LLMStream, ModelConfig, ReasoningConfig, ReasoningEffort,
-    ResponseFormat, StreamEvent, TokenUsage,
+    ResponseFormat, StreamEvent, TokenUsage, Verbosity,
 };
 
 /// Best-effort redaction of an HTTP error response body before it lands in a
@@ -82,21 +82,56 @@ fn anthropic_output_config(rf: &ResponseFormat) -> Option<serde_json::Value> {
     }
 }
 
-/// Map kernel [`ReasoningConfig`] to the two wire keys the OpenAI-compatible
-/// path forwards: `effort` becomes the official top-level `reasoning_effort`
-/// parameter; `enabled` becomes the OpenRouter extension object
-/// `reasoning: {"enabled": bool}`. Each key is emitted only when set, so a
-/// `None` config (or an unset knob) adds nothing to the request body.
+/// Map kernel [`ReasoningConfig`] to the wire keys the OpenAI-compatible path
+/// forwards: `effort` becomes the official top-level `reasoning_effort`
+/// parameter; `enabled` (OpenRouter extension) and `summary` (official
+/// Responses-API `reasoning.summary`) share one `reasoning` object. Each key
+/// is emitted only when set, so a `None` config (or an unset knob) adds
+/// nothing to the request body.
 fn openai_reasoning(
     cfg: Option<&ReasoningConfig>,
 ) -> (Option<ReasoningEffort>, Option<serde_json::Value>) {
     match cfg {
-        Some(c) => (
-            c.effort,
-            c.enabled.map(|e| serde_json::json!({ "enabled": e })),
-        ),
         None => (None, None),
+        Some(c) => {
+            let mut obj = serde_json::Map::new();
+            if let Some(enabled) = c.enabled {
+                obj.insert("enabled".into(), enabled.into());
+            }
+            if let Some(summary) = c.summary {
+                obj.insert(
+                    "summary".into(),
+                    serde_json::to_value(summary).expect("ReasoningSummary is a plain enum"),
+                );
+            }
+            (
+                c.effort,
+                if obj.is_empty() {
+                    None
+                } else {
+                    Some(serde_json::Value::Object(obj))
+                },
+            )
+        }
     }
+}
+
+/// Serialize the outgoing body and merge [`LLMRequest::extra_body`] keys into
+/// it (last-write-wins), for official spec parameters or provider extensions
+/// the kernel does not model natively.
+fn openai_body_with_extra(
+    body: &OpenAIChatRequest,
+    extra: Option<&serde_json::Map<String, serde_json::Value>>,
+) -> serde_json::Value {
+    let mut v = serde_json::to_value(body).expect("OpenAIChatRequest serializes");
+    if let Some(extra) = extra
+        && let serde_json::Value::Object(map) = &mut v
+    {
+        for (k, val) in extra {
+            map.insert(k.clone(), val.clone());
+        }
+    }
+    v
 }
 
 /// Build a `reqwest::Client` with connect and total timeouts.
@@ -254,9 +289,12 @@ struct OpenAIChatRequest {
     /// Official OpenAI `reasoning_effort` parameter.
     #[serde(skip_serializing_if = "Option::is_none")]
     reasoning_effort: Option<ReasoningEffort>,
-    /// OpenRouter extension `reasoning: {"enabled": bool}`.
+    /// OpenRouter extension / Responses-style `reasoning` object.
     #[serde(skip_serializing_if = "Option::is_none")]
     reasoning: Option<serde_json::Value>,
+    /// Official OpenAI `verbosity` parameter.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    verbosity: Option<Verbosity>,
 }
 
 #[derive(serde::Serialize)]
@@ -354,6 +392,8 @@ impl LLMClient for OpenAIClient {
             .as_ref()
             .and_then(openai_response_format);
         let (reasoning_effort, reasoning) = openai_reasoning(request.reasoning.as_ref());
+        let verbosity = request.verbosity;
+        let extra_body = request.extra_body.clone();
         let messages: Vec<_> = request
             .into_openai_messages()
             .into_iter()
@@ -370,13 +410,14 @@ impl LLMClient for OpenAIClient {
             response_format,
             reasoning_effort,
             reasoning,
+            verbosity,
         };
 
         let resp = self
             .client
             .post(format!("{}/chat/completions", self.base_url))
             .header("Authorization", format!("Bearer {}", self.api_key))
-            .json(&body)
+            .json(&openai_body_with_extra(&body, extra_body.as_ref()))
             .send()
             .await
             .map_err(|e| KernelError::LlmApi(e.to_string()))?;
@@ -452,6 +493,8 @@ impl LLMClient for OpenAIClient {
         let temperature = request.temperature;
         let max_tokens = request.max_tokens;
         let (reasoning_effort, reasoning) = openai_reasoning(request.reasoning.as_ref());
+        let verbosity = request.verbosity;
+        let extra_body = request.extra_body.clone();
         let messages: Vec<_> = request
             .into_openai_messages()
             .into_iter()
@@ -470,13 +513,14 @@ impl LLMClient for OpenAIClient {
             response_format: None,
             reasoning_effort,
             reasoning,
+            verbosity,
         };
 
         let resp = self
             .client
             .post(format!("{}/chat/completions", self.base_url))
             .header("Authorization", format!("Bearer {}", self.api_key))
-            .json(&body)
+            .json(&openai_body_with_extra(&body, extra_body.as_ref()))
             .send()
             .await
             .map_err(|e| KernelError::LlmApi(e.to_string()))?;
@@ -1085,6 +1129,7 @@ impl LLMClient for AnthropicClient {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::llm::types::ReasoningSummary;
 
     #[test]
     fn parse_sse_line_extracts_data() {
@@ -1272,6 +1317,7 @@ mod tests {
             response_format: Some(serde_json::json!({ "type": "json_object" })),
             reasoning_effort: None,
             reasoning: None,
+            verbosity: None,
         };
         let json = serde_json::to_value(&body).unwrap();
         assert_eq!(json["tools"][0]["function"]["name"], "get_weather");
@@ -1298,6 +1344,7 @@ mod tests {
             response_format: None,
             reasoning_effort: effort,
             reasoning,
+            verbosity: None,
         };
         let json = serde_json::to_value(&body).unwrap();
         assert_eq!(json["reasoning_effort"], "high");
@@ -1321,6 +1368,7 @@ mod tests {
         let (effort, reasoning) = openai_reasoning(Some(&ReasoningConfig {
             enabled: Some(true),
             effort: Some(ReasoningEffort::Low),
+            summary: Some(ReasoningSummary::Concise),
         }));
         let body = OpenAIChatRequest {
             model: "m".into(),
@@ -1332,10 +1380,76 @@ mod tests {
             response_format: None,
             reasoning_effort: effort,
             reasoning,
+            verbosity: Some(Verbosity::High),
         };
         let json = serde_json::to_value(&body).unwrap();
         assert_eq!(json["reasoning_effort"], "low");
         assert_eq!(json["reasoning"]["enabled"], true);
+        assert_eq!(json["reasoning"]["summary"], "concise");
+        assert_eq!(json["verbosity"], "high");
+    }
+
+    #[test]
+    fn openai_reasoning_summary_only_serializes_object() {
+        let (effort, reasoning) = openai_reasoning(Some(&ReasoningConfig {
+            enabled: None,
+            effort: None,
+            summary: Some(ReasoningSummary::Detailed),
+        }));
+        assert!(effort.is_none());
+        assert_eq!(reasoning.unwrap()["summary"], "detailed");
+    }
+
+    #[test]
+    fn openai_body_merges_extra_body_last_write_wins() {
+        let body = OpenAIChatRequest {
+            model: "m".into(),
+            messages: vec![],
+            temperature: 0.7,
+            max_tokens: None,
+            stream: false,
+            tools: None,
+            response_format: None,
+            reasoning_effort: None,
+            reasoning: None,
+            verbosity: None,
+        };
+        let mut extra = serde_json::Map::new();
+        extra.insert("seed".into(), 7.into());
+        extra.insert("temperature".into(), 0.1.into());
+        let merged = openai_body_with_extra(&body, Some(&extra));
+        assert_eq!(merged["seed"], 7);
+        // Extra key overrides the natively forwarded one (last-write-wins).
+        assert_eq!(merged["temperature"], 0.1);
+        // Without extras the body is untouched. (Compare via json! so the f32
+        // → f64 widening in the Number matches on both sides.)
+        let plain = openai_body_with_extra(&body, None);
+        assert_eq!(plain["temperature"], serde_json::json!(0.7f32));
+        assert!(plain.get("seed").is_none());
+    }
+
+    #[test]
+    fn verbosity_wire_values_match_openai_spec() {
+        // Official enum: low, medium, high.
+        for (variant, wire) in [
+            (Verbosity::Low, "low"),
+            (Verbosity::Medium, "medium"),
+            (Verbosity::High, "high"),
+        ] {
+            assert_eq!(serde_json::to_value(variant).unwrap(), wire);
+        }
+    }
+
+    #[test]
+    fn reasoning_summary_wire_values_match_openai_spec() {
+        // Official enum: auto, concise, detailed.
+        for (variant, wire) in [
+            (ReasoningSummary::Auto, "auto"),
+            (ReasoningSummary::Concise, "concise"),
+            (ReasoningSummary::Detailed, "detailed"),
+        ] {
+            assert_eq!(serde_json::to_value(variant).unwrap(), wire);
+        }
     }
 
     #[test]

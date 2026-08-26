@@ -9,16 +9,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **llm**: `LLMRequest` gains `reasoning: Option<ReasoningConfig>` (plus
-  builder `.reasoning()`) for reasoning-model controls. Two independent
-  knobs, each serialized only when set: `effort` becomes the official
-  OpenAI Chat Completions `reasoning_effort` parameter
+  builder `.reasoning()`) for reasoning-model controls. Three independent
+  knobs, each serialized only when set and matching the official
+  openai-openapi spec (CreateChatCompletionRequest / Responses `Reasoning`):
+  `effort` becomes the official top-level `reasoning_effort` parameter
   (`ReasoningEffort`: `none`/`minimal`/`low`/`medium`/`high`/`xhigh`/`max`),
-  and `enabled` becomes the OpenRouter extension object
-  `reasoning: {"enabled": bool}` — `enabled: false` stops reasoning models
-  from emitting chain-of-thought into `content` (which also burns
-  `max_tokens`). `None` adds nothing to the request body. Forwarded by
-  `OpenAIClient` in both `complete` and `stream_complete`; ignored by
-  `AnthropicClient`.
+  `summary` (official Responses-API `reasoning.summary`: `auto`/`concise`/
+  `detailed`) rides inside the `reasoning` object, and `enabled` becomes the
+  OpenRouter extension `reasoning: {"enabled": bool}` — `enabled: false`
+  stops reasoning models from emitting chain-of-thought into `content`
+  (which also burns `max_tokens`). A `None` config or unset knob adds
+  nothing to the request body. Forwarded by `OpenAIClient` in both
+  `complete` and `stream_complete`; ignored by `AnthropicClient`.
+- **llm**: `LLMRequest` gains `verbosity: Option<Verbosity>` (plus builder
+  `.verbosity()`) mapping to the official OpenAI Chat Completions
+  `verbosity` parameter (`low`/`medium`/`high`). Forwarded by
+  `OpenAIClient`; ignored by `AnthropicClient`.
+- **llm**: `LLMRequest` gains `extra_body: Option<serde_json::Map<..>>`
+  (plus builder `.extra_body()`) — an escape hatch named after the OpenAI
+  SDK convention. Keys are merged verbatim into the OpenAI-compatible
+  request body (last-write-wins over native fields), so any official spec
+  parameter the kernel does not model natively (`seed`, `stop`, `logprobs`,
+  `parallel_tool_calls`, `service_tier`, `web_search_options`, …) or any
+  provider extension can be sent on demand without a kernel release.
 
 ### Fixed
 - **llm**: `OpenAIClient` no longer fails the entire response when an

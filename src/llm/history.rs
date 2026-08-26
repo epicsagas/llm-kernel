@@ -190,6 +190,8 @@ impl ConversationHistory {
             response_format: None,
             tools: None,
             reasoning: None,
+            verbosity: None,
+            extra_body: None,
         }
     }
 }
