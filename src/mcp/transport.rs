@@ -1135,10 +1135,8 @@ mod tests {
         assert!(parsed["result"]["ttlMs"].is_u64());
         assert_eq!(parsed["result"]["cacheScope"], "private");
 
-        let call = format!(
-            r#"{{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{{"name":"echo","arguments":{{}},"_meta":{{"io.modelcontextprotocol/protocolVersion":"2026-07-28"}}}}}}"#
-        );
-        let call = dispatcher.dispatch(&call).unwrap();
+        let call = r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"echo","arguments":{},"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28"}}}"#;
+        let call = dispatcher.dispatch(call).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&call).unwrap();
         assert_eq!(parsed["result"]["resultType"], "complete", "{parsed}");
         assert!(

@@ -390,12 +390,7 @@ mod tests {
     /// the check digit), so tests never hardcode a real-format constant.
     fn make_valid_rrn(first12: &str) -> String {
         assert_eq!(first12.len(), 12);
-        let digits: Vec<u8> = first12
-            .bytes()
-            .map(|b| b - b'0')
-            .collect::<Vec<_>>()
-            .try_into()
-            .unwrap();
+        let digits: Vec<u8> = first12.bytes().map(|b| b - b'0').collect();
         let mut arr = [0u8; 13];
         arr[..12].copy_from_slice(&digits);
         let mut s = String::new();
