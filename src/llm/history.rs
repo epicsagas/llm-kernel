@@ -189,6 +189,7 @@ impl ConversationHistory {
             model: None,
             response_format: None,
             tools: None,
+            reasoning: None,
         }
     }
 }

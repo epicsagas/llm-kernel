@@ -65,5 +65,5 @@ pub use tool::{ToolCall, ToolDefinition, ToolResult};
 pub use types::LLMStream;
 pub use types::{
     ChatMessage, ContentPart, LLMRequest, LLMRequestBuilder, LLMResponse, MessageRole, ModelConfig,
-    ResponseFormat, StreamEvent, TokenUsage,
+    ReasoningConfig, ReasoningEffort, ResponseFormat, StreamEvent, TokenUsage,
 };

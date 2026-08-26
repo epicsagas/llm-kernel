@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **llm**: `LLMRequest` gains `reasoning: Option<ReasoningConfig>` (plus
+  builder `.reasoning()`) for reasoning-model controls. Two independent
+  knobs, each serialized only when set: `effort` becomes the official
+  OpenAI Chat Completions `reasoning_effort` parameter
+  (`ReasoningEffort`: `none`/`minimal`/`low`/`medium`/`high`/`xhigh`/`max`),
+  and `enabled` becomes the OpenRouter extension object
+  `reasoning: {"enabled": bool}` — `enabled: false` stops reasoning models
+  from emitting chain-of-thought into `content` (which also burns
+  `max_tokens`). `None` adds nothing to the request body. Forwarded by
+  `OpenAIClient` in both `complete` and `stream_complete`; ignored by
+  `AnthropicClient`.
+
+### Fixed
+- **llm**: `OpenAIClient` no longer fails the entire response when an
+  OpenAI-compatible gateway (observed on OpenRouter) returns HTTP 200
+  with unescaped control characters inside JSON string literals: strict
+  decode runs first, and only on failure the body is retried with
+  in-string control chars escaped as `\uXXXX` (the original parse error
+  is surfaced if that also fails). Applies to non-streaming decode and
+  to OpenAI SSE chunk parsing.
+- **mcp**, **dlp**: fixed two test-only clippy lints that surfaced under
+  `cargo clippy --all-targets` (useless `format!` in a transport test,
+  useless `try_into` in an RRN test helper).
+
 ## [0.29.0] - 2026-08-22
 
 ### Added

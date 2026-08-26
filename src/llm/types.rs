@@ -227,6 +227,78 @@ pub enum ResponseFormat {
     },
 }
 
+/// Reasoning effort for reasoning models (OpenAI `reasoning_effort`).
+///
+/// Wire values follow the official OpenAI Chat Completions parameter:
+/// `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`. Not every
+/// model supports every value (e.g. `none` is gpt-5.1+); see the OpenAI
+/// reasoning guide for model-specific support.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ReasoningEffort {
+    /// Disable reasoning entirely (gpt-5.1+ only).
+    None,
+    /// Minimal reasoning (gpt-5+ only).
+    Minimal,
+    /// Low effort — latency-sensitive tasks.
+    Low,
+    /// Medium effort — balanced default for most workloads.
+    Medium,
+    /// High effort — hard reasoning, complex debugging.
+    High,
+    /// Extra-high effort — deep research, long agentic runs.
+    XHigh,
+    /// Maximum reasoning for the most complex tasks.
+    Max,
+}
+
+/// Reasoning-model controls for a chat completion request.
+///
+/// Two independent knobs, each serialized only when set:
+///
+/// - `effort` maps to the official OpenAI Chat Completions `reasoning_effort`
+///   parameter (accepted by OpenAI and most OpenAI-compatible gateways,
+///   including OpenRouter).
+/// - `enabled` maps to the OpenRouter extension object
+///   `reasoning: {"enabled": bool}`. `enabled: false` stops reasoning models
+///   from emitting chain-of-thought into `content` (which would otherwise
+///   also burn `max_tokens` on reasoning). This key is only sent when you
+///   explicitly set it — pure-OpenAI endpoints never see it otherwise.
+///
+/// Forwarded by [`OpenAIClient`](crate::llm::OpenAIClient) in both `complete`
+/// and `stream_complete`. [`AnthropicClient`](crate::llm::AnthropicClient)
+/// has no mapping for these controls (extended thinking is configured
+/// per-model there) and ignores them.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ReasoningConfig {
+    /// On/off toggle for providers with an explicit switch (OpenRouter
+    /// `reasoning.enabled`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enabled: Option<bool>,
+    /// How much the model reasons (OpenAI `reasoning_effort`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub effort: Option<ReasoningEffort>,
+}
+
+impl ReasoningConfig {
+    /// Turn reasoning off where the provider supports an explicit switch
+    /// (serializes `reasoning: {"enabled": false}` — the OpenRouter form).
+    pub fn disabled() -> Self {
+        Self {
+            enabled: Some(false),
+            effort: None,
+        }
+    }
+
+    /// Request a specific reasoning effort (serializes `reasoning_effort`).
+    pub fn effort(effort: ReasoningEffort) -> Self {
+        Self {
+            enabled: None,
+            effort: Some(effort),
+        }
+    }
+}
+
 /// A chat completion request to an LLM provider.
 ///
 /// This struct implements [`Default`] so callers can use struct-update syntax
@@ -272,6 +344,10 @@ pub struct LLMRequest {
     /// in [`LLMResponse::tool_calls`].
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tools: Option<Vec<crate::llm::ToolDefinition>>,
+    /// Reasoning-model controls (effort / on-off switch). `None` adds nothing
+    /// to the request body. See [`ReasoningConfig`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning: Option<ReasoningConfig>,
 }
 
 impl Default for LLMRequest {
@@ -286,6 +362,7 @@ impl Default for LLMRequest {
             model: None,
             response_format: None,
             tools: None,
+            reasoning: None,
         }
     }
 }
@@ -343,6 +420,7 @@ pub struct LLMRequestBuilder {
     model: Option<String>,
     response_format: Option<ResponseFormat>,
     tools: Option<Vec<crate::llm::ToolDefinition>>,
+    reasoning: Option<ReasoningConfig>,
 }
 
 impl LLMRequestBuilder {
@@ -418,6 +496,12 @@ impl LLMRequestBuilder {
         self
     }
 
+    /// Set reasoning-model controls (effort / on-off switch).
+    pub fn reasoning(mut self, cfg: ReasoningConfig) -> Self {
+        self.reasoning = Some(cfg);
+        self
+    }
+
     /// Build the `LLMRequest`.
     pub fn build(self) -> LLMRequest {
         LLMRequest {
@@ -428,6 +512,7 @@ impl LLMRequestBuilder {
             model: self.model,
             response_format: self.response_format,
             tools: self.tools,
+            reasoning: self.reasoning,
         }
     }
 }
@@ -682,6 +767,48 @@ mod tests {
         assert!(from_default.model.is_none());
         assert!(from_default.response_format.is_none());
         assert!(from_default.tools.is_none());
+        assert!(from_default.reasoning.is_none());
+    }
+
+    #[test]
+    fn reasoning_config_disabled_serializes_enabled_only() {
+        let json = serde_json::to_value(ReasoningConfig::disabled()).unwrap();
+        assert_eq!(json, serde_json::json!({"enabled": false}));
+    }
+
+    #[test]
+    fn reasoning_config_effort_serializes_effort_only() {
+        let json = serde_json::to_value(ReasoningConfig::effort(ReasoningEffort::Medium)).unwrap();
+        assert_eq!(json, serde_json::json!({"effort": "medium"}));
+        // Empty config serializes to an empty object (no phantom keys).
+        assert_eq!(
+            serde_json::to_value(ReasoningConfig::default()).unwrap(),
+            serde_json::json!({})
+        );
+    }
+
+    #[test]
+    fn builder_reasoning_roundtrip() {
+        let req = LLMRequest::builder()
+            .user_message("hi")
+            .reasoning(ReasoningConfig::disabled())
+            .build();
+        assert_eq!(req.reasoning.as_ref().unwrap().enabled, Some(false));
+
+        // Serialized request nests under `reasoning`; absent when None.
+        let with = serde_json::to_value(&req).unwrap();
+        assert_eq!(with["reasoning"]["enabled"], false);
+        let without = serde_json::to_value(LLMRequest::default()).unwrap();
+        assert!(without.get("reasoning").is_none());
+    }
+
+    #[test]
+    fn llm_request_deserializes_without_reasoning_field() {
+        // Payloads written before `reasoning` existed must still deserialize.
+        let json =
+            r#"{"system":null,"messages":[],"temperature":0.7,"max_tokens":null,"model":null}"#;
+        let req: LLMRequest = serde_json::from_str(json).unwrap();
+        assert!(req.reasoning.is_none());
     }
 
     #[test]

@@ -5,7 +5,8 @@ use async_trait::async_trait;
 use crate::error::{KernelError, Result};
 use crate::llm::tool::{ToolCall, ToolDefinition};
 use crate::llm::types::{
-    LLMRequest, LLMResponse, LLMStream, ModelConfig, ResponseFormat, StreamEvent, TokenUsage,
+    LLMRequest, LLMResponse, LLMStream, ModelConfig, ReasoningConfig, ReasoningEffort,
+    ResponseFormat, StreamEvent, TokenUsage,
 };
 
 /// Best-effort redaction of an HTTP error response body before it lands in a
@@ -78,6 +79,23 @@ fn anthropic_output_config(rf: &ResponseFormat) -> Option<serde_json::Value> {
             "format": { "type": "json_schema", "schema": schema }
         })),
         ResponseFormat::Json | ResponseFormat::Text => None,
+    }
+}
+
+/// Map kernel [`ReasoningConfig`] to the two wire keys the OpenAI-compatible
+/// path forwards: `effort` becomes the official top-level `reasoning_effort`
+/// parameter; `enabled` becomes the OpenRouter extension object
+/// `reasoning: {"enabled": bool}`. Each key is emitted only when set, so a
+/// `None` config (or an unset knob) adds nothing to the request body.
+fn openai_reasoning(
+    cfg: Option<&ReasoningConfig>,
+) -> (Option<ReasoningEffort>, Option<serde_json::Value>) {
+    match cfg {
+        Some(c) => (
+            c.effort,
+            c.enabled.map(|e| serde_json::json!({ "enabled": e })),
+        ),
+        None => (None, None),
     }
 }
 
@@ -233,6 +251,12 @@ struct OpenAIChatRequest {
     tools: Option<Vec<serde_json::Value>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     response_format: Option<serde_json::Value>,
+    /// Official OpenAI `reasoning_effort` parameter.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reasoning_effort: Option<ReasoningEffort>,
+    /// OpenRouter extension `reasoning: {"enabled": bool}`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reasoning: Option<serde_json::Value>,
 }
 
 #[derive(serde::Serialize)]
@@ -329,6 +353,7 @@ impl LLMClient for OpenAIClient {
             .response_format
             .as_ref()
             .and_then(openai_response_format);
+        let (reasoning_effort, reasoning) = openai_reasoning(request.reasoning.as_ref());
         let messages: Vec<_> = request
             .into_openai_messages()
             .into_iter()
@@ -343,6 +368,8 @@ impl LLMClient for OpenAIClient {
             stream: false,
             tools,
             response_format,
+            reasoning_effort,
+            reasoning,
         };
 
         let resp = self
@@ -366,10 +393,12 @@ impl LLMClient for OpenAIClient {
             });
         }
 
-        let chat_resp: OpenAIChatResponse = resp
-            .json()
+        let text = resp
+            .text()
             .await
             .map_err(|e| KernelError::LlmApi(e.to_string()))?;
+        let chat_resp: OpenAIChatResponse = from_json_lenient(&text)
+            .map_err(|e| KernelError::LlmApi(format!("error decoding response body: {e}")))?;
 
         let id = chat_resp.id;
         let created = chat_resp.created;
@@ -422,6 +451,7 @@ impl LLMClient for OpenAIClient {
         let model = request.model.clone().unwrap_or_else(|| self.model.clone());
         let temperature = request.temperature;
         let max_tokens = request.max_tokens;
+        let (reasoning_effort, reasoning) = openai_reasoning(request.reasoning.as_ref());
         let messages: Vec<_> = request
             .into_openai_messages()
             .into_iter()
@@ -438,6 +468,8 @@ impl LLMClient for OpenAIClient {
             // does not reassemble streamed tool-call fragments.
             tools: None,
             response_format: None,
+            reasoning_effort,
+            reasoning,
         };
 
         let resp = self
@@ -548,9 +580,60 @@ fn promote_reasoning_into_content(raw_content: String, reasoning: Option<&str>) 
     }
 }
 
+/// Escape raw C0 control characters (`0x00`–`0x1F`) inside JSON string
+/// literals as `\u00XX`.
+///
+/// Some OpenAI-compatible gateways (observed on OpenRouter) return HTTP 200
+/// bodies whose `reasoning` strings contain unescaped control characters
+/// (raw `\n`, `\t`, …), which strict JSON parsers reject wholesale. This
+/// walk-only pass rewrites each such character to its escape and leaves
+/// everything outside string literals untouched. Best effort: structurally
+/// broken JSON stays broken and the original parse error is surfaced.
+fn escape_unescaped_control_chars(raw: &str) -> String {
+    let mut out = String::with_capacity(raw.len());
+    let mut in_string = false;
+    let mut escaped = false;
+    for ch in raw.chars() {
+        if escaped {
+            escaped = false;
+            out.push(ch);
+            continue;
+        }
+        match ch {
+            '"' => {
+                in_string = !in_string;
+                out.push(ch);
+            }
+            '\\' if in_string => {
+                escaped = true;
+                out.push(ch);
+            }
+            c if in_string && (c as u32) < 0x20 => {
+                out.push_str(&format!("\\u{:04x}", c as u32));
+            }
+            c => out.push(c),
+        }
+    }
+    out
+}
+
+/// Parse `raw` as JSON, retrying once with control-character escaping when
+/// strict parsing fails.
+///
+/// Valid bodies take the strict path unchanged (zero overhead beyond the
+/// string read); only bodies that strict-JSON rejects get the sanitize pass.
+/// If the sanitized retry also fails, the *original* error is returned so
+/// callers see the real reason and not a secondary artifact.
+fn from_json_lenient<T: serde::de::DeserializeOwned>(raw: &str) -> serde_json::Result<T> {
+    match serde_json::from_str(raw) {
+        Ok(v) => Ok(v),
+        Err(err) => serde_json::from_str(&escape_unescaped_control_chars(raw)).map_err(|_| err),
+    }
+}
+
 /// Parse an OpenAI streaming JSON chunk into a StreamEvent.
 fn parse_openai_sse(data: &str) -> Option<StreamEvent> {
-    let v: serde_json::Value = serde_json::from_str(data).ok()?;
+    let v: serde_json::Value = from_json_lenient(data).ok()?;
 
     // GLM-4.5+/o1 send reasoning and answer as separate delta chunks; check
     // reasoning_content first so it is surfaced as ReasoningDelta, not dropped.
@@ -1187,12 +1270,148 @@ mod tests {
             stream: false,
             tools: Some(openai_tools(&[sample_tool()])),
             response_format: Some(serde_json::json!({ "type": "json_object" })),
+            reasoning_effort: None,
+            reasoning: None,
         };
         let json = serde_json::to_value(&body).unwrap();
         assert_eq!(json["tools"][0]["function"]["name"], "get_weather");
         assert_eq!(json["response_format"]["type"], "json_object");
         // Omitted when None (backward-compatible request shape).
         assert!(json.get("max_tokens").is_none());
+        assert!(json.get("reasoning_effort").is_none());
+        assert!(json.get("reasoning").is_none());
+    }
+
+    #[test]
+    fn openai_reasoning_effort_maps_to_official_param() {
+        let (effort, reasoning) =
+            openai_reasoning(Some(&ReasoningConfig::effort(ReasoningEffort::High)));
+        assert_eq!(effort, Some(ReasoningEffort::High));
+        assert!(reasoning.is_none());
+        let body = OpenAIChatRequest {
+            model: "gpt-5.5".into(),
+            messages: vec![],
+            temperature: 0.7,
+            max_tokens: None,
+            stream: false,
+            tools: None,
+            response_format: None,
+            reasoning_effort: effort,
+            reasoning,
+        };
+        let json = serde_json::to_value(&body).unwrap();
+        assert_eq!(json["reasoning_effort"], "high");
+        assert!(json.get("reasoning").is_none());
+    }
+
+    #[test]
+    fn openai_reasoning_disabled_maps_to_openrouter_object() {
+        // immune's exact need: reasoning: {"enabled": false} on OpenRouter,
+        // with no reasoning_effort key and no config -> no keys at all.
+        let (effort, reasoning) = openai_reasoning(Some(&ReasoningConfig::disabled()));
+        assert_eq!(effort, None);
+        assert_eq!(reasoning.unwrap()["enabled"], false);
+
+        let (effort, reasoning) = openai_reasoning(None);
+        assert!(effort.is_none() && reasoning.is_none());
+    }
+
+    #[test]
+    fn openai_reasoning_both_knobs_serialize_independently() {
+        let (effort, reasoning) = openai_reasoning(Some(&ReasoningConfig {
+            enabled: Some(true),
+            effort: Some(ReasoningEffort::Low),
+        }));
+        let body = OpenAIChatRequest {
+            model: "m".into(),
+            messages: vec![],
+            temperature: 0.7,
+            max_tokens: None,
+            stream: false,
+            tools: None,
+            response_format: None,
+            reasoning_effort: effort,
+            reasoning,
+        };
+        let json = serde_json::to_value(&body).unwrap();
+        assert_eq!(json["reasoning_effort"], "low");
+        assert_eq!(json["reasoning"]["enabled"], true);
+    }
+
+    #[test]
+    fn reasoning_effort_wire_values_match_openai_spec() {
+        // Official enum: none, minimal, low, medium, high, xhigh, max.
+        for (variant, wire) in [
+            (ReasoningEffort::None, "none"),
+            (ReasoningEffort::Minimal, "minimal"),
+            (ReasoningEffort::Low, "low"),
+            (ReasoningEffort::Medium, "medium"),
+            (ReasoningEffort::High, "high"),
+            (ReasoningEffort::XHigh, "xhigh"),
+            (ReasoningEffort::Max, "max"),
+        ] {
+            assert_eq!(serde_json::to_value(variant).unwrap(), wire);
+            let back: ReasoningEffort = serde_json::from_value(wire.into()).unwrap();
+            assert_eq!(back, variant);
+        }
+    }
+
+    #[test]
+    fn lenient_decode_rescues_openrouter_control_chars() {
+        // OpenRouter was observed returning 200 with raw \n / \t inside the
+        // reasoning string; strict serde_json fails the whole body.
+        let raw = "{\"id\":\"c1\",\"model\":\"m\",\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":\"답변\",\"reasoning_content\":\"step 1\nstep 2\ttab\"},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":2,\"total_tokens\":3}}";
+        assert!(serde_json::from_str::<OpenAIChatResponse>(raw).is_err());
+        let resp: OpenAIChatResponse = from_json_lenient(raw).unwrap();
+        let first = resp.choices.into_iter().next().unwrap();
+        assert_eq!(first.message.content.as_deref(), Some("답변"));
+        assert_eq!(
+            first.message.reasoning_content.as_deref(),
+            Some("step 1\nstep 2\ttab")
+        );
+    }
+
+    #[test]
+    fn lenient_decode_keeps_original_error_for_structural_garbage() {
+        // Broken structure (not just control chars) still errors, surfacing
+        // the *original* strict-parse error rather than a sanitize artifact.
+        let raw = "{\"choices\": tr";
+        let strict = serde_json::from_str::<OpenAIChatResponse>(raw)
+            .map(|_: OpenAIChatResponse| ())
+            .unwrap_err();
+        let lenient = from_json_lenient::<OpenAIChatResponse>(raw)
+            .map(|_: OpenAIChatResponse| ())
+            .unwrap_err();
+        assert_eq!(lenient.to_string(), strict.to_string());
+    }
+
+    #[test]
+    fn escape_unescaped_control_chars_only_touches_string_literals() {
+        // Raw newline outside strings (pretty-printed JSON) stays as-is;
+        // inside strings it becomes \uXXXX; existing escapes are untouched.
+        let raw = "{\n  \"a\": \"x\ny\\n\\tz\",\n  \"b\": 1\n}";
+        let out = escape_unescaped_control_chars(raw);
+        assert_eq!(out, "{\n  \"a\": \"x\\u000ay\\n\\tz\",\n  \"b\": 1\n}");
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(v["a"], "x\ny\n\tz");
+    }
+
+    #[test]
+    fn escape_unescaped_control_chars_handles_escaped_quotes() {
+        // \" inside a string must not toggle the in-string state.
+        let raw = "{\"a\":\"say \\\"hi\\\" ok\"}";
+        assert_eq!(escape_unescaped_control_chars(raw), raw);
+    }
+
+    #[test]
+    fn openai_sse_lenient_reasoning_delta_with_control_chars() {
+        // A streamed reasoning delta carrying a raw tab must not be dropped.
+        let data = "{\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\"think\ttab\"},\"finish_reason\":null}]}";
+        let event = parse_openai_sse(data).unwrap();
+        match event {
+            StreamEvent::ReasoningDelta { content } => assert_eq!(content, "think\ttab"),
+            other => panic!("expected ReasoningDelta, got {other:?}"),
+        }
     }
 
     #[test]
