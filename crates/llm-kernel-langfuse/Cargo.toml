@@ -1,0 +1,26 @@
+[package]
+name         = "llm-kernel-langfuse"
+version      = "0.1.0"
+edition      = "2024"
+description  = "Langfuse observability adapter for llm-kernel — LLMClientMiddleware that ships generation events to Langfuse"
+license      = "Apache-2.0"
+repository   = "https://github.com/epicsagas/llm-kernel"
+rust-version = "1.92"
+keywords     = ["llm", "langfuse", "observability", "tracing", "ai"]
+categories   = ["api-bindings", "asynchronous", "development-tools"]
+
+[dependencies]
+llm-kernel  = { path = "../..", version = "0.30.0", features = ["client-async", "safety"] }
+async-trait = "0.1"
+reqwest     = { version = "0.13", features = ["json", "rustls"], default-features = false }
+serde       = { version = "1", features = ["derive"] }
+serde_json  = "1"
+time        = { version = "0.3", features = ["formatting"] }
+tokio       = "1"
+tracing     = "0.1"
+uuid        = { version = "1", features = ["v4"] }
+
+[dev-dependencies]
+tokio       = { version = "1", features = ["macros", "rt"] }
+tokio-stream = "0.1"
+wiremock    = "0.6"
