@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.31.0] - 2026-08-28
+
+### Added
+
+- `llm`: `ObservabilityContext` — vendor-neutral, kernel-opaque observability carrier on `LLMRequest` (W3C `traceparent`, `session_id`, `name`, `tags`, `metadata`), with builder `observability()` / `with_session()`.
+- `llm`: `LLMClientMiddleware::on_response` / `on_error` now receive `elapsed: Duration` measured by `MiddlewareClient` around the inner call (retries included when wrapping a `RetryClient`).
+
+### Changed
+
+- **Breaking (0.x minor):** `LLMClientMiddleware` hook signatures gained an `elapsed` parameter — trait implementors must update.
+
 ## [0.30.0] - 2026-08-27
 
 ### Added
