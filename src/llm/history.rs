@@ -192,6 +192,7 @@ impl ConversationHistory {
             reasoning: None,
             verbosity: None,
             extra_body: None,
+            observability: None,
         }
     }
 }

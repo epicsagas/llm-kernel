@@ -17,6 +17,8 @@
 //! let response = wrapped.complete(request).await?;
 //! ```
 
+use std::time::Duration;
+
 use async_trait::async_trait;
 
 use crate::error::{KernelError, Result};
@@ -39,13 +41,22 @@ pub trait LLMClientMiddleware: Send + Sync {
 
     /// Called after a successful `complete` response.
     ///
-    /// Use for logging, metrics, or response tracing.
-    async fn on_response(&self, _request: &LLMRequest, _response: &LLMResponse) {}
+    /// `elapsed` is the wall time spent in the inner client (including
+    /// retries when the middleware wraps a `RetryClient`). Use for
+    /// logging, metrics, or response tracing.
+    async fn on_response(
+        &self,
+        _request: &LLMRequest,
+        _response: &LLMResponse,
+        _elapsed: Duration,
+    ) {
+    }
 
     /// Called when `complete` returns an error.
     ///
-    /// Use for error logging, alerting, or metrics.
-    async fn on_error(&self, _request: &LLMRequest, _error: &KernelError) {}
+    /// `elapsed` is the wall time spent in the inner client before the
+    /// error surfaced. Use for error logging, alerting, or metrics.
+    async fn on_error(&self, _request: &LLMRequest, _error: &KernelError, _elapsed: Duration) {}
 }
 
 /// A default no-op middleware. Useful as a type parameter default.
@@ -81,13 +92,18 @@ impl<C, M> MiddlewareClient<C, M> {
 impl<C: LLMClient, M: LLMClientMiddleware> LLMClient for MiddlewareClient<C, M> {
     async fn complete(&self, request: LLMRequest) -> Result<LLMResponse> {
         self.middleware.on_request(&request).await;
+        let started = std::time::Instant::now();
         match self.inner.complete(request.clone()).await {
             Ok(response) => {
-                self.middleware.on_response(&request, &response).await;
+                self.middleware
+                    .on_response(&request, &response, started.elapsed())
+                    .await;
                 Ok(response)
             }
             Err(err) => {
-                self.middleware.on_error(&request, &err).await;
+                self.middleware
+                    .on_error(&request, &err, started.elapsed())
+                    .await;
                 Err(err)
             }
         }
@@ -115,6 +131,8 @@ mod tests {
         on_request_called: Arc<Mutex<bool>>,
         on_response_called: Arc<Mutex<bool>>,
         on_error_called: Arc<Mutex<bool>>,
+        response_elapsed: Arc<Mutex<Option<Duration>>>,
+        error_elapsed: Arc<Mutex<Option<Duration>>>,
     }
 
     #[async_trait]
@@ -123,12 +141,19 @@ mod tests {
             *self.on_request_called.lock().unwrap() = true;
         }
 
-        async fn on_response(&self, _request: &LLMRequest, _response: &LLMResponse) {
+        async fn on_response(
+            &self,
+            _request: &LLMRequest,
+            _response: &LLMResponse,
+            elapsed: Duration,
+        ) {
             *self.on_response_called.lock().unwrap() = true;
+            *self.response_elapsed.lock().unwrap() = Some(elapsed);
         }
 
-        async fn on_error(&self, _request: &LLMRequest, _error: &KernelError) {
+        async fn on_error(&self, _request: &LLMRequest, _error: &KernelError, elapsed: Duration) {
             *self.on_error_called.lock().unwrap() = true;
+            *self.error_elapsed.lock().unwrap() = Some(elapsed);
         }
     }
 
@@ -175,6 +200,7 @@ mod tests {
         let mid = RecordingMiddleware::default();
         let req_called = mid.on_request_called.clone();
         let res_called = mid.on_response_called.clone();
+        let elapsed = mid.response_elapsed.clone();
 
         let client = MiddlewareClient::new(MockClient::ok(), mid);
         let result = client.complete(LLMRequest::builder().build()).await;
@@ -182,18 +208,22 @@ mod tests {
         assert!(result.is_ok());
         assert!(*req_called.lock().unwrap());
         assert!(*res_called.lock().unwrap());
+        // Timing is delivered, not just set.
+        assert!(elapsed.lock().unwrap().is_some());
     }
 
     #[tokio::test]
     async fn middleware_calls_on_error_on_failure() {
         let mid = RecordingMiddleware::default();
         let err_called = mid.on_error_called.clone();
+        let elapsed = mid.error_elapsed.clone();
 
         let client = MiddlewareClient::new(MockClient::err(), mid);
         let result = client.complete(LLMRequest::builder().build()).await;
 
         assert!(result.is_err());
         assert!(*err_called.lock().unwrap());
+        assert!(elapsed.lock().unwrap().is_some());
     }
 
     #[tokio::test]

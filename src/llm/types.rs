@@ -406,6 +406,46 @@ pub struct LLMRequest {
     /// [`AnthropicClient`](crate::llm::AnthropicClient) ignores it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub extra_body: Option<serde_json::Map<String, serde_json::Value>>,
+    /// Caller-attached observability context. The kernel does not
+    /// interpret or forward this to providers — it exists so middleware
+    /// (e.g. an observability adapter) can nest the generation under a
+    /// caller-opened trace, vary sessions per call, and name
+    /// observations. See [`ObservabilityContext`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub observability: Option<ObservabilityContext>,
+}
+
+/// Vendor-neutral observability context carried on an [`LLMRequest`].
+///
+/// The kernel treats this as opaque data — it never parses or forwards
+/// the values. Observability middleware consumes it:
+///
+/// - `traceparent` lets an adapter attach the generation under a trace
+///   the caller already opened (W3C trace-context format, matching the
+///   standard `traceparent` header, so callers inside an OpenTelemetry
+///   context can extract and pass it directly).
+/// - `session_id` groups related calls per execution unit rather than
+///   per client.
+/// - `name` overrides the observation name (verb-first, low-cardinality,
+///   model-free — backends index and filter by name).
+/// - `tags`/`metadata` ride along for backend-side filtering.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ObservabilityContext {
+    /// W3C trace context of the parent span (`traceparent` header format).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub traceparent: Option<String>,
+    /// Session id grouping related calls in observability backends.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session_id: Option<String>,
+    /// Observation name override (verb-first, low-cardinality, model-free).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    /// Tags attached to the trace in observability backends.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tags: Vec<String>,
+    /// Free-form string metadata forwarded to observability backends.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub metadata: std::collections::BTreeMap<String, String>,
 }
 
 impl Default for LLMRequest {
@@ -423,6 +463,7 @@ impl Default for LLMRequest {
             reasoning: None,
             verbosity: None,
             extra_body: None,
+            observability: None,
         }
     }
 }
@@ -483,6 +524,7 @@ pub struct LLMRequestBuilder {
     reasoning: Option<ReasoningConfig>,
     verbosity: Option<Verbosity>,
     extra_body: Option<serde_json::Map<String, serde_json::Value>>,
+    observability: Option<ObservabilityContext>,
 }
 
 impl LLMRequestBuilder {
@@ -577,6 +619,20 @@ impl LLMRequestBuilder {
         self
     }
 
+    /// Attach an observability context for middleware (kernel-opaque).
+    pub fn observability(mut self, context: ObservabilityContext) -> Self {
+        self.observability = Some(context);
+        self
+    }
+
+    /// Convenience: set just the session id, creating the context if
+    /// absent and preserving other fields otherwise.
+    pub fn with_session(mut self, session_id: impl Into<String>) -> Self {
+        let context = self.observability.get_or_insert_with(Default::default);
+        context.session_id = Some(session_id.into());
+        self
+    }
+
     /// Build the `LLMRequest`.
     pub fn build(self) -> LLMRequest {
         LLMRequest {
@@ -590,6 +646,7 @@ impl LLMRequestBuilder {
             reasoning: self.reasoning,
             verbosity: self.verbosity,
             extra_body: self.extra_body,
+            observability: self.observability,
         }
     }
 }
@@ -863,6 +920,59 @@ mod tests {
         assert_eq!(
             serde_json::to_value(ReasoningConfig::default()).unwrap(),
             serde_json::json!({})
+        );
+    }
+
+    #[test]
+    fn observability_context_roundtrip() {
+        let mut metadata = std::collections::BTreeMap::new();
+        metadata.insert("source".to_string(), "router".to_string());
+        let req = LLMRequest::builder()
+            .user_message("hi")
+            .observability(ObservabilityContext {
+                traceparent: Some(
+                    "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01".to_string(),
+                ),
+                session_id: Some("s-1".to_string()),
+                name: Some("generate-reply".to_string()),
+                tags: vec!["prod".to_string()],
+                metadata,
+            })
+            .build();
+        let ctx = req.observability.as_ref().unwrap();
+        assert_eq!(ctx.name.as_deref(), Some("generate-reply"));
+        assert_eq!(
+            ctx.metadata.get("source").map(String::as_str),
+            Some("router")
+        );
+
+        // Serializes nested; absent when None; absent key deserializes to None.
+        let json = serde_json::to_value(&req).unwrap();
+        assert_eq!(json["observability"]["session_id"], "s-1");
+        let back: LLMRequest = serde_json::from_value(json).unwrap();
+        assert_eq!(back.observability, req.observability);
+        let legacy = serde_json::json!({"messages": [], "temperature": 0.5});
+        let plain: LLMRequest = serde_json::from_value(legacy).unwrap();
+        assert!(plain.observability.is_none());
+    }
+
+    #[test]
+    fn with_session_preserves_other_context_fields() {
+        let req = LLMRequest::builder()
+            .observability(ObservabilityContext {
+                name: Some("generate-reply".to_string()),
+                ..Default::default()
+            })
+            .with_session("s-2")
+            .build();
+        let ctx = req.observability.as_ref().unwrap();
+        assert_eq!(ctx.session_id.as_deref(), Some("s-2"));
+        assert_eq!(ctx.name.as_deref(), Some("generate-reply"));
+        // Absent context is created on demand.
+        let fresh = LLMRequest::builder().with_session("s-3").build();
+        assert_eq!(
+            fresh.observability.unwrap().session_id.as_deref(),
+            Some("s-3")
         );
     }
 
