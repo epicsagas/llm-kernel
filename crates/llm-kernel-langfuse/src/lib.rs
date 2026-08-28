@@ -1,9 +1,13 @@
 //! Langfuse observability adapter for [`llm_kernel`].
 //!
-//! Thin [`LLMClientMiddleware`] that ships each `complete()` call to a
-//! Langfuse server as a `generation-create` ingestion event. The kernel
-//! stays vendor-free; this crate is the only place that knows Langfuse
-//! exists.
+//! Thin [`LLMClientMiddleware`] that reports each non-streaming
+//! `complete()` call to Langfuse as a `generation` span, exported via
+//! OpenTelemetry OTLP/JSON to `{host}/api/public/otel/v1/traces` — the
+//! ingestion path Langfuse recommends for languages without an official
+//! SDK (the legacy `POST /api/public/ingestion` API is deprecated).
+//!
+//! The kernel stays vendor-free; this crate is the only place that knows
+//! Langfuse exists.
 //!
 //! # Example
 //!
@@ -13,35 +17,58 @@
 //!
 //! # async fn demo() -> llm_kernel::error::Result<()> {
 //! let config = LangfuseConfig::from_env().expect("LANGFUSE_PUBLIC_KEY / LANGFUSE_SECRET_KEY set");
+//! let middleware = LangfuseMiddleware::new(config);
 //! let client = OpenAIClient::from_key("gpt-4o", "sk-...")?;
-//! let observed = MiddlewareClient::new(client, LangfuseMiddleware::new(config));
+//! let observed = MiddlewareClient::new(client, middleware.clone());
 //! let response = observed
 //!     .complete(LLMRequest::builder().user_message("hello").build())
 //!     .await?;
+//! // Flush pending spans on shutdown (SIGTERM) — the last batch is lost
+//! // otherwise. opentelemetry 0.32 has no global shutdown helper.
+//! middleware.shutdown();
 //! # Ok(())
 //! # }
 //! ```
 //!
-//! # Scope
+//! # Design notes
 //!
+//! - Spans are queued to a [`BatchSpanProcessor`]-backed provider that
+//!   exports from a dedicated thread — the LLM call path never performs
+//!   network I/O in the hooks. The exporter therefore uses the *blocking*
+//!   reqwest client: the batch thread drives export via `block_on`, and an
+//!   async client panics inside it (traces then vanish silently).
+//! - The `x-langfuse-ingestion-version: 4` header is always sent —
+//!   without it Langfuse delays directly-ingested OTel data by up to
+//!   10 minutes.
+//! - [`LangfuseConfig::capture_io`] gates only the
+//!   `langfuse.observation.input`/`.output` attributes. Model, usage,
+//!   level, and metadata are always reported so cost and failure
+//!   dashboards stay alive with the kill switch on.
 //! - Only the non-streaming `complete()` path emits events —
 //!   `MiddlewareClient::stream_complete` does not fire middleware hooks
 //!   (kernel limitation).
-//! - One HTTP POST per call, sent inline from the hook with a 5s timeout.
-//!   // ponytail: per-call POST; switch to batched background flush when volume matters
-//! - Latency is not reported: hooks are `&self` and requests carry no id,
-//!   so correlating `on_request` start times with responses would need
-//!   keyed mutable state.
-//! - Ingestion failures are logged via `tracing::warn!` and never
-//!   propagate to the LLM call.
-
-use std::time::Duration;
+//! - Span duration is ~0: hooks receive no call identifier, so
+//!   `on_request` start times cannot be correlated with responses across
+//!   concurrent calls. Fixing latency, trace nesting, and per-call
+//!   sessions requires a kernel hook change (tracked as follow-up).
+//! - Error `status_message` is masked via
+//!   [`llm_kernel::safety::mask_secrets`] — provider error bodies can echo
+//!   request credentials back.
+//!
+//! [`BatchSpanProcessor`]: opentelemetry_sdk::trace::BatchSpanProcessor
 
 use async_trait::async_trait;
 use llm_kernel::error::KernelError;
 use llm_kernel::llm::{LLMClientMiddleware, LLMRequest, LLMResponse};
-use serde::Serialize;
-use serde_json::json;
+use opentelemetry::KeyValue;
+use opentelemetry::trace::{Span, Tracer, TracerProvider};
+use opentelemetry_otlp::{Protocol, SpanExporter, WithExportConfig, WithHttpConfig};
+use opentelemetry_sdk::Resource;
+use opentelemetry_sdk::trace::SdkTracerProvider;
+
+/// Observation name reported to Langfuse (verb-first, model-free — model is
+/// a separate generation attribute and must not appear in the name).
+const OBSERVATION_NAME: &str = "llm-kernel.complete";
 
 /// Connection and capture settings for a Langfuse server.
 ///
@@ -56,11 +83,11 @@ pub struct LangfuseConfig {
     pub public_key: String,
     /// Langfuse secret API key.
     pub secret_key: String,
-    /// Include prompts (`input`) and completions (`output`) in events.
-    /// Set to `false` for PII-sensitive deployments — events then carry
-    /// only model, usage, and outcome metadata.
+    /// Include prompts (`input`) and completions (`output`) in spans.
+    /// Set to `false` for PII-sensitive deployments — model, usage, level,
+    /// and metadata are still reported.
     pub capture_io: bool,
-    /// Attach a session id to every event for conversation grouping.
+    /// Attach a session id to every span for conversation grouping.
     pub session_id: Option<String>,
 }
 
@@ -107,189 +134,186 @@ impl LangfuseConfig {
     }
 }
 
-/// [`LLMClientMiddleware`] that reports completions to Langfuse.
+/// [`LLMClientMiddleware`] that reports completions to Langfuse via OTLP.
+///
+/// Clone-safe: all clones share one batch exporter. Call
+/// [`shutdown`](Self::shutdown) exactly once before process exit to flush
+/// the last batch.
+#[derive(Clone)]
 pub struct LangfuseMiddleware {
     config: LangfuseConfig,
-    http: reqwest::Client,
+    provider: SdkTracerProvider,
 }
 
 impl LangfuseMiddleware {
-    /// Create a middleware. The HTTP client uses a 5s timeout so a slow
-    /// Langfuse endpoint cannot stall the LLM call beyond that.
+    /// Build the tracer provider and exporter. Panics only when the
+    /// exporter cannot be constructed (invalid configuration) — this is a
+    /// startup-time failure, not a per-call one.
     pub fn new(config: LangfuseConfig) -> Self {
-        let http = reqwest::Client::builder()
-            .timeout(Duration::from_secs(5))
+        let credentials = {
+            use base64::Engine as _;
+            base64::engine::general_purpose::STANDARD
+                .encode(format!("{}:{}", config.public_key, config.secret_key))
+        };
+        let exporter = SpanExporter::builder()
+            .with_http()
+            .with_protocol(Protocol::HttpJson)
+            .with_endpoint(format!(
+                "{}/api/public/otel/v1/traces",
+                config.host.trim_end_matches('/')
+            ))
+            .with_headers(
+                [
+                    ("Authorization".to_string(), format!("Basic {credentials}")),
+                    // Without this header Langfuse delays direct OTel
+                    // ingestion by up to 10 minutes.
+                    ("x-langfuse-ingestion-version".to_string(), "4".to_string()),
+                ]
+                .into_iter()
+                .collect(),
+            )
             .build()
-            .unwrap_or_default();
-        Self { config, http }
+            .expect("langfuse OTLP exporter construction failed");
+
+        let provider = SdkTracerProvider::builder()
+            .with_batch_exporter(exporter)
+            .with_resource(
+                Resource::builder()
+                    .with_service_name("llm-kernel-langfuse")
+                    .build(),
+            )
+            .build();
+        Self { config, provider }
     }
 
-    async fn send(&self, body: GenerationBody) {
-        let batch = IngestionBatch {
-            batch: vec![BatchEvent {
-                id: uuid::Uuid::new_v4().to_string(),
-                r#type: "generation-create",
-                timestamp: rfc3339_now(),
-                body,
-            }],
-        };
-        let url = format!(
-            "{}/api/public/ingestion",
-            self.config.host.trim_end_matches('/')
-        );
-        let request = self
-            .http
-            .post(&url)
-            .basic_auth(&self.config.public_key, Some(&self.config.secret_key))
-            .json(&batch);
-        match request.send().await {
-            Ok(response) if response.status().is_success() => {}
-            Ok(response) => {
-                tracing::warn!(status = %response.status(), "langfuse ingestion rejected event");
-            }
-            Err(error) => {
-                tracing::warn!(%error, "langfuse ingestion request failed");
-            }
+    /// Flush and shut down the exporter. Call once on SIGTERM/before exit —
+    /// the final batch is silently dropped otherwise. Repeated calls are
+    /// no-ops.
+    pub fn shutdown(&self) {
+        if let Err(error) = self.provider.shutdown() {
+            tracing::warn!(%error, "langfuse exporter shutdown failed");
         }
+    }
+
+    fn emit(&self, attributes: Vec<KeyValue>) {
+        let mut span = self
+            .provider
+            .tracer("llm-kernel-langfuse")
+            .start(OBSERVATION_NAME);
+        for attribute in attributes {
+            span.set_attribute(attribute);
+        }
+        span.end();
     }
 }
 
 #[async_trait]
 impl LLMClientMiddleware for LangfuseMiddleware {
     async fn on_response(&self, request: &LLMRequest, response: &LLMResponse) {
-        self.send(success_body(request, response, &self.config))
-            .await;
+        self.emit(generation_attributes(request, response, &self.config));
     }
 
     async fn on_error(&self, request: &LLMRequest, error: &KernelError) {
-        self.send(error_body(request, error, &self.config)).await;
+        self.emit(error_attributes(request, error, &self.config));
     }
 }
 
-fn rfc3339_now() -> String {
-    time::OffsetDateTime::now_utc()
-        .format(&time::format_description::well_known::Rfc3339)
-        .unwrap_or_else(|_| "1970-01-01T00:00:00Z".to_string())
-}
-
-fn success_body(
+/// Attributes for a successful generation. `capture_io` gates only
+/// input/output — model/usage/level/metadata always ship so cost and
+/// failure dashboards survive the kill switch.
+fn generation_attributes(
     request: &LLMRequest,
     response: &LLMResponse,
     config: &LangfuseConfig,
-) -> GenerationBody {
-    GenerationBody {
-        id: uuid::Uuid::new_v4().to_string(),
-        trace_id: uuid::Uuid::new_v4().to_string(),
-        name: "llm-kernel.complete",
-        model: response.model.clone(),
-        input: capture(config, || serde_json::to_value(request).unwrap_or_default()),
-        output: capture(config, || {
-            json!({
+) -> Vec<KeyValue> {
+    let mut attributes = vec![
+        KeyValue::new("langfuse.observation.type", "generation"),
+        KeyValue::new("langfuse.trace.name", OBSERVATION_NAME),
+        KeyValue::new("langfuse.observation.model.name", response.model.clone()),
+        KeyValue::new(
+            "langfuse.observation.usage_details",
+            serde_json::json!({
+                "input": response.usage.prompt_tokens,
+                "output": response.usage.completion_tokens,
+                "total": response.usage.total_tokens,
+            })
+            .to_string(),
+        ),
+        KeyValue::new("langfuse.observation.level", "DEFAULT"),
+        KeyValue::new("langfuse.observation.metadata.success", true),
+    ];
+    if config.capture_io {
+        attributes.push(KeyValue::new(
+            "langfuse.observation.input",
+            serde_json::to_string(request).unwrap_or_default(),
+        ));
+        attributes.push(KeyValue::new(
+            "langfuse.observation.output",
+            serde_json::json!({
                 "content": response.content,
                 "reasoning": response.reasoning,
                 "toolCalls": response.tool_calls,
             })
-        }),
-        usage: Some(UsagePayload {
-            prompt_tokens: response.usage.prompt_tokens,
-            completion_tokens: response.usage.completion_tokens,
-            total_tokens: response.usage.total_tokens,
-            reasoning_tokens: response.usage.reasoning_tokens,
-        }),
-        level: "DEFAULT",
-        status_message: None,
-        session_id: config.session_id.clone(),
-        metadata: json!({
-            "success": true,
-            "finishReason": response.finish_reason,
-        }),
+            .to_string(),
+        ));
     }
+    if let Some(reason) = &response.finish_reason {
+        attributes.push(KeyValue::new(
+            "langfuse.observation.metadata.finishReason",
+            reason.clone(),
+        ));
+    }
+    if let Some(reasoning) = response.usage.reasoning_tokens {
+        attributes.push(KeyValue::new(
+            "langfuse.observation.metadata.reasoningTokens",
+            i64::from(reasoning),
+        ));
+    }
+    push_session(&mut attributes, config);
+    attributes
 }
 
-fn error_body(
+/// Attributes for a failed generation.
+fn error_attributes(
     request: &LLMRequest,
     error: &KernelError,
     config: &LangfuseConfig,
-) -> GenerationBody {
-    GenerationBody {
-        id: uuid::Uuid::new_v4().to_string(),
-        trace_id: uuid::Uuid::new_v4().to_string(),
-        name: "llm-kernel.complete",
-        model: request
-            .model
-            .clone()
-            .unwrap_or_else(|| "unknown".to_string()),
-        input: capture(config, || serde_json::to_value(request).unwrap_or_default()),
-        output: None,
-        usage: None,
-        level: "ERROR",
+) -> Vec<KeyValue> {
+    let mut attributes = vec![
+        KeyValue::new("langfuse.observation.type", "generation"),
+        KeyValue::new("langfuse.trace.name", OBSERVATION_NAME),
+        KeyValue::new(
+            "langfuse.observation.model.name",
+            request
+                .model
+                .clone()
+                .unwrap_or_else(|| "unknown".to_string()),
+        ),
+        KeyValue::new("langfuse.observation.level", "ERROR"),
         // Provider error bodies can echo request credentials back (see the
         // kernel's own `redact_http_body` rationale) — mask before shipping.
-        status_message: Some(llm_kernel::safety::mask_secrets(&error.to_string())),
-        session_id: config.session_id.clone(),
-        metadata: json!({
-            "success": false,
-            "finishReason": null,
-        }),
-    }
-}
-
-fn capture(
-    config: &LangfuseConfig,
-    value: impl FnOnce() -> serde_json::Value,
-) -> Option<serde_json::Value> {
+        KeyValue::new(
+            "langfuse.observation.status_message",
+            llm_kernel::safety::mask_secrets(&error.to_string()),
+        ),
+        KeyValue::new("langfuse.observation.metadata.success", false),
+    ];
     if config.capture_io {
-        Some(value())
-    } else {
-        None
+        attributes.push(KeyValue::new(
+            "langfuse.observation.input",
+            serde_json::to_string(request).unwrap_or_default(),
+        ));
     }
+    push_session(&mut attributes, config);
+    attributes
 }
 
-#[derive(Serialize)]
-struct IngestionBatch {
-    batch: Vec<BatchEvent>,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct BatchEvent {
-    id: String,
-    r#type: &'static str,
-    timestamp: String,
-    body: GenerationBody,
-}
-
-/// A Langfuse `generation-create` body. `traceId` is always fresh; Langfuse
-/// auto-creates the trace on ingestion.
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct GenerationBody {
-    id: String,
-    trace_id: String,
-    name: &'static str,
-    model: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    input: Option<serde_json::Value>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    output: Option<serde_json::Value>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    usage: Option<UsagePayload>,
-    level: &'static str,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    status_message: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    session_id: Option<String>,
-    metadata: serde_json::Value,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct UsagePayload {
-    prompt_tokens: u32,
-    completion_tokens: u32,
-    total_tokens: u32,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    reasoning_tokens: Option<u32>,
+/// Langfuse filters per observation, so the session id must ride every
+/// span — not just a root trace.
+fn push_session(attributes: &mut Vec<KeyValue>, config: &LangfuseConfig) {
+    if let Some(session) = &config.session_id {
+        attributes.push(KeyValue::new("langfuse.session.id", session.clone()));
+    }
 }
 
 #[cfg(test)]
@@ -328,68 +352,82 @@ mod tests {
         }
     }
 
-    #[test]
-    fn success_body_maps_usage_and_model() {
-        let body = success_body(&sample_request(), &sample_response(), &config(true));
-        assert_eq!(body.model, "mock-model");
-        assert!(!body.trace_id.is_empty());
-        assert_eq!(body.level, "DEFAULT");
-        let json = serde_json::to_value(&body).unwrap();
-        assert_eq!(json["usage"]["promptTokens"], 11);
-        assert_eq!(json["usage"]["reasoningTokens"], 3);
+    fn attr_map(attributes: &[KeyValue]) -> std::collections::HashMap<String, String> {
+        attributes
+            .iter()
+            .map(|kv| {
+                let value = match &kv.value {
+                    opentelemetry::Value::String(s) => s.to_string(),
+                    other => other.to_string(),
+                };
+                (kv.key.as_str().to_string(), value)
+            })
+            .collect()
     }
 
     #[test]
-    fn capture_off_hides_prompts_and_output() {
-        let body = success_body(&sample_request(), &sample_response(), &config(false));
-        let json = serde_json::to_value(&body).unwrap();
-        assert!(json.get("input").is_none());
-        assert!(json.get("output").is_none());
-        // usage still reported
-        assert_eq!(json["usage"]["totalTokens"], 18);
+    fn generation_attributes_map_model_and_usage() {
+        let map = attr_map(&generation_attributes(
+            &sample_request(),
+            &sample_response(),
+            &config(true),
+        ));
+        assert_eq!(map["langfuse.observation.type"], "generation");
+        assert_eq!(map["langfuse.observation.model.name"], "mock-model");
+        assert_eq!(map["langfuse.observation.level"], "DEFAULT");
+        assert!(map["langfuse.observation.usage_details"].contains("\"total\":18"));
+        assert_eq!(map["langfuse.observation.metadata.reasoningTokens"], "3");
+        assert_eq!(map["langfuse.observation.metadata.finishReason"], "stop");
+        assert!(map["langfuse.observation.input"].contains("secret question"));
+        assert!(map["langfuse.observation.output"].contains("the answer"));
     }
 
     #[test]
-    fn capture_on_includes_prompt_text() {
-        let body = success_body(&sample_request(), &sample_response(), &config(true));
-        let json = serde_json::to_value(&body).unwrap();
-        assert!(json["input"].to_string().contains("secret question"));
-        assert_eq!(json["output"]["content"], "the answer");
+    fn capture_off_hides_prompts_but_keeps_usage() {
+        let map = attr_map(&generation_attributes(
+            &sample_request(),
+            &sample_response(),
+            &config(false),
+        ));
+        assert!(!map.contains_key("langfuse.observation.input"));
+        assert!(!map.contains_key("langfuse.observation.output"));
+        assert!(map.contains_key("langfuse.observation.usage_details"));
+        assert!(map.contains_key("langfuse.observation.model.name"));
     }
 
     #[test]
-    fn error_body_marks_level_and_message() {
-        let error = KernelError::LlmApi("boom".to_string());
-        let body = error_body(&sample_request(), &error, &config(true));
-        assert_eq!(body.level, "ERROR");
-        assert_eq!(body.status_message.as_deref(), Some("LLM API error: boom"));
-        assert_eq!(body.model, "unknown");
-        assert!(body.usage.is_none());
-    }
-
-    #[test]
-    fn error_body_masks_secrets_echoed_by_gateway() {
-        // Regression: gateways can echo the request Authorization header in
-        // error bodies; the status message must not leak it to Langfuse.
+    fn error_attributes_mask_secrets_and_set_level() {
         let error = KernelError::Http {
             status: 401,
             message: "echoed Authorization: Bearer sk-live-abcdef123".to_string(),
         };
-        let body = error_body(&sample_request(), &error, &config(false));
-        let message = body.status_message.expect("message present");
+        let map = attr_map(&error_attributes(&sample_request(), &error, &config(false)));
+        assert_eq!(map["langfuse.observation.level"], "ERROR");
+        assert_eq!(map["langfuse.observation.model.name"], "unknown");
+        let message = &map["langfuse.observation.status_message"];
         assert!(!message.contains("sk-live-abcdef123"), "leaked: {message}");
         assert!(message.contains("****"));
     }
 
     #[test]
-    fn session_id_propagates() {
+    fn session_id_rides_every_span() {
         let mut cfg = config(true);
         cfg.session_id = Some("s-1".to_string());
-        let body = success_body(&sample_request(), &sample_response(), &cfg);
-        assert_eq!(body.session_id.as_deref(), Some("s-1"));
+        let ok = attr_map(&generation_attributes(
+            &sample_request(),
+            &sample_response(),
+            &cfg,
+        ));
+        let err = attr_map(&error_attributes(
+            &sample_request(),
+            &KernelError::LlmApi("boom".to_string()),
+            &cfg,
+        ));
+        assert_eq!(ok["langfuse.session.id"], "s-1");
+        assert_eq!(err["langfuse.session.id"], "s-1");
     }
 
-    // --- integration: wiremock -------------------------------------------
+    // --- integration: wiremock against the OTLP endpoint ---------------
 
     struct MockOk;
     struct MockErr;
@@ -426,25 +464,66 @@ mod tests {
         }
     }
 
+    /// Flatten an OTLP/JSON export body into `key -> value` span attributes.
+    fn otel_span_attributes(body: &serde_json::Value) -> std::collections::HashMap<String, String> {
+        let mut out = std::collections::HashMap::new();
+        for resource_spans in body["resourceSpans"].as_array().into_iter().flatten() {
+            for scope_spans in resource_spans["scopeSpans"]
+                .as_array()
+                .into_iter()
+                .flatten()
+            {
+                for span in scope_spans["spans"].as_array().into_iter().flatten() {
+                    for attr in span["attributes"].as_array().into_iter().flatten() {
+                        let key = attr["key"].as_str().unwrap_or_default().to_string();
+                        let value = attr["value"]
+                            .as_object()
+                            .map(|v| {
+                                if let Some(s) = v.get("stringValue").and_then(|x| x.as_str()) {
+                                    s.to_string()
+                                } else if let Some(b) = v.get("boolValue").and_then(|x| x.as_bool())
+                                {
+                                    b.to_string()
+                                } else if let Some(i) = v.get("intValue").and_then(|x| x.as_i64()) {
+                                    i.to_string()
+                                } else {
+                                    String::new()
+                                }
+                            })
+                            .unwrap_or_default();
+                        out.insert(key, value);
+                    }
+                }
+            }
+        }
+        out
+    }
+
     #[tokio::test]
-    async fn complete_posts_one_generation_event() {
+    async fn complete_exports_generation_span_via_otlp() {
         let server = wiremock::MockServer::start().await;
         wiremock::Mock::given(wiremock::matchers::method("POST"))
             .respond_with(wiremock::ResponseTemplate::new(200))
-            .expect(1)
             .mount(&server)
             .await;
 
-        let mut cfg = config(true);
-        cfg.host = server.uri();
-        let client = MiddlewareClient::new(MockOk, LangfuseMiddleware::new(cfg));
+        let mut config = config(true);
+        config.host = server.uri();
+        let middleware = LangfuseMiddleware::new(config);
+        let client = MiddlewareClient::new(MockOk, middleware.clone());
         client.complete(sample_request()).await.unwrap();
+        // Batch processor exports off-thread — force the flush.
+        middleware.shutdown();
 
         let requests = server.received_requests().await.unwrap();
-        assert_eq!(requests.len(), 1);
+        assert_eq!(requests.len(), 1, "expected exactly one OTLP export");
         let post = &requests[0];
-        assert!(post.url.as_str().ends_with("/api/public/ingestion"));
-        // base64("pk-test:sk-test"), precomputed — this crate carries no base64 dep
+        assert!(
+            post.url.as_str().contains("/api/public/otel/v1/traces"),
+            "wrong endpoint: {}",
+            post.url
+        );
+        // base64("pk-test:sk-test"), precomputed — no base64 in test path
         assert_eq!(
             post.headers
                 .get("authorization")
@@ -453,41 +532,74 @@ mod tests {
                 .unwrap(),
             "Basic cGstdGVzdDpzay10ZXN0"
         );
+        assert_eq!(
+            post.headers
+                .get("x-langfuse-ingestion-version")
+                .expect("ingestion version header")
+                .to_str()
+                .unwrap(),
+            "4"
+        );
 
         let body: serde_json::Value = serde_json::from_slice(&post.body).unwrap();
-        assert_eq!(body["batch"].as_array().map(Vec::len), Some(1));
-        let event = &body["batch"][0];
-        assert_eq!(event["type"], "generation-create");
-        let body_obj = &event["body"];
-        assert_eq!(body_obj["model"], "mock-model");
-        assert_eq!(body_obj["usage"]["promptTokens"], 11);
-        assert!(body_obj["traceId"].as_str().is_some_and(|t| !t.is_empty()));
-        assert_eq!(body_obj["output"]["content"], "the answer");
+        let attrs = otel_span_attributes(&body);
+        assert_eq!(attrs["langfuse.observation.type"], "generation");
+        assert_eq!(attrs["langfuse.observation.model.name"], "mock-model");
+        assert!(attrs["langfuse.observation.usage_details"].contains("\"total\":18"));
+        assert!(
+            attrs.contains_key("langfuse.observation.input"),
+            "input captured by default"
+        );
+        assert!(
+            attrs.contains_key("langfuse.observation.output"),
+            "output captured by default"
+        );
     }
 
     #[tokio::test]
-    async fn error_path_posts_error_event() {
+    async fn capture_off_still_exports_usage_but_not_prompts() {
         let server = wiremock::MockServer::start().await;
         wiremock::Mock::given(wiremock::matchers::method("POST"))
             .respond_with(wiremock::ResponseTemplate::new(200))
-            .expect(1)
             .mount(&server)
             .await;
 
-        let mut cfg = config(true);
-        cfg.host = server.uri();
-        let client = MiddlewareClient::new(MockErr, LangfuseMiddleware::new(cfg));
-        let result = client.complete(sample_request()).await;
-        assert!(result.is_err());
+        let mut config = config(false);
+        config.host = server.uri();
+        let middleware = LangfuseMiddleware::new(config);
+        let client = MiddlewareClient::new(MockOk, middleware.clone());
+        client.complete(sample_request()).await.unwrap();
+        middleware.shutdown();
 
         let requests = server.received_requests().await.unwrap();
-        assert_eq!(requests.len(), 1);
         let body: serde_json::Value = serde_json::from_slice(&requests[0].body).unwrap();
-        assert_eq!(body["batch"][0]["body"]["level"], "ERROR");
-        assert_eq!(
-            body["batch"][0]["body"]["statusMessage"],
-            "LLM API error: boom"
-        );
+        let attrs = otel_span_attributes(&body);
+        assert!(!attrs.contains_key("langfuse.observation.input"));
+        assert!(!attrs.contains_key("langfuse.observation.output"));
+        assert!(attrs.contains_key("langfuse.observation.usage_details"));
+        assert!(attrs.contains_key("langfuse.observation.model.name"));
+    }
+
+    #[tokio::test]
+    async fn error_path_exports_error_span() {
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("POST"))
+            .respond_with(wiremock::ResponseTemplate::new(200))
+            .mount(&server)
+            .await;
+
+        let mut config = config(true);
+        config.host = server.uri();
+        let middleware = LangfuseMiddleware::new(config);
+        let client = MiddlewareClient::new(MockErr, middleware.clone());
+        assert!(client.complete(sample_request()).await.is_err());
+        middleware.shutdown();
+
+        let requests = server.received_requests().await.unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&requests[0].body).unwrap();
+        let attrs = otel_span_attributes(&body);
+        assert_eq!(attrs["langfuse.observation.level"], "ERROR");
+        assert!(attrs["langfuse.observation.status_message"].contains("boom"));
     }
 
     #[tokio::test]
@@ -498,10 +610,12 @@ mod tests {
             .mount(&server)
             .await;
 
-        let mut cfg = config(true);
-        cfg.host = server.uri();
-        let client = MiddlewareClient::new(MockOk, LangfuseMiddleware::new(cfg));
+        let mut config = config(true);
+        config.host = server.uri();
+        let middleware = LangfuseMiddleware::new(config);
+        let client = MiddlewareClient::new(MockOk, middleware.clone());
         let response = client.complete(sample_request()).await;
         assert!(response.is_ok());
+        middleware.shutdown();
     }
 }

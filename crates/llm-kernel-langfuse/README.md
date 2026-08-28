@@ -1,9 +1,12 @@
 # llm-kernel-langfuse
 
 [Langfuse](https://langfuse.com) observability adapter for
-[llm-kernel](https://github.com/epicsagas/llm-kernel). Ships each
-non-streaming `complete()` call to Langfuse as a `generation-create` event —
-model, token usage, prompts (optional), and errors.
+[llm-kernel](https://github.com/epicsagas/llm-kernel). Reports each
+non-streaming `complete()` call as a `generation` span — model, token
+usage, prompts (optional), and errors — via OpenTelemetry OTLP/JSON to
+`{host}/api/public/otel/v1/traces`, the ingestion path Langfuse
+recommends for languages without an official SDK (the legacy
+`POST /api/public/ingestion` API is deprecated).
 
 llm-kernel itself stays vendor-free; this adapter is the only crate that
 knows Langfuse exists.
@@ -11,15 +14,20 @@ knows Langfuse exists.
 ## Usage
 
 ```rust
-use llm_kernel::llm::{LLMRequest, MiddlewareClient, OpenAIClient};
+use llm_kernel::llm::{LLMClient, LLMRequest, MiddlewareClient, OpenAIClient};
 use llm_kernel_langfuse::{LangfuseConfig, LangfuseMiddleware};
 
 let config = LangfuseConfig::from_env().expect("LANGFUSE_* keys set");
+let middleware = LangfuseMiddleware::new(config);
 let client = OpenAIClient::from_key("gpt-4o", "sk-...")?;
-let observed = MiddlewareClient::new(client, LangfuseMiddleware::new(config));
+let observed = MiddlewareClient::new(client, middleware.clone());
 let response = observed
     .complete(LLMRequest::builder().user_message("hello").build())
     .await?;
+
+// On SIGTERM / before exit — flushes the last batch.
+// opentelemetry 0.32 has no global shutdown helper; keep the handle.
+middleware.shutdown();
 ```
 
 ## Configuration
@@ -30,15 +38,30 @@ let response = observed
 | `LANGFUSE_SECRET_KEY` | Secret key (required for `from_env`) |
 | `LANGFUSE_HOST` | Self-hosted base URL (default `https://cloud.langfuse.com`) |
 
-`LangfuseConfig.capture_io = false` drops prompts and completions from
-events (usage and outcome metadata only) for PII-sensitive deployments.
+`LangfuseConfig.capture_io = false` drops only the
+`langfuse.observation.input`/`.output` span attributes. Model, usage,
+level, and metadata are always reported, so cost and failure dashboards
+stay alive with the kill switch on.
+
+## Transport notes
+
+- **`x-langfuse-ingestion-version: 4` is always sent** — without it
+  Langfuse delays directly-ingested OTel data by up to 10 minutes.
+- The exporter uses the **blocking reqwest client** on purpose: the
+  OTel batch processor exports from a dedicated thread via `block_on`,
+  and an async client panics inside that thread — the service keeps
+  running while every trace is silently dropped.
+- Spans are queued and exported off-thread in batches; the LLM call
+  path never performs network I/O in middleware hooks.
 
 ## Scope
 
-- **Streaming is not observed** — `MiddlewareClient::stream_complete` does
-  not fire middleware hooks (llm-kernel limitation).
-- One HTTP POST per call, inline from the hook, 5s timeout. Batching can be
-  added when volume matters.
-- Latency is not reported (would require request-id correlation state).
-- Ingestion failures are logged with `tracing::warn!` and never affect the
-  LLM call.
+- **Streaming is not observed** — `MiddlewareClient::stream_complete`
+  does not fire middleware hooks (llm-kernel limitation).
+- **Span duration is ~0** and traces are flat (one trace per call):
+  hooks carry no call identifier, so latency, nesting under a caller's
+  trace, and per-call sessions need an llm-kernel API addition
+  (`ObservabilityContext`) — tracked as follow-up.
+- Error `status_message` is masked via
+  `llm_kernel::safety::mask_secrets` — provider error bodies can echo
+  request credentials.
