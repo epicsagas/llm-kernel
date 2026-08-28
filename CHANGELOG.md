@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.31.1] - 2026-08-28
+
+### Added
+
+- Workspace member `llm-kernel-langfuse` — Langfuse observability adapter (`LLMClientMiddleware` exporting generation spans via OpenTelemetry OTLP/JSON, with per-call `ObservabilityContext` consumption: name, W3C traceparent nesting, per-call sessions, real `elapsed` timing). No kernel API changes.
+
 ## [0.31.0] - 2026-08-28
 
 ### Added
