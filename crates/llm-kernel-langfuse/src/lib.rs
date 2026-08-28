@@ -286,7 +286,7 @@ fn generation_attributes(
         ));
         attributes.push(KeyValue::new(
             "langfuse.observation.output",
-            serde_json::to_string(&rendered_output(response)).unwrap_or_default(),
+            rendered_output(response),
         ));
     }
     if let Some(reason) = &response.finish_reason {
@@ -360,10 +360,13 @@ fn conversation_input(request: &LLMRequest) -> Vec<serde_json::Value> {
 
 /// Render the response as plain content, or an assistant message with
 /// tool calls when present — matching what Langfuse renders as a
-/// conversation turn.
-fn rendered_output(response: &LLMResponse) -> serde_json::Value {
+/// conversation turn. Returns the attribute value: a bare string stays
+/// unencoded (double-encoding would store `"서울"` with quotes, and a
+/// JSON-returning model's object would render as an escaped string
+/// instead of parsing), only the tool-call form is serialized.
+fn rendered_output(response: &LLMResponse) -> String {
     if response.tool_calls.is_empty() {
-        return serde_json::Value::String(response.content.clone());
+        return response.content.clone();
     }
     serde_json::json!({
         "role": "assistant",
@@ -380,6 +383,7 @@ fn rendered_output(response: &LLMResponse) -> serde_json::Value {
             })
             .collect::<Vec<_>>(),
     })
+    .to_string()
 }
 
 /// Langfuse filters and aggregates per observation, so session /
@@ -473,8 +477,8 @@ mod tests {
             serde_json::from_str(&map["langfuse.observation.input"]).unwrap();
         assert!(input.is_array());
         assert_eq!(input[0]["role"], "user");
-        let output: serde_json::Value =
-            serde_json::from_str(&map["langfuse.observation.output"]).unwrap();
+        let output = &map["langfuse.observation.output"];
+        // Bare content, not double-encoded — no surrounding JSON quotes.
         assert_eq!(output, "the answer");
     }
 
