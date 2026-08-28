@@ -26,7 +26,7 @@ async fn main() {
             messages: vec![ChatMessage::user("What is llm-kernel?")],
             temperature: 0.7,
             max_tokens: Some(256),
-            ..llm_kernel::llm::LLMRequest::default()
+            ..Default::default()
         })
         .await
         .expect("completion failed");

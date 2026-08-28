@@ -29,7 +29,7 @@ async fn main() {
             messages: vec![ChatMessage::user("What is Rust?")],
             temperature: 0.7,
             max_tokens: Some(256),
-            ..llm_kernel::llm::LLMRequest::default()
+            ..Default::default()
         })
         .await
         .expect("stream failed");
