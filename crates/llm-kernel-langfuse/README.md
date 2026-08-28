@@ -37,11 +37,20 @@ middleware.shutdown();
 | `LANGFUSE_PUBLIC_KEY` | Public key (required for `from_env`) |
 | `LANGFUSE_SECRET_KEY` | Secret key (required for `from_env`) |
 | `LANGFUSE_HOST` | Self-hosted base URL (default `https://cloud.langfuse.com`) |
+| `LANGFUSE_TRACING_ENVIRONMENT` | `langfuse.environment` (e.g. `production`) — set it or local/CI traces pollute production dashboards |
+| `LANGFUSE_RELEASE` | `langfuse.release` version tag |
 
 `LangfuseConfig.capture_io = false` drops only the
 `langfuse.observation.input`/`.output` span attributes. Model, usage,
 level, and metadata are always reported, so cost and failure dashboards
 stay alive with the kill switch on.
+
+## Sharing across clients
+
+Build **one** `LangfuseMiddleware` per application and `clone()` it into
+every `MiddlewareClient` (fallback chains, per-model clients). Clones
+share a single batch exporter and thread; constructing one middleware
+per client spawns one exporter thread each.
 
 ## Transport notes
 

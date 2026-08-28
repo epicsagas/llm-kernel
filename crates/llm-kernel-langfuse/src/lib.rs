@@ -89,6 +89,13 @@ pub struct LangfuseConfig {
     pub capture_io: bool,
     /// Attach a session id to every span for conversation grouping.
     pub session_id: Option<String>,
+    /// Deployment environment (`langfuse.environment`, e.g. `production`).
+    /// Set it — without it local/CI traces pollute production dashboards.
+    pub environment: Option<String>,
+    /// Release/version tag (`langfuse.release`).
+    pub release: Option<String>,
+    /// Static tags attached to every trace (`langfuse.trace.tags`).
+    pub tags: Vec<String>,
 }
 
 impl std::fmt::Debug for LangfuseConfig {
@@ -99,6 +106,9 @@ impl std::fmt::Debug for LangfuseConfig {
             .field("secret_key", &"<REDACTED>")
             .field("capture_io", &self.capture_io)
             .field("session_id", &self.session_id)
+            .field("environment", &self.environment)
+            .field("release", &self.release)
+            .field("tags", &self.tags)
             .finish()
     }
 }
@@ -112,6 +122,9 @@ impl LangfuseConfig {
             secret_key: secret_key.into(),
             capture_io: true,
             session_id: None,
+            environment: None,
+            release: None,
+            tags: Vec::new(),
         }
     }
 
@@ -130,15 +143,28 @@ impl LangfuseConfig {
         {
             config.host = host;
         }
+        if let Ok(environment) = std::env::var("LANGFUSE_TRACING_ENVIRONMENT")
+            && !environment.is_empty()
+        {
+            config.environment = Some(environment);
+        }
+        if let Ok(release) = std::env::var("LANGFUSE_RELEASE")
+            && !release.is_empty()
+        {
+            config.release = Some(release);
+        }
         Some(config)
     }
 }
 
 /// [`LLMClientMiddleware`] that reports completions to Langfuse via OTLP.
 ///
-/// Clone-safe: all clones share one batch exporter. Call
-/// [`shutdown`](Self::shutdown) exactly once before process exit to flush
-/// the last batch.
+/// Build **one per application** and `clone()` it into every
+/// [`MiddlewareClient`](llm_kernel::llm::MiddlewareClient) (fallback
+/// chains, per-model clients): clones share a single batch exporter and
+/// thread. Calling `new` per client spawns one exporter thread each.
+/// Call [`shutdown`](Self::shutdown) exactly once before process exit to
+/// flush the last batch.
 #[derive(Clone)]
 pub struct LangfuseMiddleware {
     config: LangfuseConfig,
@@ -239,8 +265,19 @@ fn generation_attributes(
             })
             .to_string(),
         ),
+        KeyValue::new(
+            "langfuse.observation.model.parameters",
+            serde_json::json!({
+                "temperature": request.temperature,
+                "max_tokens": request.max_tokens,
+            })
+            .to_string(),
+        ),
         KeyValue::new("langfuse.observation.level", "DEFAULT"),
         KeyValue::new("langfuse.observation.metadata.success", true),
+        // ponytail: span duration is ~0 until the kernel ObservabilityContext
+        // hooks land — mark it so latency dashboards can filter this out
+        KeyValue::new("langfuse.observation.metadata.latency_measured", false),
     ];
     if config.capture_io {
         attributes.push(KeyValue::new(
@@ -297,6 +334,7 @@ fn error_attributes(
             llm_kernel::safety::mask_secrets(&error.to_string()),
         ),
         KeyValue::new("langfuse.observation.metadata.success", false),
+        KeyValue::new("langfuse.observation.metadata.latency_measured", false),
     ];
     if config.capture_io {
         attributes.push(KeyValue::new(
@@ -308,11 +346,24 @@ fn error_attributes(
     attributes
 }
 
-/// Langfuse filters per observation, so the session id must ride every
-/// span — not just a root trace.
+/// Langfuse filters and aggregates per observation, so session /
+/// environment / release / tags must ride every span — not just a root
+/// trace.
 fn push_session(attributes: &mut Vec<KeyValue>, config: &LangfuseConfig) {
     if let Some(session) = &config.session_id {
         attributes.push(KeyValue::new("langfuse.session.id", session.clone()));
+    }
+    if let Some(environment) = &config.environment {
+        attributes.push(KeyValue::new("langfuse.environment", environment.clone()));
+    }
+    if let Some(release) = &config.release {
+        attributes.push(KeyValue::new("langfuse.release", release.clone()));
+    }
+    if !config.tags.is_empty() {
+        attributes.push(KeyValue::new(
+            "langfuse.trace.tags",
+            format!("{:?}", config.tags),
+        ));
     }
 }
 
@@ -407,6 +458,29 @@ mod tests {
         let message = &map["langfuse.observation.status_message"];
         assert!(!message.contains("sk-live-abcdef123"), "leaked: {message}");
         assert!(message.contains("****"));
+    }
+
+    #[test]
+    fn environment_release_tags_and_latency_marker_ride_every_span() {
+        let mut cfg = config(true);
+        cfg.environment = Some("production".to_string());
+        cfg.release = Some("v1.2.3".to_string());
+        cfg.tags = vec!["router".to_string()];
+        let map = attr_map(&generation_attributes(
+            &sample_request(),
+            &sample_response(),
+            &cfg,
+        ));
+        assert_eq!(map["langfuse.environment"], "production");
+        assert_eq!(map["langfuse.release"], "v1.2.3");
+        assert!(map["langfuse.trace.tags"].contains("router"));
+        // Span duration is ~0 until kernel timing hooks land — flagged so
+        // latency dashboards can filter.
+        assert_eq!(
+            map["langfuse.observation.metadata.latency_measured"],
+            "false"
+        );
+        assert!(map["langfuse.observation.model.parameters"].contains("temperature"));
     }
 
     #[test]
