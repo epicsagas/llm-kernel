@@ -282,16 +282,11 @@ fn generation_attributes(
     if config.capture_io {
         attributes.push(KeyValue::new(
             "langfuse.observation.input",
-            serde_json::to_string(request).unwrap_or_default(),
+            serde_json::to_string(&conversation_input(request)).unwrap_or_default(),
         ));
         attributes.push(KeyValue::new(
             "langfuse.observation.output",
-            serde_json::json!({
-                "content": response.content,
-                "reasoning": response.reasoning,
-                "toolCalls": response.tool_calls,
-            })
-            .to_string(),
+            serde_json::to_string(&rendered_output(response)).unwrap_or_default(),
         ));
     }
     if let Some(reason) = &response.finish_reason {
@@ -339,11 +334,52 @@ fn error_attributes(
     if config.capture_io {
         attributes.push(KeyValue::new(
             "langfuse.observation.input",
-            serde_json::to_string(request).unwrap_or_default(),
+            serde_json::to_string(&conversation_input(request)).unwrap_or_default(),
         ));
     }
     push_session(&mut attributes, config);
     attributes
+}
+
+/// Render the request as a flat OpenAI-format message list (system
+/// first) so Langfuse draws a role-labeled conversation instead of a raw
+/// JSON blob.
+fn conversation_input(request: &LLMRequest) -> Vec<serde_json::Value> {
+    let mut messages = Vec::with_capacity(request.messages.len() + 1);
+    if let Some(system) = &request.system {
+        messages.push(serde_json::json!({"role": "system", "content": system}));
+    }
+    for message in &request.messages {
+        messages.push(serde_json::json!({
+            "role": message.role,
+            "content": message.text_content(),
+        }));
+    }
+    messages
+}
+
+/// Render the response as plain content, or an assistant message with
+/// tool calls when present — matching what Langfuse renders as a
+/// conversation turn.
+fn rendered_output(response: &LLMResponse) -> serde_json::Value {
+    if response.tool_calls.is_empty() {
+        return serde_json::Value::String(response.content.clone());
+    }
+    serde_json::json!({
+        "role": "assistant",
+        "content": response.content,
+        "tool_calls": response
+            .tool_calls
+            .iter()
+            .map(|call| {
+                serde_json::json!({
+                    "id": call.id,
+                    "name": call.name,
+                    "arguments": call.arguments,
+                })
+            })
+            .collect::<Vec<_>>(),
+    })
 }
 
 /// Langfuse filters and aggregates per observation, so session /
@@ -431,6 +467,15 @@ mod tests {
         assert_eq!(map["langfuse.observation.metadata.finishReason"], "stop");
         assert!(map["langfuse.observation.input"].contains("secret question"));
         assert!(map["langfuse.observation.output"].contains("the answer"));
+        // Conversation rendering, not raw dumps: flat role-labeled message
+        // array in, plain content string out.
+        let input: serde_json::Value =
+            serde_json::from_str(&map["langfuse.observation.input"]).unwrap();
+        assert!(input.is_array());
+        assert_eq!(input[0]["role"], "user");
+        let output: serde_json::Value =
+            serde_json::from_str(&map["langfuse.observation.output"]).unwrap();
+        assert_eq!(output, "the answer");
     }
 
     #[test]
