@@ -67,10 +67,11 @@ per client spawns one exporter thread each.
 
 - **Streaming is not observed** — `MiddlewareClient::stream_complete`
   does not fire middleware hooks (llm-kernel limitation).
-- **Span duration is ~0** and traces are flat (one trace per call):
-  hooks carry no call identifier, so latency, nesting under a caller's
-  trace, and per-call sessions need an llm-kernel API addition
-  (`ObservabilityContext`) — tracked as follow-up.
+- **Per-call observability** (llm-kernel 0.31+): set
+  `LLMRequest::observability` to drive the span name, nest under a
+  caller-opened trace (W3C `traceparent`), set the session per call
+  (overriding the config default), and attach tags/metadata. The
+  middleware's `elapsed` measurement sets real span timing.
 - Error `status_message` is masked via
   `llm_kernel::safety::mask_secrets` — provider error bodies can echo
   request credentials.

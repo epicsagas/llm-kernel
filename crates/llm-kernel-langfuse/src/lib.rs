@@ -47,23 +47,28 @@
 //! - Only the non-streaming `complete()` path emits events —
 //!   `MiddlewareClient::stream_complete` does not fire middleware hooks
 //!   (kernel limitation).
-//! - Span duration is ~0: hooks receive no call identifier, so
-//!   `on_request` start times cannot be correlated with responses across
-//!   concurrent calls. Fixing latency, trace nesting, and per-call
-//!   sessions requires a kernel hook change (tracked as follow-up).
+//! - Per-call observability: `LLMRequest::observability` (kernel 0.31+)
+//!   drives the span name (`name`), parent trace (`traceparent`, W3C),
+//!   session (`session_id`, overriding the config default), tags, and
+//!   metadata; the `elapsed` hook parameter sets real span timing.
 //! - Error `status_message` is masked via
 //!   [`llm_kernel::safety::mask_secrets`] — provider error bodies can echo
 //!   request credentials back.
 //!
 //! [`BatchSpanProcessor`]: opentelemetry_sdk::trace::BatchSpanProcessor
 
+use std::collections::HashMap;
+use std::time::Duration;
+
 use async_trait::async_trait;
 use llm_kernel::error::KernelError;
 use llm_kernel::llm::{LLMClientMiddleware, LLMRequest, LLMResponse};
 use opentelemetry::KeyValue;
-use opentelemetry::trace::{Span, Tracer, TracerProvider};
+use opentelemetry::propagation::TextMapPropagator;
+use opentelemetry::trace::{Span, SpanBuilder, TracerProvider};
 use opentelemetry_otlp::{Protocol, SpanExporter, WithExportConfig, WithHttpConfig};
 use opentelemetry_sdk::Resource;
+use opentelemetry_sdk::propagation::TraceContextPropagator;
 use opentelemetry_sdk::trace::SdkTracerProvider;
 
 /// Observation name reported to Langfuse (verb-first, model-free — model is
@@ -221,26 +226,52 @@ impl LangfuseMiddleware {
         }
     }
 
-    fn emit(&self, attributes: Vec<KeyValue>) {
-        let mut span = self
-            .provider
-            .tracer("llm-kernel-langfuse")
-            .start(OBSERVATION_NAME);
-        for attribute in attributes {
-            span.set_attribute(attribute);
-        }
-        span.end();
+    /// Emit one span. Real wall-clock timing comes from the middleware
+    /// `elapsed` measurement (start = now - elapsed, end = now); the span
+    /// nests under the caller's trace when `observability.traceparent`
+    /// carries a valid W3C trace context.
+    fn emit(&self, request: &LLMRequest, attributes: Vec<KeyValue>, elapsed: Duration) {
+        let observability = request.observability.as_ref();
+        let name = observability
+            .and_then(|context| context.name.as_deref())
+            .unwrap_or(OBSERVATION_NAME);
+        let end = std::time::SystemTime::now();
+        let start = end.checked_sub(elapsed).unwrap_or(end);
+        let parent_context = observability
+            .and_then(|context| context.traceparent.as_deref())
+            .map(|traceparent| {
+                let mut carrier = HashMap::new();
+                carrier.insert("traceparent".to_string(), traceparent.to_string());
+                TraceContextPropagator::new().extract(&carrier)
+            })
+            .unwrap_or_default();
+        let mut span = SpanBuilder::from_name(name.to_string())
+            .with_start_time(start)
+            .with_attributes(attributes)
+            .start_with_context(
+                &self.provider.tracer("llm-kernel-langfuse"),
+                &parent_context,
+            );
+        span.end_with_timestamp(end);
     }
 }
 
 #[async_trait]
 impl LLMClientMiddleware for LangfuseMiddleware {
-    async fn on_response(&self, request: &LLMRequest, response: &LLMResponse) {
-        self.emit(generation_attributes(request, response, &self.config));
+    async fn on_response(&self, request: &LLMRequest, response: &LLMResponse, elapsed: Duration) {
+        self.emit(
+            request,
+            generation_attributes(request, response, &self.config),
+            elapsed,
+        );
     }
 
-    async fn on_error(&self, request: &LLMRequest, error: &KernelError) {
-        self.emit(error_attributes(request, error, &self.config));
+    async fn on_error(&self, request: &LLMRequest, error: &KernelError, elapsed: Duration) {
+        self.emit(
+            request,
+            error_attributes(request, error, &self.config),
+            elapsed,
+        );
     }
 }
 
@@ -252,9 +283,10 @@ fn generation_attributes(
     response: &LLMResponse,
     config: &LangfuseConfig,
 ) -> Vec<KeyValue> {
+    let name = observation_name(request);
     let mut attributes = vec![
         KeyValue::new("langfuse.observation.type", "generation"),
-        KeyValue::new("langfuse.trace.name", OBSERVATION_NAME),
+        KeyValue::new("langfuse.trace.name", name.to_string()),
         KeyValue::new("langfuse.observation.model.name", response.model.clone()),
         KeyValue::new(
             "langfuse.observation.usage_details",
@@ -275,9 +307,6 @@ fn generation_attributes(
         ),
         KeyValue::new("langfuse.observation.level", "DEFAULT"),
         KeyValue::new("langfuse.observation.metadata.success", true),
-        // ponytail: span duration is ~0 until the kernel ObservabilityContext
-        // hooks land — mark it so latency dashboards can filter this out
-        KeyValue::new("langfuse.observation.metadata.latency_measured", false),
     ];
     if config.capture_io {
         attributes.push(KeyValue::new(
@@ -301,7 +330,7 @@ fn generation_attributes(
             i64::from(reasoning),
         ));
     }
-    push_session(&mut attributes, config);
+    push_session(&mut attributes, config, request);
     attributes
 }
 
@@ -311,9 +340,10 @@ fn error_attributes(
     error: &KernelError,
     config: &LangfuseConfig,
 ) -> Vec<KeyValue> {
+    let name = observation_name(request);
     let mut attributes = vec![
         KeyValue::new("langfuse.observation.type", "generation"),
-        KeyValue::new("langfuse.trace.name", OBSERVATION_NAME),
+        KeyValue::new("langfuse.trace.name", name.to_string()),
         KeyValue::new(
             "langfuse.observation.model.name",
             request
@@ -329,7 +359,6 @@ fn error_attributes(
             llm_kernel::safety::mask_secrets(&error.to_string()),
         ),
         KeyValue::new("langfuse.observation.metadata.success", false),
-        KeyValue::new("langfuse.observation.metadata.latency_measured", false),
     ];
     if config.capture_io {
         attributes.push(KeyValue::new(
@@ -337,7 +366,7 @@ fn error_attributes(
             serde_json::to_string(&conversation_input(request)).unwrap_or_default(),
         ));
     }
-    push_session(&mut attributes, config);
+    push_session(&mut attributes, config, request);
     attributes
 }
 
@@ -389,9 +418,15 @@ fn rendered_output(response: &LLMResponse) -> String {
 /// Langfuse filters and aggregates per observation, so session /
 /// environment / release / tags must ride every span — not just a root
 /// trace.
-fn push_session(attributes: &mut Vec<KeyValue>, config: &LangfuseConfig) {
-    if let Some(session) = &config.session_id {
-        attributes.push(KeyValue::new("langfuse.session.id", session.clone()));
+fn push_session(attributes: &mut Vec<KeyValue>, config: &LangfuseConfig, request: &LLMRequest) {
+    let observability = request.observability.as_ref();
+    // Per-request session wins; config stays the default for requests
+    // carrying no context.
+    let session = observability
+        .and_then(|context| context.session_id.as_deref())
+        .or(config.session_id.as_deref());
+    if let Some(session) = session {
+        attributes.push(KeyValue::new("langfuse.session.id", session.to_string()));
     }
     if let Some(environment) = &config.environment {
         attributes.push(KeyValue::new("langfuse.environment", environment.clone()));
@@ -399,12 +434,31 @@ fn push_session(attributes: &mut Vec<KeyValue>, config: &LangfuseConfig) {
     if let Some(release) = &config.release {
         attributes.push(KeyValue::new("langfuse.release", release.clone()));
     }
-    if !config.tags.is_empty() {
-        attributes.push(KeyValue::new(
-            "langfuse.trace.tags",
-            format!("{:?}", config.tags),
-        ));
+    let mut tags = config.tags.clone();
+    if let Some(extra) = observability.map(|context| context.tags.as_slice()) {
+        tags.extend(extra.iter().cloned());
     }
+    if !tags.is_empty() {
+        attributes.push(KeyValue::new("langfuse.trace.tags", format!("{tags:?}")));
+    }
+    // Prefixed metadata keys become first-class filterable fields in
+    // Langfuse; unprefixed attributes land in an unfilterable catch-all.
+    if let Some(context) = observability {
+        for (key, value) in &context.metadata {
+            attributes.push(KeyValue::new(
+                format!("langfuse.observation.metadata.{key}"),
+                value.clone(),
+            ));
+        }
+    }
+}
+
+fn observation_name(request: &LLMRequest) -> &str {
+    request
+        .observability
+        .as_ref()
+        .and_then(|context| context.name.as_deref())
+        .unwrap_or(OBSERVATION_NAME)
 }
 
 #[cfg(test)]
@@ -510,7 +564,7 @@ mod tests {
     }
 
     #[test]
-    fn environment_release_tags_and_latency_marker_ride_every_span() {
+    fn environment_release_tags_ride_every_span() {
         let mut cfg = config(true);
         cfg.environment = Some("production".to_string());
         cfg.release = Some("v1.2.3".to_string());
@@ -523,12 +577,9 @@ mod tests {
         assert_eq!(map["langfuse.environment"], "production");
         assert_eq!(map["langfuse.release"], "v1.2.3");
         assert!(map["langfuse.trace.tags"].contains("router"));
-        // Span duration is ~0 until kernel timing hooks land — flagged so
-        // latency dashboards can filter.
-        assert_eq!(
-            map["langfuse.observation.metadata.latency_measured"],
-            "false"
-        );
+        // latency_measured marker is gone — elapsed now sets real span
+        // timing, no synthetic marker should pollute metadata.
+        assert!(!map.contains_key("langfuse.observation.metadata.latency_measured"));
         assert!(map["langfuse.observation.model.parameters"].contains("temperature"));
     }
 
@@ -554,10 +605,28 @@ mod tests {
 
     struct MockOk;
     struct MockErr;
+    struct MockSlow;
 
     #[async_trait]
     impl LLMClient for MockOk {
         async fn complete(&self, _request: LLMRequest) -> llm_kernel::error::Result<LLMResponse> {
+            Ok(sample_response())
+        }
+        fn model_name(&self) -> &str {
+            "mock-model"
+        }
+        async fn stream_complete(
+            &self,
+            _request: LLMRequest,
+        ) -> llm_kernel::error::Result<LLMStream> {
+            Ok(Box::pin(tokio_stream::iter(Vec::new())))
+        }
+    }
+
+    #[async_trait]
+    impl LLMClient for MockSlow {
+        async fn complete(&self, _request: LLMRequest) -> llm_kernel::error::Result<LLMResponse> {
+            tokio::time::sleep(std::time::Duration::from_millis(30)).await;
             Ok(sample_response())
         }
         fn model_name(&self) -> &str {
@@ -620,6 +689,87 @@ mod tests {
             }
         }
         out
+    }
+
+    /// First span object from an OTLP/JSON export body.
+    fn first_span(body: &serde_json::Value) -> &serde_json::Value {
+        &body["resourceSpans"][0]["scopeSpans"][0]["spans"][0]
+    }
+
+    fn traced_request() -> LLMRequest {
+        let mut metadata = std::collections::BTreeMap::new();
+        metadata.insert("source".to_string(), "router".to_string());
+        LLMRequest::builder()
+            .user_message("hi")
+            .observability(llm_kernel::llm::ObservabilityContext {
+                name: Some("assess-deep-pass".to_string()),
+                traceparent: Some(
+                    "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01".to_string(),
+                ),
+                session_id: Some("req-session".to_string()),
+                tags: vec!["workload".to_string()],
+                metadata,
+            })
+            .build()
+    }
+
+    #[tokio::test]
+    async fn observability_context_drives_name_trace_session_tags() {
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("POST"))
+            .respond_with(wiremock::ResponseTemplate::new(200))
+            .mount(&server)
+            .await;
+
+        let mut config = config(true);
+        config.host = server.uri();
+        config.session_id = Some("cfg-session".to_string());
+        let middleware = LangfuseMiddleware::new(config);
+        let client = MiddlewareClient::new(MockOk, middleware.clone());
+        client.complete(traced_request()).await.unwrap();
+        middleware.shutdown();
+
+        let requests = server.received_requests().await.unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&requests[0].body).unwrap();
+        let span = first_span(&body);
+        // Per-call name override (not the constant).
+        assert_eq!(span["name"], "assess-deep-pass");
+        // Nests under the caller's trace: trace id and parent span id come
+        // from the W3C traceparent.
+        assert_eq!(span["traceId"], "4bf92f3577b34da6a3ce929d0e0e4736");
+        assert_eq!(span["parentSpanId"], "00f067aa0ba902b7");
+        let attrs = otel_span_attributes(&body);
+        assert_eq!(attrs["langfuse.trace.name"], "assess-deep-pass");
+        // Request session wins over the config default.
+        assert_eq!(attrs["langfuse.session.id"], "req-session");
+        // Request tags merge with config tags.
+        assert!(attrs["langfuse.trace.tags"].contains("workload"));
+        // Prefixed request metadata becomes a first-class field.
+        assert_eq!(attrs["langfuse.observation.metadata.source"], "router");
+    }
+
+    #[tokio::test]
+    async fn elapsed_sets_real_span_timing() {
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("POST"))
+            .respond_with(wiremock::ResponseTemplate::new(200))
+            .mount(&server)
+            .await;
+
+        let mut config = config(true);
+        config.host = server.uri();
+        let middleware = LangfuseMiddleware::new(config);
+        let client = MiddlewareClient::new(MockSlow, middleware.clone());
+        client.complete(sample_request()).await.unwrap();
+        middleware.shutdown();
+
+        let requests = server.received_requests().await.unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&requests[0].body).unwrap();
+        let span = first_span(&body);
+        let start = span["startTimeUnixNano"].as_str().unwrap_or_default();
+        let end = span["endTimeUnixNano"].as_str().unwrap_or_default();
+        assert!(!start.is_empty() && !end.is_empty(), "timestamps present");
+        assert_ne!(start, end, "duration must reflect the ~30ms call");
     }
 
     #[tokio::test]

@@ -10,7 +10,7 @@ keywords     = ["llm", "langfuse", "observability", "opentelemetry", "ai"]
 categories   = ["api-bindings", "asynchronous", "development-tools"]
 
 [dependencies]
-llm-kernel  = { path = "../..", version = "0.30.0", features = ["client-async", "safety"] }
+llm-kernel  = { path = "../..", version = "0.31.0", features = ["client-async", "safety"] }
 async-trait = "0.1"
 base64      = "0.22"
 serde_json  = "1"
@@ -26,7 +26,7 @@ opentelemetry-otlp = { version = "0.32", default-features = false, features = [
 ] }
 
 [dev-dependencies]
-llm-kernel = { path = "../..", version = "0.30.0", features = ["client-async", "safety", "rustls-aws-lc-rs"] }
+llm-kernel = { path = "../..", version = "0.31.0", features = ["client-async", "safety", "rustls-aws-lc-rs"] }
 serde       = { version = "1", features = ["derive"] }
 tokio       = { version = "1", features = ["macros", "rt"] }
 tokio-stream = "0.1"
