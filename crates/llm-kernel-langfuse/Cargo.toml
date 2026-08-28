@@ -1,0 +1,33 @@
+[package]
+name         = "llm-kernel-langfuse"
+version      = "0.1.0"
+edition      = "2024"
+description  = "Langfuse observability adapter for llm-kernel — LLMClientMiddleware exporting generation spans via OpenTelemetry OTLP"
+license      = "Apache-2.0"
+repository   = "https://github.com/epicsagas/llm-kernel"
+rust-version = "1.92"
+keywords     = ["llm", "langfuse", "observability", "opentelemetry", "ai"]
+categories   = ["api-bindings", "asynchronous", "development-tools"]
+
+[dependencies]
+llm-kernel  = { path = "../..", version = "0.31.0", features = ["client-async", "safety"] }
+async-trait = "0.1"
+base64      = "0.22"
+serde_json  = "1"
+tracing     = "0.1"
+# OTel 0.32 combo verified against Langfuse Cloud (API 4.16.0): the batch
+# processor exports from a dedicated thread via block_on, so the exporter
+# MUST use the blocking reqwest client — an async client panics inside that
+# thread and silently drops every trace.
+opentelemetry      = { version = "0.32", default-features = false, features = ["trace"] }
+opentelemetry_sdk  = { version = "0.32", default-features = false, features = ["trace"] }
+opentelemetry-otlp = { version = "0.32", default-features = false, features = [
+    "trace", "http-json", "reqwest-blocking-client", "reqwest-rustls",
+] }
+
+[dev-dependencies]
+llm-kernel = { path = "../..", version = "0.31.0", features = ["client-async", "safety", "rustls-aws-lc-rs"] }
+serde       = { version = "1", features = ["derive"] }
+tokio       = { version = "1", features = ["macros", "rt"] }
+tokio-stream = "0.1"
+wiremock    = "0.6"

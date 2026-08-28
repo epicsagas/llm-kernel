@@ -16,6 +16,7 @@ exclude      = [".github/", "target/"]
 [workspace]
 members = [
     ".",
+    "crates/llm-kernel-langfuse",
 ]
 
 [lib]
