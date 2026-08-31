@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.31.2] - 2026-08-31
+
+### Fixed
+
+- `dlp`: `key_value_assignment` spans never split a wire-format JSON escape pair — the value charset now consumes backslashes only as two-byte pairs (`\\.`), so a redaction splice cannot strand a lone `\` before an escaped quote and corrupt the JSON body (claudy `--guard` 422s; #99).
+
 ## [0.31.1] - 2026-08-28
 
 ### Added
