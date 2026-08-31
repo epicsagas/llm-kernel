@@ -118,9 +118,12 @@ const TABLE: &[(&str, FindingCategory, Severity, &str, bool)] = &[
         // Group 1 (the value) is the redactable span. Optional quotes on
         // either side of the separator let the rule fire inside JSON bodies
         // (`"api_key": "…"`), and the value charset excludes quotes/braces
-        // so a redacted span never removes JSON structure characters
+        // so a redacted span never removes JSON structure characters.
+        // A backslash is only consumed as a two-byte pair (`\\.`), never
+        // standalone, so a span never ends on the leading byte of a
+        // wire-format escape (`\"`) and splicing cannot split the pair
         // (claudy DLP proxy contract: byte identity outside the secret).
-        r#"(?i)(?:password|passwd|token|key|secret|api_key|apikey|access_token|private_key)\s*["']?\s*[=:]\s*["']?([^\s"'{}]{8,})"#,
+        r#"(?i)(?:password|passwd|token|key|secret|api_key|apikey|access_token|private_key)\s*["']?\s*[=:]\s*["']?((?:\\.|[^\s"'{}\\]){8,})"#,
         true,
     ),
     (
@@ -512,6 +515,48 @@ mod tests {
         let value: serde_json::Value =
             serde_json::from_str(&redacted).expect("redacted JSON still parses");
         assert_eq!(value["api_key"], "****");
+    }
+
+    #[test]
+    fn key_value_span_never_splits_json_escape_pair() {
+        // Wire-format JSON: the secret is followed by an escaped quote
+        // (`\"`, 2 bytes). The span must not stop on the pair's leading
+        // backslash — splicing a lone `\` leaves a bare quote and corrupts
+        // the JSON (issue #99: claudy guard 422s).
+        let wire = r#"{"content":"check password=hunter2secret1\" in config"}"#;
+        let report = scan(wire);
+        let finding = report
+            .findings
+            .iter()
+            .find(|f| f.rule == "key_value_assignment")
+            .expect("key_value finding");
+        let spanned = &wire[finding.span.start..finding.span.end];
+        assert!(
+            !spanned.ends_with('\\'),
+            "span splits a wire escape pair: {spanned:?}"
+        );
+        // The pair is consumed atomically: splice + reparse stays valid.
+        let mut spliced = wire.to_string();
+        spliced.replace_range(finding.span.start..finding.span.end, "[REDACTED:key_value]");
+        let value: serde_json::Value =
+            serde_json::from_str(&spliced).expect("spliced wire still parses");
+        assert_eq!(
+            value["content"],
+            "check password=[REDACTED:key_value] in config"
+        );
+    }
+
+    #[test]
+    fn key_value_value_with_raw_backslashes_still_detected() {
+        // Raw (non-wire) text: a backslash before a non-escape char must
+        // not end the span early — `\\.` pairs it with the next byte
+        // instead of stalling the charset.
+        let hits = rules_hit("password=C:\\secrets\\vault91", "key_value_assignment");
+        assert_eq!(hits.len(), 1);
+        assert_eq!(
+            "password=C:\\secrets\\vault91"[hits[0].span.start..hits[0].span.end].len(),
+            "C:\\secrets\\vault91".len()
+        );
     }
 
     #[test]
