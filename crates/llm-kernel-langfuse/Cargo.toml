@@ -12,7 +12,7 @@ categories   = ["api-bindings", "asynchronous", "development-tools"]
 [dependencies]
 llm-kernel  = { path = "../..", version = "0.31.0", features = ["client-async", "safety"] }
 async-trait = "0.1"
-base64      = "0.22"
+base64      = "0.23"
 serde_json  = "1"
 tracing     = "0.1"
 # OTel 0.32 combo verified against Langfuse Cloud (API 4.16.0): the batch
