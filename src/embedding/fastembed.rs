@@ -78,15 +78,35 @@ impl FastembedProvider {
     /// Accelerates ONNX inference via the CoreML execution provider — Neural Engine
     /// / GPU on Apple Silicon. The CoreML runtime is bundled with macOS; no extra
     /// dylib needed (unlike DirectML on Windows).
+    ///
+    /// Compiled CoreML models are cached under `<cache_dir>/coreml` and reused
+    /// across sessions, so repeated provider creation does not re-compile for
+    /// the Neural Engine.
     #[cfg(all(feature = "embedding-fastembed-coreml", target_os = "macos"))]
     pub fn new_with_coreml(model: EmbeddingModel, cache_dir: Option<PathBuf>) -> Result<Self> {
         use ort::execution_providers::CoreMLExecutionProvider;
+        // Default to fastembed's own cache location so the CoreML model cache
+        // lives next to the downloaded ONNX models.
+        let hf_cache = cache_dir
+            .clone()
+            .unwrap_or_else(|| PathBuf::from(fastembed::get_cache_dir()));
+        let coreml_cache = hf_cache.join("coreml");
+        let _ = std::fs::create_dir_all(&coreml_cache);
+        let coreml_ep = CoreMLExecutionProvider::default()
+            // Reuse the compiled CoreML model across sessions. Without this,
+            // every provider creation re-compiles for ANE — slow and
+            // memory-heavy for per-request providers (research-agent incident,
+            // RSS 22.69GB / 35 threads).
+            .with_model_cache_dir(coreml_cache.to_string_lossy())
+            .build();
         let mut options = fastembed::TextInitOptions::new(model.as_fastembed())
             .with_show_download_progress(false)
-            .with_execution_providers(vec![CoreMLExecutionProvider::default().build()]);
-        if let Some(dir) = cache_dir {
-            options = options.with_cache_dir(dir);
-        }
+            // CoreML EP does the heavy compute; cap CPU intra threads instead
+            // of fastembed's available_parallelism default.
+            // ponytail: fixed 4 — raise if CPU-only fallback throughput matters.
+            .with_intra_threads(4)
+            .with_execution_providers(vec![coreml_ep]);
+        options = options.with_cache_dir(hf_cache);
         let te = fastembed::TextEmbedding::try_new(options).map_err(KernelError::embedding)?;
         Ok(Self {
             inner: Mutex::new(te),
@@ -248,5 +268,31 @@ mod tests {
         for r in &results {
             assert_eq!(r.vector.len(), 384);
         }
+    }
+
+    // Research-agent incident regression: providers are created per request /
+    // per MCP call, so repeated create→embed→drop cycles must stay stable and
+    // reuse the CoreML model cache (second cycle compiles no fresh ANE model).
+    #[cfg(all(feature = "embedding-fastembed-coreml", target_os = "macos"))]
+    #[test]
+    #[ignore = "requires model download"]
+    fn coreml_repeated_session_cycles() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache_dir = Some(dir.path().to_path_buf());
+        for _ in 0..10 {
+            let provider = FastembedProvider::new_with_coreml(
+                EmbeddingModel::BGESmallENV15,
+                cache_dir.clone(),
+            )
+            .unwrap();
+            drop(provider);
+        }
+        // Cached compile artifacts must exist after the cycles.
+        let cache = dir.path().join("coreml");
+        std::fs::read_dir(&cache).expect("coreml cache dir populated");
+        let provider =
+            FastembedProvider::new_with_coreml(EmbeddingModel::BGESmallENV15, cache_dir).unwrap();
+        let result = provider.embed("hello world").unwrap();
+        assert_eq!(result.vector.len(), 384);
     }
 }
