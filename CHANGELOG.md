@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.31.3] - 2026-09-10
+
+### Fixed
+
+- `embedding`: `FastembedProvider::new_with_coreml` (macOS) now enables the CoreML compiled-model cache (`<cache_dir>/coreml`) so repeated provider creation no longer re-compiles for the Neural Engine, and caps ONNX intra-op threads at 4 (default was all cores) — fixes runaway RSS/thread growth for per-request providers (research-agent incident).
+
 ## [0.31.2] - 2026-08-31
 
 ### Fixed
