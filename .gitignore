@@ -201,4 +201,6 @@ $RECYCLE.BIN/
 *.lnk
 
 # End of https://www.toptal.com/developers/gitignore/api/windows,macos,linux,dotenv,visualstudiocode,intellij+all,dotenv,rust
-
+# collet
+.collet/.secrets
+.collet/*.secrets.tmp
