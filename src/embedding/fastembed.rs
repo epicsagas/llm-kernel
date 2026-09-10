@@ -82,6 +82,11 @@ impl FastembedProvider {
     /// Compiled CoreML models are cached under `<cache_dir>/coreml` and reused
     /// across sessions, so repeated provider creation does not re-compile for
     /// the Neural Engine.
+    ///
+    /// Known quirk (observed intermittently, macOS): on an ANE compile-cache
+    /// miss CoreML may silently fall back to its CPU (Espresso) path —
+    /// throughput drops sharply but memory stays bounded; re-creating the
+    /// provider re-normalizes.
     #[cfg(all(feature = "embedding-fastembed-coreml", target_os = "macos"))]
     pub fn new_with_coreml(model: EmbeddingModel, cache_dir: Option<PathBuf>) -> Result<Self> {
         use ort::execution_providers::CoreMLExecutionProvider;
