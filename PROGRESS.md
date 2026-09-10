@@ -1,27 +1,113 @@
 # Progress
 
-> Auto-generated status snapshot. Last updated: 2026-07-11
+> Auto-generated status snapshot. Last updated: 2026-09-11
 
-## Current Version: v0.19.0
+## Current Version: v0.31.3
 
 | Metric | Value |
 |--------|-------|
-| Version | `0.19.0` |
+| Version | `0.31.3` |
 | Edition | Rust 2024, MSRV 1.92 |
-| Lines of code | ~26,600 |
-| Total tests | `--features full`: 642 passed, 14 ignored, 0 failed |
-| Backend features | `graph-pg` (PostgreSQL), `graph-pg-tls` (TLS), `qdrant` (vector search), `elastic` (Elasticsearch vector search), `pgvector` (PostgreSQL vector search), `mcp-http` (remote MCP) |
-| Last commit | `feat(graph): general directed-graph backend support (v0.19.0) (#66)` |
+| Lines of code | ~36,100 (main crate) + ~900 (`llm-kernel-langfuse` workspace member) |
+| Total tests | `--features full`: 838 passed, 21 ignored, 0 failed (5 suites) |
+| Backend features | `graph-pg` (PostgreSQL), `graph-pg-tls` (TLS), `graph-pg-sqlx` (async `sqlx::PgPool`), `qdrant` (vector search), `elastic` (Elasticsearch vector search), `pgvector` (dense + sparse HNSW), `mcp-http` (remote MCP), `dlp` (data-loss prevention), `embedding-mlx` (macOS GPU) |
+| Last commit | `chore: ignore collet secret files` |
 
 ---
 
 ## Recent Releases
+
+### v0.31.3 (2026-09-10)
+
+- **embedding**: `new_with_coreml` now enables the CoreML compiled-model cache (`<cache_dir>/coreml`) and caps ONNX intra-op threads at 4 — fixes runaway RSS/thread growth for per-request providers (research-agent incident).
+
+### v0.31.2 (2026-08-31)
+
+- **dlp**: `key_value_assignment` spans never split a wire-format JSON escape pair — a redaction splice can no longer strand a lone `\` before an escaped quote and corrupt the JSON body (claudy `--guard` 422s; #99).
+
+### v0.31.1 (2026-08-28)
+
+- Workspace member `llm-kernel-langfuse` — Langfuse observability adapter (`LLMClientMiddleware` exporting generation spans via OpenTelemetry OTLP/JSON).
+
+### v0.31.0 (2026-08-28)
+
+- **llm**: `ObservabilityContext` — vendor-neutral, kernel-opaque observability carrier on `LLMRequest` (W3C `traceparent`, `session_id`, `name`, `tags`, `metadata`).
+- **llm** (breaking minor): `LLMClientMiddleware` hooks gain `elapsed: Duration` measured by `MiddlewareClient` around the inner call.
+
+### v0.30.0 (2026-08-27)
+
+- **llm**: `LLMRequest` gains `reasoning: Option<ReasoningConfig>` (official `reasoning_effort` / Responses `reasoning.summary` / OpenRouter `reasoning.enabled`), `verbosity: Option<Verbosity>`, and `extra_body` (verbatim merge into the OpenAI-compatible body — unmodeled spec parameters or provider extensions without a kernel release).
+- **llm**: decode fallback for OpenAI-compatible gateways returning HTTP 200 with unescaped control characters in JSON strings (observed on OpenRouter).
+
+### v0.29.0 (2026-08-22)
+
+- **dlp** (new feature): data-loss-prevention primitives for outbound LLM traffic — L1 deterministic scan (`scan` → `ScanReport`: secrets, Korean PII with RRN checksum gating, filesystem paths), L2 fingerprint matching over any `EmbeddingProvider` (`dlp-fingerprint`), L3 `ContentClassifier` trait seam, `policy::lookup` (`PolicyAction`: Allow/Redact/Warn/ReRoute/Block).
+- **provider**: `ServiceDescriptor` gains optional `data_policy` (`DataPolicy::default_for` code-level defaults).
+- **eval**: `dlp` eval module (category P/R/F1 + benign-corpus false-positive gate, must be 0). Adopted by claudy's `--guard` (kernel swap, 2026-08-22).
+
+### v0.28.1 (2026-08-21)
+
+- **tls**: `dead_code` fix for the `rustls_ring` bootstrap under provider-only builds (0.28.0 was never published to crates.io). CI now clippies `--no-default-features`.
+
+### v0.28.0 (2026-08-21)
+
+- **features** (breaking minor): reqwest-backed features (`client-async`, `discovery-async`, `elastic`) require an explicit TLS provider feature — `rustls-aws-lc-rs` (default) or new `rustls-ring` (#93, cross-compiles without cmake/nasm). `compile_error!` guard replaces reqwest 0.13's silent runtime panic.
+
+### v0.27.0 (2026-08-20)
+
+- **mcp** (breaking minor): dual-era spec conformance — the `2026-07-28` stateless revision (per-request `_meta` protocol version, `server/discover`, `resultType`/`ttlMs`/`cacheScope`, version gate `-32022`, Streamable HTTP header validation, `subscriptions/listen`) alongside legacy handshake revisions (≤2025-06-18). `PromptArgument` gains optional `type`; notification-only POSTs answer `202`; `POST /mcp/sse` removed.
+
+### v0.26.2 (2026-08-19)
+
+- Docs: `SqliteGraph::with_tx` nesting footgun (`append_edges`/`delete_node` open their own transaction).
+
+### v0.26.1 (2026-08-18)
+
+- **graph**: `SqliteGraph::with_tx(f)` — multi-step sequences in one transaction.
+
+### v0.26.0 (2026-08-18)
+
+- **graph** (closes #92, breaking minor): `GraphNode.valid_until` / `last_verified` temporal validity — schema v4 (SQLite + both Postgres backends, in-place upgrade), `mark_verified()` / `count_expired_nodes()` lifecycle.
+
+### v0.25.0 (2026-08-12)
+
+- **embedding** (`embedding-mlx`, PR #88): Rust-native BERT encoder forward pass on Apple Silicon GPU via `mlx-rs` — 13 base models / 21 catalog variants, element-wise-verified against a `transformers` reference. `query_prefix()` extended to BGE-en-v1.5/mxbai/Arctic. `mlx-rs` behind a macOS-aarch64 target section; `full` still resolves on Linux.
+
+### v0.24.0 (2026-08-07)
+
+- **security**: `SecretVault` no longer derives `Debug` (secrets were printed verbatim); `BearerAuth::generate` uses the OS CSPRNG (128-bit) instead of wall-clock-seeded xorshift; MCP HTTP validates `Origin` (DNS-rebinding mitigation); secrets zeroized on drop.
+- **mcp**: stdio async-handler dispatch (`dispatch_async` / `run_stdio_async`), tool-argument validation against `input_schema`, JSON-RPC batch on HTTP, bounded stdio reads, `-32600` for non-object requests.
+- **secrets/tokens**: `SecretVault` round-trip corruptions fixed (quoting/`$`/Latin-1/UTF-8), `write_atomic` fsyncs, `estimate_tokens` whitespace bug.
+
+### v0.23.0 (2026-07-31)
+
+- **embedding** (`pgvector`, PR #80 + #81): hybrid retrieval — `new_halfvec` (float16, ~half RAM), `PgVectorOpts` + `new_with_opts` (HNSW `m`/`ef_construction`/`ef_search`), `dimensions` forwarded for `text-embedding-3-*` (Matryoshka), `SparseVector` + `PgSparseVectorIndex` (`sparsevec` HNSW), `Fusion` (RRF/Weighted), `Bgem3Provider` (joint dense+sparse, memory-capped runs). Driven by a ~3.4M-chunk Korean-law RAG workload.
+
+### v0.22.0 (2026-07-28)
+
+- **graph**: recall correctness — `upsert_node` `ON CONFLICT DO UPDATE` (preserves `created`/`access_count`/`accessed_at`), `delete_node` removes edges in-transaction, `smart_recall` no longer returns globally-important nodes on unmatched hints and force-includes matches outside the importance window, `search_nodes` escapes FTS5 phrase literals (degrades to empty, not `Err`), `bm25()` ranking.
+- **graph**: `search_nodes_hybrid` (FTS ∪ CJK substring), `NodeQuery`/`query_nodes_ex` (paging, time range, ordering), `RecallOptions`/`smart_recall_with` (`node_types`, `tags_any`, `since`, `touch` gating).
+- **embedding**: `embed_document(s)` doc-prefix (E5 `passage:`) — asymmetric-model mismatch fixed; `TurbovecIndex` sidecar metadata (`model_id`, `prefix_policy`, `schema_version`); `rrf_fuse_weighted`.
+
+### v0.21.0 (2026-07-28)
+
+- **llm** (breaking minor): reasoning output — `LLMResponse::reasoning`, `TokenUsage::reasoning_tokens`, `StreamEvent::ReasoningDelta`; `StreamEvent` `#[non_exhaustive]`. Parses GLM `reasoning_content`, DeepSeek-R1 `reasoning`, Anthropic thinking blocks/`thinking_delta`, `reasoning_tokens` usage; reasoning-only answers promoted into `content`.
+
+### v0.20.1 (2026-07-20)
+
+- **llm**: `from_key_with_base_url` constructors (OpenAI-compatible gateways / Anthropic-compatible proxies without the `ModelConfig` env round-trip).
+- **embedding**: `candle-core` 0.11 realignment (#71/#74 CI build break).
+
+### v0.20.0 (2026-07-15)
+
+- **graph** (`graph-pg-sqlx`): async `SqlxPgGraph` backend over `sqlx::PgPool` — inherent async methods + `append_edges_in_tx`/`remove_edges_for_node_in_tx` for atomic multi-table prune. Non-breaking. Unblocks klr citation-graph integration (klr#42).
 
 ### v0.19.0 (2026-07-11)
 
 - **graph**: general directed-graph backend — `GraphBackend` trait 4종 default 메서드 (non-breaking): `append_edges` (batch upsert), `edges_for_node_dir` / `neighbors_weighted` (`EdgeDirection` Out/In/Both + relation 필터), `related_nodes_filtered` (filtered BFS). `EdgeDirection` enum. `SqliteGraph`/`PgGraph` override + `AsyncGraph`/`AsyncPoolGraph` inherent.
 - **graph** (`graph-pg`): `from_client` public (외부 `postgres::Client` 주입) + **optional table prefix** (`connect_with_prefix` / `from_client_with_prefix`) — 같은 DB 다중 그래프 공존(기본 빈 접두어로 서비스별 DB 유지).
 - **graph**: schema v3 — `idx_edges_src_rel` / `idx_edges_tgt_rel` 복합 인덱스 (relation 필터 쿼리 가속, additive migration).
+- **deps**: `rusqlite` 0.37 → 0.40 (#63), `regex` 1.13 (#62).
 
 ### v0.18.0 (2026-07-10)
 
@@ -195,26 +281,44 @@ A forward-compatibility release: stops the per-minor breakage caused by adding f
 | **v0.16.1** — pgvector Bind Fix | ✅ Complete | Vector bind → string-literal `::vector` cast (sqlx `Type` conflict) |
 | **v0.16.2** — CoreML EP | ✅ Complete | `embedding-fastembed-coreml` + `new_with_coreml()` (macOS GPU/ANE bge-m3) |
 | **v0.17.0** — pgvector Transaction Integration | ✅ Complete | `add()` cast fix, `pool()` + `remove_in_tx` |
+| **v0.18.0** — v1.0.0 Readiness Gates | ✅ Complete | WAL pool, graph-korean eval, `--strict` gate, semver, API audit, security M2 |
+| **v0.19.0** — General Directed-Graph Backend | ✅ Complete | `append_edges`, `EdgeDirection`, relation-filtered lookups, schema v3 |
+| **v0.20.0** — Async PostgreSQL Graph Backend | ✅ Complete | `SqlxPgGraph` (`graph-pg-sqlx`) — klr citation-graph unblock (klr#42) |
+| **v0.20.1** — Custom Base URL Constructors | ✅ Complete | `from_key_with_base_url`, candle-core realignment |
+| **v0.21.0** — Reasoning Output | ✅ Complete | `LLMResponse::reasoning`, `ReasoningDelta`, `#[non_exhaustive]` `StreamEvent` |
+| **v0.22.0** — Graph Recall Correctness | ✅ Complete | upsert/delete parity, `smart_recall` fixes, FTS5 escaping, hybrid search |
+| **v0.23.0** — Hybrid Retrieval | ✅ Complete | halfvec, `PgVectorOpts`, `SparseVector`, `Fusion`, `PgSparseVectorIndex`, `Bgem3Provider` |
+| **v0.24.0** — Security Hardening | ✅ Complete | `SecretVault` Debug/CSPRNG/zeroize, MCP Origin validation, stdio async dispatch |
+| **v0.25.0** — Rust-Native MLX Embedding | ✅ Complete | `embedding-mlx` BERT forward pass, element-wise verified (#88) |
+| **v0.26.0** — Graph Temporal Validity | ✅ Complete | `valid_until`/`last_verified`, schema v4, `with_tx` (#92) |
+| **v0.27.0** — MCP Dual-Era Protocol | ✅ Complete | 2026-07-28 stateless + legacy handshake, `PromptArgument.type` |
+| **v0.28.0** — Explicit TLS Provider | ✅ Complete | `rustls-aws-lc-rs` / `rustls-ring`, `compile_error!` guard (#93) |
+| **v0.29.0** — DLP Primitives | ✅ Complete | scan/fingerprint/classifier/policy, dlp eval, `ServiceDescriptor.data_policy` |
+| **v0.30.0** — Reasoning Request Controls | ✅ Complete | `ReasoningConfig`, `verbosity`, `extra_body` |
+| **v0.31.0** — Observability Context | ✅ Complete | `ObservabilityContext`, middleware `elapsed`, langfuse adapter |
+| **v1.0.0** — Production Readiness | ⏳ Remaining | External integration only: klr citation graph + alcove backlinks |
 
 ---
 
 ## Architecture Summary
 
-16 feature-gated modules under hexagonal architecture:
+Feature-gated modules under hexagonal architecture (+ `llm-kernel-langfuse` workspace member):
 
 ```
-provider     → catalog.json, capability profiles
-llm          → async client, SSE streaming, JSON extraction, prompt templates
+provider     → catalog.json, capability profiles, policy, models.dev sync
+llm          → async client, SSE streaming, reasoning I/O, router, JSON extraction, prompt templates, cache
 discovery    → models.dev, Ollama, OpenAI-compat; async DiscoverySource
-secrets      → dotenv vault, atomic writes
-store        → SQLite init helpers
+secrets      → dotenv vault (zeroized, no-Debug), atomic writes, BearerAuth (CSPRNG)
+store        → SQLite init helpers, KvStore
 config       → TOML loader
-graph        → knowledge graph (GraphBackend, FTS5/CJK search, BFS, CSR algorithms, smart recall)
-mcp          → JSON-RPC 2.0 server, stdio + HTTP/SSE transport
+graph        → AI agent memory + general directed-graph backend (GraphBackend/SqlxPgGraph, FTS5/CJK, BFS, CSR algorithms, temporal validity, smart recall)
+mcp          → JSON-RPC 2.0 server, dual-era protocol (2026-07-28 + legacy), stdio + Streamable HTTP
 tokens       → Unicode token estimation, budgeting, sentence-aware chunking
 install      → AI tool config wizard
-search       → SearchProvider trait, RRF + weighted-sum + CombMNZ fusion
-embedding    → provider trait + OpenAI + turbovec + qdrant/elastic/pgvector backends + fastembed (CoreML EP)
+search       → SearchProvider trait, RRF + weighted-sum + CombMNZ fusion, FederatedSearch
+embedding    → provider trait + OpenAI + turbovec + qdrant/elastic/pgvector (dense+sparse) backends + fastembed (CoreML/Metal EPs) + MLX
+dlp          → L1 deterministic scan, L2 fingerprint matching, L3 classifier seam, policy engine
+tls          → rustls provider bootstrap (aws-lc-rs / ring)
 telemetry    → enum-gated events
 safety       → secret masking, error classification, prompt-injection detection
 ```
@@ -225,8 +329,8 @@ safety       → secret masking, error classification, prompt-injection detectio
 
 | Check | Status |
 |-------|--------|
-| All tests pass | ✅ 627 passed, 14 ignored, 0 failed (`--features full`) |
-| Clippy clean | ✅ (verified before each release) |
-| CI passing | ✅ Linux + macOS dual runner |
-| Crate structure | ✅ Monolithic (subcrate removed) |
-| Roadmap on track | ✅ v0.17.0 complete, v1.0.0 next |
+| All tests pass | ✅ 838 passed, 21 ignored, 0 failed (`--features full`) |
+| Clippy clean | ✅ (verified before each release; `--no-default-features` since 0.28.1) |
+| CI passing | ✅ Linux + macOS dual runner, semver + bench-smoke gates |
+| Crate structure | ✅ Monolithic core + `llm-kernel-langfuse` workspace member |
+| Roadmap on track | ✅ v0.31.3 complete; v1.0.0 awaiting external integration (klr + alcove) |
