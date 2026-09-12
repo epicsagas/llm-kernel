@@ -84,7 +84,8 @@ Chaque module est derriere un indicateur de fonctionnalite afin que vous ne payi
 | `dlp-fingerprint` | DLP L2 — correspondance d'empreintes par cosinus de documents sensibles enregistrés, via n'importe quel `EmbeddingProvider` | |
 | `eval` | CLI d'evaluation de qualite -- tokens, securite, embedding, recherche | |
 | `eval-full` | Tous les modules d'evaluation, y compris le graphe | |
-| `catalog-sync` | CLI de synchronisation du catalogue — rafraichit `catalog.json` depuis models.dev | |
+| `catalog-sync` | API de bibliothèque de synchronisation du catalogue — récupère et fusionne models.dev à l'exécution (`provider::sync`), sans dépendances CLI | |
+| `catalog-sync-cli` | `catalog-sync` + dépendances CLI (clap, anyhow) — binaire `llm-kernel-sync-catalog` | |
 | `full` | Toutes les fonctionnalites | |
 
 ## Demarrage rapide
@@ -245,8 +246,8 @@ integree au crate), les mainteneurs lancent l'outil de synchronisation avant une
 release :
 
 ```text
-cargo run --bin llm-kernel-sync-catalog --features catalog-sync -- --check   # afficher la derive
-cargo run --bin llm-kernel-sync-catalog --features catalog-sync              # ecrire catalog.json
+cargo run --bin llm-kernel-sync-catalog --features catalog-sync-cli -- --check   # afficher la derive
+cargo run --bin llm-kernel-sync-catalog --features catalog-sync-cli              # ecrire catalog.json
 ```
 
 ### Découverte asynchrone

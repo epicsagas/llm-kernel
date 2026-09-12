@@ -84,7 +84,8 @@ Ogni modulo è protetto da una flag di feature, così paghi solo per ciò che ut
 | `dlp-fingerprint` | DLP L2 — corrispondenza di impronte coseno di documenti sensibili registrati su qualsiasi `EmbeddingProvider` | |
 | `eval` | CLI di valutazione qualità — token, sicurezza, embedding, ricerca | |
 | `eval-full` | Tutti i moduli di valutazione incluso il grafo | |
-| `catalog-sync` | CLI di sincronizzazione catalogo — aggiorna `catalog.json` da models.dev | |
+| `catalog-sync` | API di libreria per la sincronizzazione del catalogo — scarica e unisce models.dev a runtime (`provider::sync`), senza dipendenze CLI | |
+| `catalog-sync-cli` | `catalog-sync` + dipendenze CLI (clap, anyhow) — binario `llm-kernel-sync-catalog` | |
 | `full` | Tutte le feature | |
 
 ## Guida rapida
@@ -242,8 +243,8 @@ Per aggiornare il **catalogo integrato** stesso (la baseline offline incorporata
 crate), i maintainer eseguono lo strumento di sync prima di una release:
 
 ```text
-cargo run --bin llm-kernel-sync-catalog --features catalog-sync -- --check   # mostra il drift
-cargo run --bin llm-kernel-sync-catalog --features catalog-sync              # scrive catalog.json
+cargo run --bin llm-kernel-sync-catalog --features catalog-sync-cli -- --check   # mostra il drift
+cargo run --bin llm-kernel-sync-catalog --features catalog-sync-cli              # scrive catalog.json
 ```
 
 ### Discovery asincrona

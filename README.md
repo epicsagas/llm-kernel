@@ -81,7 +81,8 @@ Each module is gated behind a feature flag so you only pay for what you use.
 | `dlp-fingerprint` | DLP L2 — cosine fingerprint matching of registered sensitive documents over any `EmbeddingProvider` | |
 | `eval` | Quality evaluation CLI — tokens, safety, embedding, search | |
 | `eval-full` | All eval modules including graph | |
-| `catalog-sync` | Catalog sync CLI — refresh `catalog.json` from models.dev | |
+| `catalog-sync` | Catalog sync library API — fetch models.dev at runtime, merge into the catalog (`provider::sync`) with no CLI dependencies | |
+| `catalog-sync-cli` | `catalog-sync` + CLI deps (clap, anyhow) — enables the `llm-kernel-sync-catalog` binary | |
 | `full` | All features | |
 
 ## Quick start
@@ -255,8 +256,19 @@ To refresh the **embedded** catalog itself (the offline baseline baked into the
 crate), maintainers run the sync tool before a release:
 
 ```text
-cargo run --bin llm-kernel-sync-catalog --features catalog-sync -- --check   # show drift
-cargo run --bin llm-kernel-sync-catalog --features catalog-sync              # write catalog.json
+cargo run --bin llm-kernel-sync-catalog --features catalog-sync-cli -- --check   # show drift
+cargo run --bin llm-kernel-sync-catalog --features catalog-sync-cli              # write catalog.json
+```
+
+Library consumers get the same refresh engine without CLI dependencies — enable
+`catalog-sync` (which needs no clap/anyhow) and fetch + merge at runtime:
+
+```rust
+use llm_kernel::provider::{sync, ProviderIndex};
+
+let payload = sync::fetch_models_dev(None)?;
+let providers = sync::merge_catalog(ProviderIndex::embedded().all(), &payload)?;
+let catalog = ProviderIndex::from_providers(providers);
 ```
 
 ### Async discovery

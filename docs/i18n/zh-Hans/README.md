@@ -84,7 +84,8 @@ llm-kernel 为 Rust 中构建 LLM 驱动的工具、代理和服务器提供基�
 | `dlp-fingerprint` | DLP L2 — 对已注册敏感文档的余弦指纹匹配（任意 `EmbeddingProvider`） | |
 | `eval` | 质量评估 CLI — token、安全、嵌入、搜索 | |
 | `eval-full` | 包含图谱的全部评估模块 | |
-| `catalog-sync` | 目录同步 CLI — 从 models.dev 刷新 `catalog.json` | |
+| `catalog-sync` | 目录同步库 API — 运行时从 models.dev 拉取并合并 (`provider::sync`)，无 CLI 依赖 | |
+| `catalog-sync-cli` | `catalog-sync` + CLI 依赖 (clap, anyhow) — `llm-kernel-sync-catalog` 二进制 | |
 | `full` | 所有特性 | |
 
 ## 快速开始
@@ -239,8 +240,8 @@ let cost = catalog.estimate_cost("some/new-model", prompt_tokens, completion_tok
 如需刷新**内嵌**目录本身（打包进 crate 的离线基线），维护者应在发布前运行同步工具：
 
 ```text
-cargo run --bin llm-kernel-sync-catalog --features catalog-sync -- --check   # 查看差异
-cargo run --bin llm-kernel-sync-catalog --features catalog-sync              # 写入 catalog.json
+cargo run --bin llm-kernel-sync-catalog --features catalog-sync-cli -- --check   # 查看差异
+cargo run --bin llm-kernel-sync-catalog --features catalog-sync-cli              # 写入 catalog.json
 ```
 
 ### 异步发现

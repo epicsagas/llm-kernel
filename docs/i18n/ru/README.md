@@ -84,7 +84,8 @@ llm-kernel предоставляет базовый слой для созда�
 | `dlp-fingerprint` | DLP L2 — косинусное сопоставление отпечатков зарегистрированных конфиденциальных документов через любой `EmbeddingProvider` | |
 | `eval` | CLI оценки качества — токены, безопасность, эмбеддинг, поиск | |
 | `eval-full` | Все модули оценки, включая граф | |
-| `catalog-sync` | CLI синхронизации каталога — обновляет `catalog.json` из models.dev | |
+| `catalog-sync` | Библиотечный API синхронизации каталога — получает и сливает models.dev в рантайме (`provider::sync`), без CLI-зависимостей | |
+| `catalog-sync-cli` | `catalog-sync` + CLI-зависимости (clap, anyhow) — бинарник `llm-kernel-sync-catalog` | |
 | `full` | Все функции | |
 
 ## Быстрый старт
@@ -240,8 +241,8 @@ let cost = catalog.estimate_cost("some/new-model", prompt_tokens, completion_tok
 Чтобы обновить сам **встроенный** каталог (офлайн-базовый срез, встроенный в крейт), мейнтейнеры запускают инструмент синхронизации перед релизом:
 
 ```text
-cargo run --bin llm-kernel-sync-catalog --features catalog-sync -- --check   # показать расхождение
-cargo run --bin llm-kernel-sync-catalog --features catalog-sync              # записать catalog.json
+cargo run --bin llm-kernel-sync-catalog --features catalog-sync-cli -- --check   # показать расхождение
+cargo run --bin llm-kernel-sync-catalog --features catalog-sync-cli              # записать catalog.json
 ```
 
 ### Асинхронное обнаружение

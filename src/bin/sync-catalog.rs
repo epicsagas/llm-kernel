@@ -7,8 +7,8 @@
 //! Run from the repository root:
 //!
 //! ```text
-//! cargo run --bin llm-kernel-sync-catalog --features catalog-sync -- --check
-//! cargo run --bin llm-kernel-sync-catalog --features catalog-sync
+//! cargo run --bin llm-kernel-sync-catalog --features catalog-sync-cli -- --check
+//! cargo run --bin llm-kernel-sync-catalog --features catalog-sync-cli
 //! ```
 
 use std::path::{Path, PathBuf};

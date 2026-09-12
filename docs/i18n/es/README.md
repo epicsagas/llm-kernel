@@ -84,7 +84,8 @@ Cada módulo está detrás de un flag de característica para que solo pagues po
 | `dlp-fingerprint` | DLP L2 — coincidencia de huellas por coseno de documentos sensibles registrados sobre cualquier `EmbeddingProvider` | |
 | `eval` | CLI de evaluación de calidad — tokens, seguridad, embedding, búsqueda | |
 | `eval-full` | Todos los módulos de evaluación incluido grafo | |
-| `catalog-sync` | CLI de sincronización de catálogo — refresca `catalog.json` desde models.dev | |
+| `catalog-sync` | API de biblioteca de sincronización de catálogo — obtiene y fusiona models.dev en tiempo de ejecución (`provider::sync`), sin dependencias de CLI | |
+| `catalog-sync-cli` | `catalog-sync` + dependencias de CLI (clap, anyhow) — binario `llm-kernel-sync-catalog` | |
 | `full` | Todas las características | |
 
 ## Inicio rápido
@@ -243,8 +244,8 @@ Para refrescar el **catálogo embebido** en sí (la referencia offline integrada
 crate), los mantenedores ejecutan la herramienta de sincronización antes de un release:
 
 ```text
-cargo run --bin llm-kernel-sync-catalog --features catalog-sync -- --check   # mostrar drift
-cargo run --bin llm-kernel-sync-catalog --features catalog-sync              # escribir catalog.json
+cargo run --bin llm-kernel-sync-catalog --features catalog-sync-cli -- --check   # mostrar drift
+cargo run --bin llm-kernel-sync-catalog --features catalog-sync-cli              # escribir catalog.json
 ```
 
 ### Descubrimiento asíncrono

@@ -84,7 +84,8 @@ llm-kernel은 Rust로 LLM 기반 도구, 에이전트, 서버를 구축하기 �
 | `dlp-fingerprint` | DLP L2 — 등록된 민감 문서의 코사인 지문 매칭(임의의 `EmbeddingProvider`) | |
 | `eval` | 품질 평가 CLI — 토큰, 안전, 임베딩, 검색 | |
 | `eval-full` | 그래프 포함 전체 평가 모듈 | |
-| `catalog-sync` | 카탈로그 동기화 CLI — models.dev에서 `catalog.json` 갱신 | |
+| `catalog-sync` | 카탈로그 동기화 라이브러리 API — models.dev 런타임 fetch + 머지 (`provider::sync`), CLI 의존성 없음 | |
+| `catalog-sync-cli` | `catalog-sync` + CLI 의존성 (clap, anyhow) — `llm-kernel-sync-catalog` 바이너리 | |
 | `full` | 모든 기능 | |
 
 ## 빠른 시작
@@ -241,8 +242,8 @@ let cost = catalog.estimate_cost("some/new-model", prompt_tokens, completion_tok
 메인테이너가 동기화 도구를 실행합니다:
 
 ```text
-cargo run --bin llm-kernel-sync-catalog --features catalog-sync -- --check   # 드리프트 표시
-cargo run --bin llm-kernel-sync-catalog --features catalog-sync              # catalog.json 기록
+cargo run --bin llm-kernel-sync-catalog --features catalog-sync-cli -- --check   # 드리프트 표시
+cargo run --bin llm-kernel-sync-catalog --features catalog-sync-cli              # catalog.json 기록
 ```
 
 ### 비동기 탐색

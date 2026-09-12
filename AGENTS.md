@@ -16,8 +16,8 @@
 | `cargo run --bin llm-kernel-eval --features eval -- all` | Quality eval (tokens, safety, injection, embedding, search) |
 | `cargo run --bin llm-kernel-eval --features eval-full -- dlp` | DLP scan eval (detection F1 + benign-corpus false-positive rate) |
 | `cargo run --bin llm-kernel-eval --features eval-full -- --baseline eval/baseline.json all` | Regression check vs baseline |
-| `cargo run --bin llm-kernel-sync-catalog --features catalog-sync -- --check` | Detect catalog drift vs models.dev (no write) |
-| `cargo run --bin llm-kernel-sync-catalog --features catalog-sync` | Refresh `catalog.json` from models.dev (atomic write) |
+| `cargo run --bin llm-kernel-sync-catalog --features catalog-sync-cli -- --check` | Detect catalog drift vs models.dev (no write) |
+| `cargo run --bin llm-kernel-sync-catalog --features catalog-sync-cli` | Refresh `catalog.json` from models.dev (atomic write) |
 
 ## Architecture
 
@@ -46,7 +46,7 @@ Additional binary targets:
 ```
   src/bin/eval.rs                          — quality evaluation CLI  (features: eval, eval-full)
   src/bin/migrate.rs                       — SQLite↔PostgreSQL graph migration CLI  (feature: graph-pg)
-  src/bin/sync-catalog.rs                  — refresh catalog.json from models.dev  (feature: catalog-sync)
+  src/bin/sync-catalog.rs                  — refresh catalog.json from models.dev  (feature: catalog-sync-cli)
   eval/baseline.json                       — golden baseline snapshot for regression detection
 ```
 

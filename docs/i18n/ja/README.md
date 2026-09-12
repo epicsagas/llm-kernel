@@ -84,7 +84,8 @@ llm-kernelは、RustでLLM搭載ツール、エージェント、サーバーを
 | `dlp-fingerprint` | DLP L2 — 登録済み機密文書のコサインフィンガープリント照合（任意の `EmbeddingProvider`） | |
 | `eval` | 品質評価CLI — トークン、セーフティ、エンベディング、検索 | |
 | `eval-full` | グラフを含む全評価モジュール | |
-| `catalog-sync` | カタログ同期CLI — models.dev から `catalog.json` を更新 | |
+| `catalog-sync` | カタログ同期ライブラリ API — models.dev をランタイムで fetch + マージ (`provider::sync`)、CLI 依存なし | |
+| `catalog-sync-cli` | `catalog-sync` + CLI 依存 (clap, anyhow) — `llm-kernel-sync-catalog` バイナリ | |
 | `full` | 全フィーチャー | |
 
 ## クイックスタート
@@ -239,8 +240,8 @@ let cost = catalog.estimate_cost("some/new-model", prompt_tokens, completion_tok
 **組み込み**カタログ自体（クレートにベイクされているオフラインベースライン）を更新するには、メンテナがリリース前に同期ツールを実行します：
 
 ```text
-cargo run --bin llm-kernel-sync-catalog --features catalog-sync -- --check   # ドリフトを表示
-cargo run --bin llm-kernel-sync-catalog --features catalog-sync              # catalog.json を書き込み
+cargo run --bin llm-kernel-sync-catalog --features catalog-sync-cli -- --check   # ドリフトを表示
+cargo run --bin llm-kernel-sync-catalog --features catalog-sync-cli              # catalog.json を書き込み
 ```
 
 ### 非同期ディスカバリ

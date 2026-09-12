@@ -1,6 +1,6 @@
 [package]
 name         = "llm-kernel"
-version      = "0.31.4"
+version      = "0.31.5"
 edition      = "2024"
 description  = "Foundation library for Rust AI-native apps — provider catalog, LLM client, MCP server, search, telemetry, and safety"
 license      = "Apache-2.0"
@@ -57,8 +57,11 @@ client-async = ["dep:reqwest", "dep:serde_json", "dep:async-trait", "dep:tokio",
 # Asynchronous model discovery (async DiscoverySource over reqwest)
 discovery-async = ["discovery", "dep:reqwest", "dep:async-trait", "dep:tokio"]
 
-# Catalog sync tooling — refresh catalog.json from models.dev (sync-catalog binary)
-catalog-sync = ["provider", "discovery", "dep:clap", "dep:anyhow"]
+# Catalog sync library API — runtime refresh of the catalog from models.dev.
+# CLI-only deps (clap, anyhow) live in `catalog-sync-cli` so library consumers
+# enabling `catalog-sync` do not pull them into their tree.
+catalog-sync = ["provider", "discovery"]
+catalog-sync-cli = ["catalog-sync", "dep:clap", "dep:anyhow"]
 
 # LLM response cache over a KvStore (wraps any LLMClient)
 cache = ["client-async", "store"]
@@ -225,7 +228,7 @@ eval-full = ["eval", "graph", "graph-cjk", "dlp"]
 #   - embedding-fastembed-dynamic-linking: opt-in dynamic ONNX linking (see #50).
 #   - eval / eval-full: developer CLI tooling (the `llm-kernel-eval` binary),
 #     not part of the library surface. Enable explicitly to run the eval suite.
-full = ["provider", "rustls-aws-lc-rs", "discovery", "discovery-async", "client-async", "cache", "secrets", "store", "config", "graph", "graph-async", "graph-pool", "graph-cjk", "graph-pg", "graph-pg-tls", "graph-pg-sqlx", "mcp", "mcp-http", "tokens", "install", "search", "embedding", "embedding-openai", "embedding-fastembed", "embedding-fastembed-qwen3", "embedding-fastembed-nomic-moe", "embedding-mlx", "vector-index", "qdrant", "elastic", "pgvector", "federation", "telemetry", "safety", "dlp", "dlp-fingerprint", "catalog-sync"]
+full = ["provider", "rustls-aws-lc-rs", "discovery", "discovery-async", "client-async", "cache", "secrets", "store", "config", "graph", "graph-async", "graph-pool", "graph-cjk", "graph-pg", "graph-pg-tls", "graph-pg-sqlx", "mcp", "mcp-http", "tokens", "install", "search", "embedding", "embedding-openai", "embedding-fastembed", "embedding-fastembed-qwen3", "embedding-fastembed-nomic-moe", "embedding-mlx", "vector-index", "qdrant", "elastic", "pgvector", "federation", "telemetry", "safety", "dlp", "dlp-fingerprint", "catalog-sync-cli"]
 
 [dependencies]
 # Always required
@@ -329,7 +332,7 @@ required-features = ["graph-pg"]
 [[bin]]
 name = "llm-kernel-sync-catalog"
 path = "src/bin/sync-catalog.rs"
-required-features = ["catalog-sync"]
+required-features = ["catalog-sync-cli"]
 
 [profile.dev]
 opt-level = 0

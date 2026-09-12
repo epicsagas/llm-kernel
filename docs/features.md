@@ -76,7 +76,8 @@ platform constraints per feature — v1.0.0 ROADMAP #6.
 | Feature | What it enables |
 |---|---|
 | `install` | AI-tool config wizard |
-| `catalog-sync` | `llm-kernel-sync-catalog` binary (refresh catalog from models.dev) |
+| `catalog-sync` | Catalog sync library API — runtime models.dev fetch + merge (`provider::sync`), no CLI deps |
+| `catalog-sync-cli` | `catalog-sync` + CLI deps (clap, anyhow) — `llm-kernel-sync-catalog` binary |
 | `eval` / `eval-full` | `llm-kernel-eval` binary (quality regression). `eval-full` adds `graph` + `graph-cjk` + `dlp` (the `dlp` eval module reports detection F1 plus a benign-corpus false-positive rate that must stay 0). |
 | `full` | Everything except the Windows-only and dev-only features below |
 

@@ -84,7 +84,8 @@ Jedes Modul wird durch ein Feature-Flag gesteuert, sodass Sie nur bezahlen, was 
 | `dlp-fingerprint` | DLP L2 — Kosinus-Fingerprint-Abgleich registrierter sensibler Dokumente über jeden `EmbeddingProvider` | |
 | `eval` | Qualitätsbewertungs-CLI — Tokens, Sicherheit, Embedding, Suche | |
 | `eval-full` | Alle Evaluationsmodule einschließlich Graph | |
-| `catalog-sync` | Katalog-Sync-CLI — `catalog.json` von models.dev auffrischen | |
+| `catalog-sync` | Katalog-Sync-Bibliotheks-API — models.dev zur Laufzeit abrufen und mergen (`provider::sync`), keine CLI-Abhängigkeiten | |
+| `catalog-sync-cli` | `catalog-sync` + CLI-Abhängigkeiten (clap, anyhow) — `llm-kernel-sync-catalog`-Binary | |
 | `full` | Alle Features | |
 
 ## Schnellstart
@@ -244,8 +245,8 @@ Um den **eingebetteten** Katalog selbst aufzufrischen (die Offline-Baseline, die
 Crate eingebaut wird), führen Maintainer das Sync-Werkzeug vor einem Release aus:
 
 ```text
-cargo run --bin llm-kernel-sync-catalog --features catalog-sync -- --check   # Drift anzeigen
-cargo run --bin llm-kernel-sync-catalog --features catalog-sync              # catalog.json schreiben
+cargo run --bin llm-kernel-sync-catalog --features catalog-sync-cli -- --check   # Drift anzeigen
+cargo run --bin llm-kernel-sync-catalog --features catalog-sync-cli              # catalog.json schreiben
 ```
 
 ### Asynchrone Discovery
