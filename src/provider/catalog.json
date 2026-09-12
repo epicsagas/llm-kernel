@@ -825,7 +825,7 @@
           "capabilities": {
             "attachment": true,
             "reasoning": true,
-            "temperature": false,
+            "temperature": true,
             "tool_call": true,
             "streaming": true
           },
@@ -990,7 +990,7 @@
           "capabilities": {
             "attachment": true,
             "reasoning": true,
-            "temperature": false,
+            "temperature": true,
             "tool_call": true,
             "streaming": true
           },
@@ -1157,7 +1157,7 @@
           "capabilities": {
             "attachment": true,
             "reasoning": true,
-            "temperature": false,
+            "temperature": true,
             "tool_call": true,
             "streaming": true
           },
@@ -1225,7 +1225,7 @@
           "capabilities": {
             "attachment": true,
             "reasoning": true,
-            "temperature": false,
+            "temperature": true,
             "tool_call": true,
             "streaming": true
           },
@@ -1258,7 +1258,7 @@
           "capabilities": {
             "attachment": true,
             "reasoning": true,
-            "temperature": false,
+            "temperature": true,
             "tool_call": true,
             "streaming": true
           },
@@ -1291,7 +1291,7 @@
           "capabilities": {
             "attachment": true,
             "reasoning": true,
-            "temperature": false,
+            "temperature": true,
             "tool_call": true,
             "streaming": true
           },
@@ -1784,10 +1784,10 @@
           "family": "gpt-sol",
           "release_date": "2026-07-09",
           "cost": {
-            "input": 5.0,
-            "output": 30.0,
-            "cache_read": 0.5,
-            "cache_write": 6.25
+            "input": 4.0,
+            "output": 20.0,
+            "cache_read": 0.4,
+            "cache_write": 5.0
           },
           "limit": {
             "context": 1050000,
@@ -1852,10 +1852,10 @@
           "family": "gpt-sol",
           "release_date": "2026-07-09",
           "cost": {
-            "input": 5.0,
-            "output": 30.0,
-            "cache_read": 0.5,
-            "cache_write": 6.25
+            "input": 4.0,
+            "output": 20.0,
+            "cache_read": 0.4,
+            "cache_write": 5.0
           },
           "limit": {
             "context": 1050000,
@@ -1981,6 +1981,40 @@
             "streaming": true
           },
           "knowledge": "2024-09-30"
+        },
+        {
+          "id": "gpt-6-astra",
+          "name": "GPT-6 Astra",
+          "family": "gpt-astra",
+          "release_date": "2026-09-04",
+          "cost": {
+            "input": 10.0,
+            "output": 50.0,
+            "cache_read": 1.0,
+            "cache_write": 12.5
+          },
+          "limit": {
+            "context": 1050000,
+            "output": 128000
+          },
+          "modalities": {
+            "input": [
+              "text",
+              "image",
+              "pdf"
+            ],
+            "output": [
+              "text"
+            ]
+          },
+          "capabilities": {
+            "attachment": true,
+            "reasoning": true,
+            "temperature": false,
+            "tool_call": true,
+            "streaming": true
+          },
+          "knowledge": "2026-04-30"
         }
       ]
     },
@@ -3496,6 +3530,42 @@
             "streaming": true
           },
           "knowledge": null
+        },
+        {
+          "id": "gemini-3.8-flash",
+          "name": "Gemini 3.8 Flash",
+          "family": "gemini-flash",
+          "release_date": "2026-09-02",
+          "cost": {
+            "input": 0.75,
+            "output": 3.75,
+            "cache_read": 0.075,
+            "cache_write": null
+          },
+          "limit": {
+            "context": 1048576,
+            "output": 65536
+          },
+          "modalities": {
+            "input": [
+              "text",
+              "image",
+              "video",
+              "audio",
+              "pdf"
+            ],
+            "output": [
+              "text"
+            ]
+          },
+          "capabilities": {
+            "attachment": true,
+            "reasoning": true,
+            "temperature": true,
+            "tool_call": true,
+            "streaming": true
+          },
+          "knowledge": null
         }
       ]
     },
@@ -3993,6 +4063,73 @@
             "streaming": true
           },
           "knowledge": null
+        },
+        {
+          "id": "glm-5.3",
+          "name": "GLM-5.3",
+          "family": "glm",
+          "release_date": "2026-08-14",
+          "cost": {
+            "input": 1.4,
+            "output": 4.4,
+            "cache_read": 0.26,
+            "cache_write": 0.0
+          },
+          "limit": {
+            "context": 1000000,
+            "output": 131072
+          },
+          "modalities": {
+            "input": [
+              "text"
+            ],
+            "output": [
+              "text"
+            ]
+          },
+          "capabilities": {
+            "attachment": false,
+            "reasoning": true,
+            "temperature": true,
+            "tool_call": true,
+            "streaming": true
+          },
+          "knowledge": null
+        },
+        {
+          "id": "glm-5.3-flash",
+          "name": "GLM-5.3-Flash",
+          "family": "glm",
+          "release_date": "2026-08-26",
+          "cost": {
+            "input": 0.075,
+            "output": 0.25,
+            "cache_read": 0.015,
+            "cache_write": 0.0
+          },
+          "limit": {
+            "context": 1000000,
+            "output": 131072
+          },
+          "modalities": {
+            "input": [
+              "text",
+              "image",
+              "video",
+              "pdf"
+            ],
+            "output": [
+              "text"
+            ]
+          },
+          "capabilities": {
+            "attachment": true,
+            "reasoning": true,
+            "temperature": true,
+            "tool_call": true,
+            "streaming": true
+          },
+          "knowledge": null
         }
       ]
     },
@@ -4007,9 +4144,9 @@
       "base_url": "https://open.bigmodel.cn/api/anthropic",
       "default_model": "glm-5",
       "model_tiers": {
-        "sonnet": "glm-5",
         "haiku": "glm-5",
-        "opus": "glm-5"
+        "opus": "glm-5",
+        "sonnet": "glm-5"
       },
       "model_choices": [
         {
@@ -4490,6 +4627,73 @@
             "streaming": true
           },
           "knowledge": null
+        },
+        {
+          "id": "glm-5.3",
+          "name": "GLM-5.3",
+          "family": "glm",
+          "release_date": "2026-08-14",
+          "cost": {
+            "input": 1.4,
+            "output": 4.4,
+            "cache_read": 0.26,
+            "cache_write": 0.0
+          },
+          "limit": {
+            "context": 1000000,
+            "output": 131072
+          },
+          "modalities": {
+            "input": [
+              "text"
+            ],
+            "output": [
+              "text"
+            ]
+          },
+          "capabilities": {
+            "attachment": false,
+            "reasoning": true,
+            "temperature": true,
+            "tool_call": true,
+            "streaming": true
+          },
+          "knowledge": null
+        },
+        {
+          "id": "glm-5.3-flash",
+          "name": "GLM-5.3-Flash",
+          "family": "glm",
+          "release_date": "2026-08-26",
+          "cost": {
+            "input": 0.075,
+            "output": 0.25,
+            "cache_read": 0.015,
+            "cache_write": 0.0
+          },
+          "limit": {
+            "context": 1000000,
+            "output": 131072
+          },
+          "modalities": {
+            "input": [
+              "text",
+              "image",
+              "video",
+              "pdf"
+            ],
+            "output": [
+              "text"
+            ]
+          },
+          "capabilities": {
+            "attachment": true,
+            "reasoning": true,
+            "temperature": true,
+            "tool_call": true,
+            "streaming": true
+          },
+          "knowledge": null
         }
       ]
     },
@@ -4504,9 +4708,9 @@
       "base_url": "https://api.z.ai/api/coding/anthropic",
       "default_model": "glm-5",
       "model_tiers": {
-        "opus": "glm-5",
         "sonnet": "glm-5",
-        "haiku": "glm-5"
+        "haiku": "glm-5",
+        "opus": "glm-5"
       },
       "model_choices": [
         {
@@ -4824,6 +5028,73 @@
             "streaming": true
           },
           "knowledge": null
+        },
+        {
+          "id": "glm-5.3-flash",
+          "name": "GLM-5.3-Flash",
+          "family": "glm",
+          "release_date": "2026-08-26",
+          "cost": {
+            "input": 0.0,
+            "output": 0.0,
+            "cache_read": 0.0,
+            "cache_write": 0.0
+          },
+          "limit": {
+            "context": 1000000,
+            "output": 131072
+          },
+          "modalities": {
+            "input": [
+              "text",
+              "image",
+              "video",
+              "pdf"
+            ],
+            "output": [
+              "text"
+            ]
+          },
+          "capabilities": {
+            "attachment": true,
+            "reasoning": true,
+            "temperature": true,
+            "tool_call": true,
+            "streaming": true
+          },
+          "knowledge": null
+        },
+        {
+          "id": "glm-5.3-highspeed",
+          "name": "GLM-5.3 Highspeed",
+          "family": "glm",
+          "release_date": "2026-08-14",
+          "cost": {
+            "input": 0.0,
+            "output": 0.0,
+            "cache_read": 0.0,
+            "cache_write": 0.0
+          },
+          "limit": {
+            "context": 1000000,
+            "output": 131072
+          },
+          "modalities": {
+            "input": [
+              "text"
+            ],
+            "output": [
+              "text"
+            ]
+          },
+          "capabilities": {
+            "attachment": false,
+            "reasoning": true,
+            "temperature": true,
+            "tool_call": true,
+            "streaming": true
+          },
+          "knowledge": null
         }
       ]
     },
@@ -4838,9 +5109,9 @@
       "base_url": "https://open.bigmodel.cn/api/coding/anthropic",
       "default_model": "glm-5",
       "model_tiers": {
-        "opus": "glm-5",
+        "haiku": "glm-5",
         "sonnet": "glm-5",
-        "haiku": "glm-5"
+        "opus": "glm-5"
       },
       "model_choices": [
         {
@@ -5158,6 +5429,73 @@
             "streaming": true
           },
           "knowledge": null
+        },
+        {
+          "id": "glm-5.3-flash",
+          "name": "GLM-5.3-Flash",
+          "family": "glm",
+          "release_date": "2026-08-26",
+          "cost": {
+            "input": 0.0,
+            "output": 0.0,
+            "cache_read": 0.0,
+            "cache_write": 0.0
+          },
+          "limit": {
+            "context": 1000000,
+            "output": 131072
+          },
+          "modalities": {
+            "input": [
+              "text",
+              "image",
+              "video",
+              "pdf"
+            ],
+            "output": [
+              "text"
+            ]
+          },
+          "capabilities": {
+            "attachment": true,
+            "reasoning": true,
+            "temperature": true,
+            "tool_call": true,
+            "streaming": true
+          },
+          "knowledge": null
+        },
+        {
+          "id": "glm-5.3-highspeed",
+          "name": "GLM-5.3 Highspeed",
+          "family": "glm",
+          "release_date": "2026-08-14",
+          "cost": {
+            "input": 0.0,
+            "output": 0.0,
+            "cache_read": 0.0,
+            "cache_write": 0.0
+          },
+          "limit": {
+            "context": 1000000,
+            "output": 131072
+          },
+          "modalities": {
+            "input": [
+              "text"
+            ],
+            "output": [
+              "text"
+            ]
+          },
+          "capabilities": {
+            "attachment": false,
+            "reasoning": true,
+            "temperature": true,
+            "tool_call": true,
+            "streaming": true
+          },
+          "knowledge": null
         }
       ]
     },
@@ -5172,10 +5510,10 @@
       "base_url": "https://api.minimax.io/anthropic",
       "default_model": "MiniMax-M2.7",
       "model_tiers": {
-        "opus": "MiniMax-M2.7",
+        "small": "MiniMax-M2.7",
         "sonnet": "MiniMax-M2.7",
-        "haiku": "MiniMax-M2.7",
-        "small": "MiniMax-M2.7"
+        "opus": "MiniMax-M2.7",
+        "haiku": "MiniMax-M2.7"
       },
       "model_choices": [
         {
@@ -5322,8 +5660,8 @@
             "cache_write": null
           },
           "limit": {
-            "context": 196608,
-            "output": 128000
+            "context": 204800,
+            "output": 131072
           },
           "modalities": {
             "input": [
@@ -5418,8 +5756,8 @@
             "cache_write": null
           },
           "limit": {
-            "context": 1000000,
-            "output": 128000
+            "context": 1048576,
+            "output": 512000
           },
           "modalities": {
             "input": [
@@ -5453,9 +5791,9 @@
       "base_url": "https://api.minimaxi.com/anthropic",
       "default_model": "MiniMax-M2.7",
       "model_tiers": {
+        "sonnet": "MiniMax-M2.7",
         "haiku": "MiniMax-M2.7",
         "opus": "MiniMax-M2.7",
-        "sonnet": "MiniMax-M2.7",
         "small": "MiniMax-M2.7"
       },
       "model_choices": [
@@ -5571,8 +5909,8 @@
             "cache_write": null
           },
           "limit": {
-            "context": 196608,
-            "output": 128000
+            "context": 204800,
+            "output": 131072
           },
           "modalities": {
             "input": [
@@ -5699,8 +6037,8 @@
             "cache_write": null
           },
           "limit": {
-            "context": 1000000,
-            "output": 128000
+            "context": 1048576,
+            "output": 512000
           },
           "modalities": {
             "input": [
@@ -5962,7 +6300,7 @@
             ]
           },
           "capabilities": {
-            "attachment": false,
+            "attachment": true,
             "reasoning": true,
             "temperature": false,
             "tool_call": true,
@@ -5995,7 +6333,7 @@
             ]
           },
           "capabilities": {
-            "attachment": false,
+            "attachment": true,
             "reasoning": true,
             "temperature": false,
             "tool_call": true,
@@ -6666,11 +7004,11 @@
           "id": "deepseek-v4-flash",
           "name": "DeepSeek V4 Flash",
           "family": "deepseek-flash",
-          "release_date": "2026-07-31",
+          "release_date": "2026-09-10",
           "cost": {
-            "input": 0.14,
-            "output": 0.28,
-            "cache_read": 0.0028,
+            "input": 0.15,
+            "output": 0.6,
+            "cache_read": 0.003,
             "cache_write": null
           },
           "limit": {
@@ -6679,14 +7017,15 @@
           },
           "modalities": {
             "input": [
-              "text"
+              "text",
+              "image"
             ],
             "output": [
               "text"
             ]
           },
           "capabilities": {
-            "attachment": false,
+            "attachment": true,
             "reasoning": true,
             "temperature": true,
             "tool_call": true,
@@ -6730,11 +7069,11 @@
           "id": "deepseek-v4-flash-vision-exp",
           "name": "DeepSeek V4 Flash Vision Exp",
           "family": "deepseek-flash",
-          "release_date": "2026-08-21",
+          "release_date": "2026-09-10",
           "cost": {
-            "input": 0.14,
-            "output": 0.28,
-            "cache_read": 0.0028,
+            "input": 0.15,
+            "output": 0.6,
+            "cache_read": 0.003,
             "cache_write": null
           },
           "limit": {
@@ -6757,7 +7096,40 @@
             "tool_call": true,
             "streaming": true
           },
-          "knowledge": null
+          "knowledge": "2025-05"
+        },
+        {
+          "id": "deepseek-flash",
+          "name": "DeepSeek V4.1 Flash",
+          "family": "deepseek-flash",
+          "release_date": "2026-09-10",
+          "cost": {
+            "input": 0.15,
+            "output": 0.6,
+            "cache_read": 0.003,
+            "cache_write": null
+          },
+          "limit": {
+            "context": 1000000,
+            "output": 384000
+          },
+          "modalities": {
+            "input": [
+              "text",
+              "image"
+            ],
+            "output": [
+              "text"
+            ]
+          },
+          "capabilities": {
+            "attachment": true,
+            "reasoning": true,
+            "temperature": true,
+            "tool_call": true,
+            "streaming": true
+          },
+          "knowledge": "2025-05"
         }
       ]
     },
@@ -6772,9 +7144,9 @@
       "base_url": "https://api.xiaomimimo.com/anthropic",
       "default_model": "mimo-v2-pro",
       "model_tiers": {
-        "sonnet": "mimo-v2-pro",
         "haiku": "mimo-v2-flash",
-        "opus": "mimo-v2-pro"
+        "opus": "mimo-v2-pro",
+        "sonnet": "mimo-v2-pro"
       },
       "model_choices": [
         {
@@ -8751,6 +9123,40 @@
             "streaming": true
           },
           "knowledge": null
+        },
+        {
+          "id": "qwen3.8-flash",
+          "name": "Qwen3.8 Flash",
+          "family": "qwen",
+          "release_date": "2026-08-26",
+          "cost": {
+            "input": 0.15,
+            "output": 0.47,
+            "cache_read": 0.016,
+            "cache_write": 0.2
+          },
+          "limit": {
+            "context": 1000000,
+            "output": 131072
+          },
+          "modalities": {
+            "input": [
+              "text",
+              "image",
+              "video"
+            ],
+            "output": [
+              "text"
+            ]
+          },
+          "capabilities": {
+            "attachment": true,
+            "reasoning": true,
+            "temperature": false,
+            "tool_call": true,
+            "streaming": true
+          },
+          "knowledge": null
         }
       ]
     },
@@ -8765,9 +9171,9 @@
       "base_url": "https://coding-us.dashscope.aliyuncs.com/apps/anthropic",
       "default_model": "qwen3.5-plus",
       "model_tiers": {
+        "sonnet": "qwen3.5-plus",
         "haiku": "qwen3-coder-flash",
-        "opus": "qwen3.5-plus",
-        "sonnet": "qwen3.5-plus"
+        "opus": "qwen3.5-plus"
       },
       "model_choices": [
         {
@@ -10598,6 +11004,40 @@
             "streaming": true
           },
           "knowledge": null
+        },
+        {
+          "id": "qwen3.8-flash",
+          "name": "Qwen3.8 Flash",
+          "family": "qwen",
+          "release_date": "2026-08-26",
+          "cost": {
+            "input": 0.15,
+            "output": 0.47,
+            "cache_read": 0.016,
+            "cache_write": 0.2
+          },
+          "limit": {
+            "context": 1000000,
+            "output": 131072
+          },
+          "modalities": {
+            "input": [
+              "text",
+              "image",
+              "video"
+            ],
+            "output": [
+              "text"
+            ]
+          },
+          "capabilities": {
+            "attachment": true,
+            "reasoning": true,
+            "temperature": false,
+            "tool_call": true,
+            "streaming": true
+          },
+          "knowledge": null
         }
       ]
     },
@@ -10612,9 +11052,9 @@
       "base_url": "https://coding.dashscope.aliyuncs.com/apps/anthropic",
       "default_model": "qwen3.5-plus",
       "model_tiers": {
+        "haiku": "qwen3-coder-flash",
         "sonnet": "qwen3.5-plus",
-        "opus": "qwen3.5-plus",
-        "haiku": "qwen3-coder-flash"
+        "opus": "qwen3.5-plus"
       },
       "model_choices": [
         {
@@ -11209,8 +11649,8 @@
           "family": "glm",
           "release_date": "2026-02-11",
           "cost": {
-            "input": 0.86,
-            "output": 3.15,
+            "input": 0.573,
+            "output": 2.58,
             "cache_read": null,
             "cache_write": null
           },
@@ -11241,8 +11681,8 @@
           "family": "glm",
           "release_date": "2026-04-14",
           "cost": {
-            "input": 0.87,
-            "output": 3.48,
+            "input": 0.825,
+            "output": 3.301,
             "cache_read": 0.17,
             "cache_write": null
           },
@@ -11833,8 +12273,8 @@
           "cost": {
             "input": 0.115,
             "output": 0.287,
-            "cache_read": null,
-            "cache_write": null
+            "cache_read": 0.012,
+            "cache_write": 0.144
           },
           "limit": {
             "context": 1000000,
@@ -12906,8 +13346,8 @@
           "family": "qwen",
           "release_date": "2026-02-16",
           "cost": {
-            "input": 0.43,
-            "output": 2.58,
+            "input": 0.172,
+            "output": 1.032,
             "cache_read": null,
             "cache_write": null
           },
@@ -13454,6 +13894,40 @@
             "attachment": true,
             "reasoning": true,
             "temperature": true,
+            "tool_call": true,
+            "streaming": true
+          },
+          "knowledge": null
+        },
+        {
+          "id": "qwen3.8-flash",
+          "name": "Qwen3.8 Flash",
+          "family": "qwen",
+          "release_date": "2026-08-26",
+          "cost": {
+            "input": 0.11875,
+            "output": 0.40073,
+            "cache_read": 0.01187,
+            "cache_write": 0.14844
+          },
+          "limit": {
+            "context": 1000000,
+            "output": 131072
+          },
+          "modalities": {
+            "input": [
+              "text",
+              "image",
+              "video"
+            ],
+            "output": [
+              "text"
+            ]
+          },
+          "capabilities": {
+            "attachment": true,
+            "reasoning": true,
+            "temperature": false,
             "tool_call": true,
             "streaming": true
           },
