@@ -583,18 +583,24 @@ fn decode_f32(dtype: safetensors::Dtype, raw: &[u8], name: &str) -> Result<Vec<f
 
     Ok(match dtype {
         Dtype::F32 => raw
-            .chunks_exact(4)
-            .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|c| f32::from_le_bytes(*c))
             .collect(),
         // IEEE half -> f32 via the standard bit-layout widening.
         Dtype::F16 => raw
-            .chunks_exact(2)
-            .map(|c| f16_bits_to_f32(u16::from_le_bytes([c[0], c[1]])))
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|c| f16_bits_to_f32(u16::from_le_bytes(*c)))
             .collect(),
         // bfloat16 is the top 16 bits of an f32, so widening is a shift.
         Dtype::BF16 => raw
-            .chunks_exact(2)
-            .map(|c| f32::from_bits((u16::from_le_bytes([c[0], c[1]]) as u32) << 16))
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|c| f32::from_bits((u16::from_le_bytes(*c) as u32) << 16))
             .collect(),
         _ => unreachable!("dtype filtered above"),
     })
