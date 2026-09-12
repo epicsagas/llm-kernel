@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.31.4] - 2026-09-12
+
+### Added
+
+- `client-async`: `LLMRequest::extra_body` is now merged into the request body by `AnthropicClient` too (both `complete` and `stream_complete`), with the same last-write-wins semantics as `OpenAIClient` — previously Anthropic silently dropped it. Merge helper generalized over any body type. Primary use: provider extensions the kernel does not model natively, e.g. `"thinking": {"type": "disabled"}` for zai/glm gateways where default-on reasoning otherwise consumes the `max_tokens` budget.
+
 ## [0.31.3] - 2026-09-10
 
 ### Fixed
