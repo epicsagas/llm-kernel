@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.31.5] - 2026-09-13
+
+### Changed
+
+- `catalog-sync` is now a pure library feature (`provider::sync` — runtime models.dev fetch + merge) with no CLI dependencies; the clap/anyhow deps moved to the new `catalog-sync-cli` feature, which gates the `llm-kernel-sync-catalog` binary (`required-features = ["catalog-sync-cli"]`). `full` now includes `catalog-sync-cli`, so maintainer workflows are unchanged — run the binary with `--features catalog-sync-cli`. Library consumers enabling `catalog-sync` no longer pull clap/anyhow into their tree.
+- `docs`: README + all 10 i18n READMEs + `docs/features.md` updated for the split, including a runtime-refresh example for library consumers.
+
 ## [0.31.4] - 2026-09-12
 
 ### Added
