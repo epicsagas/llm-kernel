@@ -119,11 +119,11 @@ fn openai_reasoning(
 /// Serialize the outgoing body and merge [`LLMRequest::extra_body`] keys into
 /// it (last-write-wins), for official spec parameters or provider extensions
 /// the kernel does not model natively.
-fn openai_body_with_extra(
-    body: &OpenAIChatRequest,
+fn body_with_extra<T: serde::Serialize>(
+    body: &T,
     extra: Option<&serde_json::Map<String, serde_json::Value>>,
 ) -> serde_json::Value {
-    let mut v = serde_json::to_value(body).expect("OpenAIChatRequest serializes");
+    let mut v = serde_json::to_value(body).expect("request body serializes");
     if let Some(extra) = extra
         && let serde_json::Value::Object(map) = &mut v
     {
@@ -417,7 +417,7 @@ impl LLMClient for OpenAIClient {
             .client
             .post(format!("{}/chat/completions", self.base_url))
             .header("Authorization", format!("Bearer {}", self.api_key))
-            .json(&openai_body_with_extra(&body, extra_body.as_ref()))
+            .json(&body_with_extra(&body, extra_body.as_ref()))
             .send()
             .await
             .map_err(|e| KernelError::LlmApi(e.to_string()))?;
@@ -520,7 +520,7 @@ impl LLMClient for OpenAIClient {
             .client
             .post(format!("{}/chat/completions", self.base_url))
             .header("Authorization", format!("Bearer {}", self.api_key))
-            .json(&openai_body_with_extra(&body, extra_body.as_ref()))
+            .json(&body_with_extra(&body, extra_body.as_ref()))
             .send()
             .await
             .map_err(|e| KernelError::LlmApi(e.to_string()))?;
@@ -935,6 +935,7 @@ impl LLMClient for AnthropicClient {
             .response_format
             .as_ref()
             .and_then(anthropic_output_config);
+        let extra_body = request.extra_body.clone();
         let messages: Vec<AnthropicMessage> = request
             .into_anthropic_messages()
             .into_iter()
@@ -958,7 +959,7 @@ impl LLMClient for AnthropicClient {
             .header("x-api-key", &self.api_key)
             .header("anthropic-version", "2023-06-01")
             .header("content-type", "application/json")
-            .json(&body)
+            .json(&body_with_extra(&body, extra_body.as_ref()))
             .send()
             .await
             .map_err(|e| KernelError::LlmApi(e.to_string()))?;
@@ -1042,6 +1043,7 @@ impl LLMClient for AnthropicClient {
         let max_tokens = request.max_tokens.unwrap_or(4096);
         let temperature = request.temperature;
         let system = request.system.clone();
+        let extra_body = request.extra_body.clone();
         let messages: Vec<AnthropicMessage> = request
             .into_anthropic_messages()
             .into_iter()
@@ -1067,7 +1069,7 @@ impl LLMClient for AnthropicClient {
             .header("x-api-key", &self.api_key)
             .header("anthropic-version", "2023-06-01")
             .header("content-type", "application/json")
-            .json(&body)
+            .json(&body_with_extra(&body, extra_body.as_ref()))
             .send()
             .await
             .map_err(|e| KernelError::LlmApi(e.to_string()))?;
@@ -1417,15 +1419,34 @@ mod tests {
         let mut extra = serde_json::Map::new();
         extra.insert("seed".into(), 7.into());
         extra.insert("temperature".into(), 0.1.into());
-        let merged = openai_body_with_extra(&body, Some(&extra));
+        let merged = body_with_extra(&body, Some(&extra));
         assert_eq!(merged["seed"], 7);
         // Extra key overrides the natively forwarded one (last-write-wins).
         assert_eq!(merged["temperature"], 0.1);
         // Without extras the body is untouched. (Compare via json! so the f32
         // → f64 widening in the Number matches on both sides.)
-        let plain = openai_body_with_extra(&body, None);
+        let plain = body_with_extra(&body, None);
         assert_eq!(plain["temperature"], serde_json::json!(0.7f32));
         assert!(plain.get("seed").is_none());
+    }
+
+    #[test]
+    fn anthropic_body_merges_extra_body_last_write_wins() {
+        let body = AnthropicRequest {
+            model: "m".into(),
+            max_tokens: 8,
+            temperature: 0.7,
+            system: Some("sys".into()),
+            messages: vec![],
+            stream: false,
+            tools: None,
+            output_config: None,
+        };
+        let mut extra = serde_json::Map::new();
+        extra.insert("thinking".into(), serde_json::json!({"type": "disabled"}));
+        let merged = body_with_extra(&body, Some(&extra));
+        assert_eq!(merged["thinking"]["type"], "disabled");
+        assert_eq!(merged["system"], "sys");
     }
 
     #[test]
