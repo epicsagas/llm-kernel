@@ -405,6 +405,45 @@ mod tests {
     }
 
     #[test]
+    fn test_zai_endpoint_matrix() {
+        let catalog = ProviderIndex::embedded();
+        let cases = [
+            (
+                "zai",
+                "https://api.z.ai/api/anthropic",
+                "https://api.z.ai/api/paas/v4",
+            ),
+            (
+                "zai-coding",
+                "https://api.z.ai/api/coding/anthropic",
+                "https://api.z.ai/api/coding/paas/v4",
+            ),
+            (
+                "zai-cn",
+                "https://open.bigmodel.cn/api/anthropic",
+                "https://open.bigmodel.cn/api/paas/v4",
+            ),
+            (
+                "zai-cn-coding",
+                "https://open.bigmodel.cn/api/coding/anthropic",
+                "https://open.bigmodel.cn/api/coding/paas/v4",
+            ),
+        ];
+        for (id, anthropic, openai) in cases {
+            let p = catalog
+                .get(id)
+                .unwrap_or_else(|| panic!("{id} should exist"));
+            assert_eq!(p.base_url, anthropic, "{id} anthropic base_url");
+            assert_eq!(p.test_url, anthropic, "{id} anthropic test_url");
+            assert_eq!(
+                p.api_base_url.as_deref(),
+                Some(openai),
+                "{id} openai api_base_url"
+            );
+        }
+    }
+
+    #[test]
     fn test_get_unknown_returns_none() {
         let catalog = ProviderIndex::embedded();
         assert!(catalog.get("nonexistent_provider_xyz").is_none());

@@ -4501,7 +4501,7 @@
       "family": "anthropic_compatible_non_claude",
       "auth_mode": "secret",
       "key_var": "ZAI_API_KEY",
-      "base_url": "https://api.z.ai/api/anthropic",
+      "base_url": "https://api.z.ai/api/coding/anthropic",
       "default_model": "glm-5",
       "model_tiers": {
         "opus": "glm-5",
@@ -4526,7 +4526,7 @@
           "description": "GLM-4.7"
         }
       ],
-      "test_url": "https://api.z.ai/api/anthropic",
+      "test_url": "https://api.z.ai/api/coding/anthropic",
       "setup": [],
       "usage": [],
       "api_base_url": "https://api.z.ai/api/coding/paas/v4",
@@ -4835,7 +4835,7 @@
       "family": "anthropic_compatible_non_claude",
       "auth_mode": "secret",
       "key_var": "ZAI_CN_API_KEY",
-      "base_url": "https://open.bigmodel.cn/api/anthropic",
+      "base_url": "https://open.bigmodel.cn/api/coding/anthropic",
       "default_model": "glm-5",
       "model_tiers": {
         "opus": "glm-5",
@@ -4860,7 +4860,7 @@
           "description": "GLM-4.7"
         }
       ],
-      "test_url": "https://open.bigmodel.cn/api/anthropic",
+      "test_url": "https://open.bigmodel.cn/api/coding/anthropic",
       "setup": [],
       "usage": [],
       "api_base_url": "https://open.bigmodel.cn/api/coding/paas/v4",
