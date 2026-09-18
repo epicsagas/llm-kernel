@@ -168,8 +168,18 @@ mod federated {
         /// Add a backend with a fusion weight — scales its contribution under
         /// both [`FusionStrategy::WeightedSum`] and RRF (where it multiplies
         /// the backend's rank credit; `1.0` for all backends is plain RRF).
+        ///
+        /// # Panics
+        ///
+        /// Panics if `weight` is negative or non-finite (`NaN`/`±inf`) — a
+        /// negative weight would invert rank credit under RRF, and a non-finite
+        /// one poisons the fused scores.
         #[must_use]
         pub fn with_backend(mut self, index: Arc<dyn AsyncVectorIndex>, weight: f32) -> Self {
+            assert!(
+                weight.is_finite() && weight >= 0.0,
+                "backend weight must be finite and >= 0.0, got {weight}"
+            );
             self.backends.push(Backend { index, weight });
             self
         }
@@ -513,6 +523,18 @@ mod async_tests {
             FusionStrategy::default(),
             FusionStrategy::Rrf { k: 60 }
         ));
+    }
+
+    #[test]
+    #[should_panic(expected = "backend weight must be finite and >= 0.0")]
+    fn rejects_negative_weight() {
+        let idx: Arc<dyn AsyncVectorIndex> = Arc::new(StubIndex {
+            hits: vec![],
+            delay: None,
+            fail: false,
+            dim: 4,
+        });
+        let _ = FederatedSearch::new().with_backend(idx, -1.0);
     }
 
     /// RRF honors backend weights: a heavy-weight backend's top hit outranks a
