@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- `federation`: `FederatedSearch` RRF fusion now honors each backend's `with_backend` weight — it multiplies the backend's rank credit instead of being silently ignored (all `1.0` reduces to plain RRF, so existing uniform setups are unchanged). Weights travel with their backend, so a timed-out/failed backend removes its weight with it and surviving lists never misalign. Lets a caller express per-backend trust (issue #110); weighted positional lists outside federation remain `search::rrf_fuse_weighted`.
+- `federation`: `FederatedSearch::with_backend` now panics on a negative or non-finite weight — a negative weight would invert rank credit under RRF, a non-finite one poisons fused scores. Previously silently accepted.
+
 ## [0.31.5] - 2026-09-13
 
 ### Changed
