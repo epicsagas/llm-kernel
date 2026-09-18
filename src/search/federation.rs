@@ -32,6 +32,11 @@ use crate::search::rrf_fuse;
 pub enum FusionStrategy {
     /// Reciprocal Rank Fusion with constant `k` (typically 60). Rank-based, so
     /// no score normalization is required across backends.
+    ///
+    /// In [`FederatedSearch`] each backend's
+    /// `with_backend` weight scales its rank credit (all `1.0` reduces to plain
+    /// RRF). [`federate_results`] fuses uniformly — pass weighted positional
+    /// lists to [`rrf_fuse_weighted`](crate::search::rrf_fuse_weighted) directly.
     Rrf {
         /// RRF smoothing constant (larger = flatter).
         k: u32,
@@ -54,8 +59,9 @@ impl Default for FusionStrategy {
 /// Lets a synchronous backend (e.g. the in-memory
 /// [`TurbovecIndex`](crate::embedding::TurbovecIndex)) participate in
 /// federation: the caller searches it directly, then folds its list in here
-/// alongside lists gathered from async backends (or any source). All backends
-/// contribute equally (weight `1.0`).
+/// alongside lists gathered from async backends (or any source). All lists
+/// contribute equally here — per-list weights are a one-call away with
+/// [`rrf_fuse_weighted`](crate::search::rrf_fuse_weighted).
 ///
 /// ```
 /// use llm_kernel::search::{SearchResult, federation::{federate_results, FusionStrategy}};
@@ -103,7 +109,7 @@ mod federated {
     use crate::error::{KernelError, Result};
     use crate::search::SearchResult;
     use crate::search::fusion::{normalize_minmax, weighted_sum_fuse};
-    use crate::search::rrf_fuse;
+    use crate::search::rrf_fuse_weighted;
 
     use super::FusionStrategy;
 
@@ -159,8 +165,9 @@ mod federated {
             Self::default()
         }
 
-        /// Add a backend with a fusion weight (used only by
-        /// [`FusionStrategy::WeightedSum`]; ignored by RRF).
+        /// Add a backend with a fusion weight — scales its contribution under
+        /// both [`FusionStrategy::WeightedSum`] and RRF (where it multiplies
+        /// the backend's rank credit; `1.0` for all backends is plain RRF).
         #[must_use]
         pub fn with_backend(mut self, index: Arc<dyn AsyncVectorIndex>, weight: f32) -> Self {
             self.backends.push(Backend { index, weight });
@@ -245,18 +252,21 @@ mod federated {
             // Adapt u64-keyed hits into the String-id SearchResult shape fusion
             // expects, canonicalizing the id so a shared document merges across
             // backends rather than appearing multiple times. `ok` is consumed
-            // once: RRF needs only the lists, WeightedSum additionally needs the
-            // per-backend weights (collected inside that arm). Note: the RRF
+            // once: both RRF and WeightedSum read the per-backend weights
+            // (weights travel with their backend, so a dropped backend removes
+            // its weight with it — no positional misalignment). Note: the RRF
             // smoothing constant is named `k` by the `FusionStrategy::Rrf`
             // variant, which is why the requested count is `k_req` here — the
             // two must not be confused at the truncation step.
             let mut fused = match self.strategy {
                 FusionStrategy::Rrf { k } => {
-                    let lists: Vec<Vec<SearchResult>> = ok
-                        .into_iter()
-                        .map(|(_w, hits)| hits_to_results(hits))
-                        .collect();
-                    rrf_fuse(&lists, k)
+                    let mut lists: Vec<Vec<SearchResult>> = Vec::with_capacity(ok.len());
+                    let mut weights: Vec<f32> = Vec::with_capacity(ok.len());
+                    for (w, hits) in ok {
+                        lists.push(hits_to_results(hits));
+                        weights.push(w);
+                    }
+                    rrf_fuse_weighted(&lists, &weights, k)
                 }
                 FusionStrategy::WeightedSum => {
                     let mut lists: Vec<Vec<SearchResult>> = Vec::with_capacity(ok.len());
@@ -503,6 +513,46 @@ mod async_tests {
             FusionStrategy::default(),
             FusionStrategy::Rrf { k: 60 }
         ));
+    }
+
+    /// RRF honors backend weights: a heavy-weight backend's top hit outranks a
+    /// document that gets correlated rank-credit from both backends — the
+    /// issue-#110 failure mode. With k=60 and the heavy doc at rank 0 (weight
+    /// w_a) vs the correlated doc at ranks 1/0 (weights w_a, w_b), the flip
+    /// needs w_a > (k+2)·w_b; uniform weights (plain RRF) leave the correlated
+    /// doc on top.
+    #[tokio::test]
+    async fn rrf_weights_flip_correlated_noise() {
+        let a = Arc::new(StubIndex {
+            hits: vec![hit(1, 0.99), hit(2, 0.4)],
+            delay: None,
+            fail: false,
+            dim: 4,
+        });
+        let b = Arc::new(StubIndex {
+            hits: vec![hit(2, 0.95), hit(3, 0.6)],
+            delay: None,
+            fail: false,
+            dim: 4,
+        });
+
+        // Uniform (1.0/1.0): id 2 is ranked in BOTH backends → top, like plain RRF.
+        let uniform = FederatedSearch::new()
+            .with_backend(a.clone(), 1.0)
+            .with_backend(b.clone(), 1.0)
+            .search(&[1.0, 0.0, 0.0, 0.0], 5)
+            .await
+            .unwrap();
+        assert_eq!(uniform[0].id, "2");
+
+        // Weighted (100.0/1.0): id 1 (a's top) overtakes the correlated id 2.
+        let weighted = FederatedSearch::new()
+            .with_backend(a, 100.0)
+            .with_backend(b, 1.0)
+            .search(&[1.0, 0.0, 0.0, 0.0], 5)
+            .await
+            .unwrap();
+        assert_eq!(weighted[0].id, "1");
     }
 
     /// Guards the refactored WeightedSum async arm (the weights-collection loop
