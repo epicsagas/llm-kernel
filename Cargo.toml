@@ -289,7 +289,7 @@ pgvector     = { version = "0.4", default-features = false, features = ["sqlx"],
 # builds cleanly under the Linux CI matrix. `safetensors` is provided via
 # `mlx-rs/safetensors`, not listed separately here.
 [target.'cfg(all(target_os = "macos", target_arch = "aarch64"))'.dependencies]
-mlx-rs      = { version = "0.25", optional = true }
+mlx-rs      = { version = "0.32", optional = true }
 tokenizers  = { version = "0.23", default-features = false, features = ["fancy-regex"], optional = true }
 hf-hub      = { version = "0.5", default-features = false, features = ["ureq", "rustls-tls"], optional = true }
 safetensors = { version = "0.8", optional = true }
