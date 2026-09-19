@@ -7,6 +7,11 @@ updates:
     commit-message:
       prefix: chore
       include: scope
+    # mlx-rs 0.26+ is an API-breaking rework (src/embedding/mlx.rs migration)
+    # and mlx-sys 0.6.0 Metal kernels fail on CI's Xcode. Upgrade deliberately.
+    ignore:
+      - dependency-name: mlx-rs
+        versions: [">=0.26"]
   - package-ecosystem: github-actions
     directory: /
     schedule:
