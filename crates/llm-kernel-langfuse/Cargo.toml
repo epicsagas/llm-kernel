@@ -21,7 +21,7 @@ tracing     = "0.1"
 # thread and silently drops every trace.
 opentelemetry      = { version = "0.32", default-features = false, features = ["trace"] }
 opentelemetry_sdk  = { version = "0.32", default-features = false, features = ["trace"] }
-opentelemetry-otlp = { version = "0.32", default-features = false, features = [
+opentelemetry-otlp = { version = "0.33", default-features = false, features = [
     "trace", "http-json", "reqwest-blocking-client", "reqwest-rustls",
 ] }
 
