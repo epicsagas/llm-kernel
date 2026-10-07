@@ -2,8 +2,8 @@
 //!
 //! `ElasticsearchVectorIndex` implements [`AsyncVectorIndex`] over a
 //! hand-rolled [`reqwest`] client speaking Elasticsearch 8.x's REST API. It is
-//! the async counterpart to the in-memory [`VectorIndex`](crate::embedding::VectorIndex)
-//! and a sibling of [`QdrantVectorIndex`](crate::embedding::QdrantVectorIndex).
+//! the async counterpart to the in-memory [`VectorIndex`]
+//! and a sibling of [`QdrantVectorIndex`].
 //!
 //! # Why hand-rolled reqwest (not the `elasticsearch` crate)?
 //!

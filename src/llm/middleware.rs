@@ -4,7 +4,7 @@
 //! each request, after each successful response, and on each error.
 //!
 //! The [`MiddlewareClient`] wrapper composes with any [`LLMClient`],
-//! including [`RetryClient`](crate::llm::retry::RetryClient).
+//! including [`RetryClient`].
 //!
 //! # Example
 //!

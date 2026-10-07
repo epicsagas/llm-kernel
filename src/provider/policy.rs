@@ -1,7 +1,7 @@
 //! Provider data policy — what content may leave the machine for a provider.
 //!
 //! [`DataPolicy`] is a field of
-//! [`ServiceDescriptor`](crate::provider::ServiceDescriptor), so this
+//! [`ServiceDescriptor`], so this
 //! vocabulary lives in `provider` and stays free of engine concerns.
 //!
 //! ```

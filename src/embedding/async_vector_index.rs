@@ -1,6 +1,6 @@
 //! Async vector index trait for remote/shared backends.
 //!
-//! The existing [`VectorIndex`](crate::embedding::VectorIndex) is a synchronous,
+//! The existing [`VectorIndex`] is a synchronous,
 //! in-process trait (`&mut self`, blocking `search`). That fits compressed
 //! in-memory indexes (TurboQuant) but not remote vector services such as
 //! Qdrant or Elasticsearch, whose clients are **async-only** and naturally

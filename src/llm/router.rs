@@ -12,10 +12,10 @@
 //!
 //! | Concern | Decorator |
 //! |---------|-----------|
-//! | rate-limit (429) / 5xx backoff | [`RetryClient`](crate::llm::retry::RetryClient) |
+//! | rate-limit (429) / 5xx backoff | [`RetryClient`] |
 //! | routing / cross-provider fallback | [`RouterClient`] |
-//! | request/response observation | [`MiddlewareClient`](crate::llm::middleware::MiddlewareClient) |
-//! | response caching | [`CacheClient`](crate::llm::cache::CacheClient) |
+//! | request/response observation | [`MiddlewareClient`] |
+//! | response caching | [`CacheClient`] |
 //!
 //! Because every decorator implements [`LLMClient`], they compose freely. A
 //! resilient, observed, cached multi-backend stack reads inside-out:
@@ -51,7 +51,7 @@
 //! starts (connection, 403) falls through to the next backend just like
 //! [`LLMClient::complete`]. Once a stream is returned, errors raised *during*
 //! streaming are not retried — wrap individual backends in
-//! [`RetryClient`](crate::llm::retry::RetryClient) for transient resilience.
+//! [`RetryClient`] for transient resilience.
 
 use std::cmp::Ordering;
 
