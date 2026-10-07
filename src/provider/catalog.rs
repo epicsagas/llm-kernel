@@ -631,4 +631,24 @@ mod tests {
         // The embedded static catalog is not mutated.
         assert!(catalog.find_model("future-model-xyz").is_none());
     }
+
+    /// Downstream consumers dispatch on these embedded provider ids; a removed
+    /// or renamed entry silently breaks `ProviderIndex::embedded().get(id)`
+    /// lookups (e.g. the missing `anthropic` regression).
+    #[test]
+    fn test_embedded_catalog_required_providers() {
+        let idx = crate::provider::ProviderIndex::embedded();
+        for id in ["native", "anthropic", "openai", "gemini", "deepseek"] {
+            let p = idx
+                .get(id)
+                .unwrap_or_else(|| panic!("embedded catalog missing required provider {id}"));
+            assert!(!p.models.is_empty(), "provider {id} has no models");
+        }
+
+        let anthropic = idx.get("anthropic").unwrap();
+        assert_eq!(anthropic.family, "claude_strict");
+        assert_eq!(anthropic.auth_mode, "secret");
+        assert_eq!(anthropic.key_var, "ANTHROPIC_API_KEY");
+        assert!(anthropic.default_model.starts_with("claude-"));
+    }
 }

@@ -44,8 +44,8 @@ impl Mapping {
 pub fn resolve(catalog_id: &str) -> Mapping {
     match catalog_id {
         // Exact matches (catalog id == models.dev provider key).
-        "openai" | "zai" | "minimax" | "minimax-cn" | "deepseek" | "alibaba" | "alibaba-cn"
-        | "lmstudio" => Mapping::Exact,
+        "anthropic" | "openai" | "zai" | "minimax" | "minimax-cn" | "deepseek" | "alibaba"
+        | "alibaba-cn" | "lmstudio" => Mapping::Exact,
         // Aliased matches (catalog id → different models.dev provider key).
         "gemini" => Mapping::Aliased("google"),
         "zai-cn" => Mapping::Aliased("zai"),
@@ -63,6 +63,7 @@ mod tests {
     use super::*;
 
     const EXACT: &[&str] = &[
+        "anthropic",
         "openai",
         "zai",
         "minimax",
