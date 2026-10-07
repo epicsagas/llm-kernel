@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.31.7] - 2026-10-07
+
+### Added
+
+- `provider`: embedded catalog now ships an `anthropic` provider entry (family `claude_strict`, `ANTHROPIC_API_KEY`, `https://api.anthropic.com`, default model `claude-sonnet-4-5`, 16 models seeded from live models.dev) mapped `Mapping::Exact`, so `ProviderIndex::embedded().get("anthropic")` resolves and `catalog-sync` refreshes its models. Previously only the curated `native` entry covered the Anthropic Messages API and id-based lookups returned `None`.
+- `provider`: catalog integrity test — the embedded catalog must contain the required provider ids (`native`, `anthropic`, `openai`, `gemini`, `deepseek`), so a removed or renamed entry fails CI instead of silently breaking downstream `get(id)` dispatch.
+
 ## [0.31.6] - 2026-09-18
 
 ### Changed
