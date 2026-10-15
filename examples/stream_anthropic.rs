@@ -27,7 +27,7 @@ async fn main() {
         .stream_complete(llm_kernel::llm::LLMRequest {
             system: Some("Reply in exactly 3 sentences.".into()),
             messages: vec![ChatMessage::user("What is Rust?")],
-            temperature: 0.7,
+            temperature: Some(0.7),
             max_tokens: Some(256),
             ..Default::default()
         })

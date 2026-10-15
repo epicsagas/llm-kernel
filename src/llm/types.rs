@@ -302,8 +302,9 @@ pub enum ReasoningSummary {
 ///
 /// Forwarded by [`OpenAIClient`](crate::llm::OpenAIClient) in both `complete`
 /// and `stream_complete`. [`AnthropicClient`](crate::llm::AnthropicClient)
-/// has no mapping for these controls (extended thinking is configured
-/// per-model there) and ignores them.
+/// forwards `effort` as `output_config.effort` (how Claude 5.5-class models
+/// set thinking depth; the legacy `thinking.budget_tokens` form is rejected
+/// there) and ignores `enabled`/`summary`.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ReasoningConfig {
     /// On/off toggle for providers with an explicit switch (OpenRouter
@@ -362,8 +363,17 @@ pub struct LLMRequest {
     pub system: Option<String>,
     /// Ordered list of chat messages forming the conversation.
     pub messages: Vec<ChatMessage>,
-    /// Sampling temperature (0.0–2.0).
-    pub temperature: f32,
+    /// Sampling temperature (0.0–2.0). `None` omits the parameter from the
+    /// request body entirely, falling back to the provider default — required
+    /// for models that reject non-default sampling parameters (Claude Opus
+    /// 5.5 / Sonnet 5.5 return 400 for any non-default `temperature`).
+    ///
+    /// [`AnthropicClient`](crate::llm::AnthropicClient) omits the key when
+    /// `None`; [`OpenAIClient`](crate::llm::OpenAIClient) keeps its historical
+    /// behavior and sends `0.7` unless you set a value. The default is
+    /// `Some(0.7)` so existing callers' sampling is unchanged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub temperature: Option<f32>,
     /// Maximum tokens to generate. `None` uses the provider default.
     pub max_tokens: Option<u32>,
     /// Model override for this request. `None` uses the client default.
@@ -401,9 +411,10 @@ pub struct LLMRequest {
     /// last-write-wins over natively forwarded fields — any official spec
     /// parameter (`seed`, `stop`, `logprobs`, `parallel_tool_calls`,
     /// `service_tier`, `web_search_options`, …) or provider extension can be
-    /// sent on demand. `None` adds nothing. Only
-    /// [`OpenAIClient`](crate::llm::OpenAIClient) forwards it;
-    /// [`AnthropicClient`](crate::llm::AnthropicClient) ignores it.
+    /// sent on demand. `None` adds nothing. Both
+    /// [`OpenAIClient`](crate::llm::OpenAIClient) and
+    /// [`AnthropicClient`](crate::llm::AnthropicClient) forward it,
+    /// last-write-wins over natively forwarded fields.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub extra_body: Option<serde_json::Map<String, serde_json::Value>>,
     /// Caller-attached observability context. The kernel does not
@@ -453,9 +464,9 @@ impl Default for LLMRequest {
         Self {
             system: None,
             messages: Vec::new(),
-            // Matches `LLMRequestBuilder::build()`'s `unwrap_or(0.7)` so the two
-            // construction paths agree. Keep these coupled.
-            temperature: 0.7,
+            // Matches `LLMRequestBuilder::build()`'s `unwrap_or(Some(0.7))` so
+            // the two construction paths agree. Keep these coupled.
+            temperature: Some(0.7),
             max_tokens: None,
             model: None,
             response_format: None,
@@ -516,7 +527,10 @@ impl LLMRequest {
 pub struct LLMRequestBuilder {
     system: Option<String>,
     messages: Vec<ChatMessage>,
-    temperature: Option<f32>,
+    /// `None` = not set (build falls back to `Some(0.7)`); the inner value is
+    /// the request's `temperature`. Double option so `maybe_temperature(None)`
+    /// (omit the parameter) is distinguishable from "never set".
+    temperature: Option<Option<f32>>,
     max_tokens: Option<u32>,
     model: Option<String>,
     response_format: Option<ResponseFormat>,
@@ -563,6 +577,14 @@ impl LLMRequestBuilder {
 
     /// Set the sampling temperature.
     pub fn temperature(mut self, temp: f32) -> Self {
+        self.temperature = Some(Some(temp));
+        self
+    }
+
+    /// Set the sampling temperature, or `None` to omit the parameter from the
+    /// request body entirely (provider default). Needed for models that reject
+    /// non-default sampling parameters (Claude Opus 5.5 / Sonnet 5.5).
+    pub fn maybe_temperature(mut self, temp: Option<f32>) -> Self {
         self.temperature = Some(temp);
         self
     }
@@ -638,7 +660,7 @@ impl LLMRequestBuilder {
         LLMRequest {
             system: self.system,
             messages: self.messages,
-            temperature: self.temperature.unwrap_or(0.7),
+            temperature: self.temperature.unwrap_or(Some(0.7)),
             max_tokens: self.max_tokens,
             model: self.model,
             response_format: self.response_format,
@@ -733,6 +755,17 @@ pub enum StreamEvent {
     ReasoningDelta {
         /// The partial reasoning chunk.
         content: String,
+    },
+    /// The generation stopped early with a provider stop reason, emitted
+    /// before `Done`. Anthropic fills this from `message_delta.delta.stop_reason`
+    /// (`"max_tokens"` when the budget cut the response short, `"refusal"` when
+    /// the model refused, plus `"end_turn"`, `"stop_sequence"`, `"tool_use"`,
+    /// `"pause_turn"`); OpenAI streams end via `finish_reason` and never emit
+    /// this variant. Without it a truncated stream was indistinguishable from a
+    /// complete one — the consumer just saw deltas stop.
+    Stopped {
+        /// Provider stop reason (e.g. `"max_tokens"`, `"refusal"`).
+        reason: String,
     },
     /// Final token usage statistics.
     Usage(TokenUsage),
@@ -854,7 +887,17 @@ mod tests {
             .build();
         assert_eq!(req.system.as_deref(), Some("you are helpful"));
         assert_eq!(req.messages.len(), 1);
-        assert_eq!(req.temperature, 0.5);
+        assert_eq!(req.temperature, Some(0.5));
+    }
+
+    #[test]
+    fn builder_maybe_temperature_none_omits_parameter() {
+        let req = LLMRequest::builder().maybe_temperature(None).build();
+        assert_eq!(req.temperature, None);
+        // Unset builder keeps the historical default (some clients rely on it).
+        assert_eq!(LLMRequest::builder().build().temperature, Some(0.7));
+        // Struct Default agrees with the builder.
+        assert_eq!(LLMRequest::default().temperature, Some(0.7));
     }
 
     #[test]
@@ -887,14 +930,14 @@ mod tests {
 
     /// `LLMRequest::default()` and `LLMRequest::builder().build()` must agree on
     /// every field. The temperature default (0.7) in particular is duplicated
-    /// between the manual `Default` impl and the builder's `unwrap_or(0.7)`;
+    /// between the manual `Default` impl and the builder's `unwrap_or(Some(0.7))`;
     /// this test couples them so a future edit to one without the other is caught.
     #[test]
     fn default_matches_builder_default() {
         let from_default = LLMRequest::default();
         let from_builder = LLMRequest::builder().build();
         assert_eq!(from_default.temperature, from_builder.temperature);
-        assert_eq!(from_default.temperature, 0.7);
+        assert_eq!(from_default.temperature, Some(0.7));
         assert!(from_default.system.is_none());
         assert!(from_default.messages.is_empty());
         assert!(from_default.max_tokens.is_none());

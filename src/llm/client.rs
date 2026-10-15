@@ -70,15 +70,36 @@ fn anthropic_tools(tools: &[ToolDefinition]) -> Vec<serde_json::Value> {
         .collect()
 }
 
-/// Map a [`ResponseFormat`] to Anthropic's `output_config`. Only
-/// [`ResponseFormat::JsonSchema`] has a native equivalent; `Json` (schemaless)
-/// and `Text` return `None`.
-fn anthropic_output_config(rf: &ResponseFormat) -> Option<serde_json::Value> {
-    match rf {
-        ResponseFormat::JsonSchema { schema } => Some(serde_json::json!({
-            "format": { "type": "json_schema", "schema": schema }
-        })),
-        ResponseFormat::Json | ResponseFormat::Text => None,
+/// Map a [`ResponseFormat`] and an optional [`ReasoningEffort`] to Anthropic's
+/// `output_config`. [`ResponseFormat::JsonSchema`] maps to
+/// `output_config.format`; `effort` maps to `output_config.effort`, which is
+/// how Claude 5.5-class models set thinking depth (`low`/`medium`/`high`/
+/// `xhigh`/`max` — adaptive thinking is always on there and the legacy
+/// `thinking.budget_tokens` form is rejected). `none`/`minimal` are
+/// OpenAI-only values and forwarded verbatim (the API rejects them — a silent
+/// drop would hide caller bugs). `Json` (schemaless) and `Text` contribute
+/// nothing. Returns `None` when nothing maps (provider default).
+fn anthropic_output_config(
+    rf: Option<&ResponseFormat>,
+    effort: Option<ReasoningEffort>,
+) -> Option<serde_json::Value> {
+    let mut obj = serde_json::Map::new();
+    if let Some(ResponseFormat::JsonSchema { schema }) = rf {
+        obj.insert(
+            "format".into(),
+            serde_json::json!({ "type": "json_schema", "schema": schema }),
+        );
+    }
+    if let Some(effort) = effort {
+        obj.insert(
+            "effort".into(),
+            serde_json::to_value(effort).expect("ReasoningEffort is a plain enum"),
+        );
+    }
+    if obj.is_empty() {
+        None
+    } else {
+        Some(serde_json::Value::Object(obj))
     }
 }
 
@@ -380,7 +401,10 @@ struct OpenAICompletionTokensDetails {
 impl LLMClient for OpenAIClient {
     async fn complete(&self, request: LLMRequest) -> Result<LLMResponse> {
         let model = request.model.clone().unwrap_or_else(|| self.model.clone());
-        let temperature = request.temperature;
+        // `None` is a caller opt-out of the sampling parameter; OpenAI keeps its
+        // historical default instead of omitting (behavior preserved from when
+        // `LLMRequest.temperature` was a plain `f32`).
+        let temperature = request.temperature.unwrap_or(0.7);
         let max_tokens = request.max_tokens;
         let tools = request
             .tools
@@ -490,7 +514,8 @@ impl LLMClient for OpenAIClient {
 
     async fn stream_complete(&self, request: LLMRequest) -> Result<LLMStream> {
         let model = request.model.clone().unwrap_or_else(|| self.model.clone());
-        let temperature = request.temperature;
+        // Same historical-default preservation as `complete`.
+        let temperature = request.temperature.unwrap_or(0.7);
         let max_tokens = request.max_tokens;
         let (reasoning_effort, reasoning) = openai_reasoning(request.reasoning.as_ref());
         let verbosity = request.verbosity;
@@ -737,37 +762,56 @@ fn parse_openai_sse(data: &str) -> Option<StreamEvent> {
     None
 }
 
-/// Parse an Anthropic streaming JSON chunk into a StreamEvent.
-fn parse_anthropic_sse(event_type: &str, data: &str) -> Option<StreamEvent> {
-    let v: serde_json::Value = serde_json::from_str(data).ok()?;
+/// Parse an Anthropic streaming JSON chunk into zero or more StreamEvents.
+/// A `message_delta` can carry both a stop reason and final usage, so one
+/// chunk may yield several events.
+fn parse_anthropic_sse(event_type: &str, data: &str) -> Vec<StreamEvent> {
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(data) else {
+        return Vec::new();
+    };
 
     match event_type {
         "content_block_delta" => {
-            let delta = v.get("delta")?;
+            let Some(delta) = v.get("delta") else {
+                return Vec::new();
+            };
             // Extended thinking deltas arrive as {"type":"thinking_delta","thinking":"..."}.
             match delta.get("type").and_then(|t| t.as_str()) {
-                Some("thinking_delta") => {
-                    let text = delta.get("thinking")?.as_str()?;
-                    if !text.is_empty() {
-                        return Some(StreamEvent::ReasoningDelta {
+                Some("thinking_delta") => match delta.get("thinking").and_then(|t| t.as_str()) {
+                    Some(text) if !text.is_empty() => {
+                        vec![StreamEvent::ReasoningDelta {
                             content: text.to_string(),
-                        });
+                        }]
                     }
-                    None
-                }
+                    _ => Vec::new(),
+                },
                 _ => {
                     // text_delta (default) carries {"text":"..."}.
-                    let text = delta.get("text")?.as_str()?;
-                    if !text.is_empty() {
-                        return Some(StreamEvent::Delta {
-                            content: text.to_string(),
-                        });
+                    match delta.get("text").and_then(|t| t.as_str()) {
+                        Some(text) if !text.is_empty() => {
+                            vec![StreamEvent::Delta {
+                                content: text.to_string(),
+                            }]
+                        }
+                        _ => Vec::new(),
                     }
-                    None
                 }
             }
         }
         "message_delta" => {
+            let mut events = Vec::new();
+            // `delta.stop_reason` (`"max_tokens"`, `"refusal"`, …) is the only
+            // signal that the generation ended early — without it a truncated
+            // stream looks identical to a complete one.
+            if let Some(reason) = v
+                .get("delta")
+                .and_then(|d| d.get("stop_reason"))
+                .and_then(|r| r.as_str())
+            {
+                events.push(StreamEvent::Stopped {
+                    reason: reason.to_string(),
+                });
+            }
             let usage = v.get("usage").and_then(|u| {
                 Some(TokenUsage {
                     prompt_tokens: 0,
@@ -776,13 +820,14 @@ fn parse_anthropic_sse(event_type: &str, data: &str) -> Option<StreamEvent> {
                     reasoning_tokens: None,
                 })
             });
-            if let Some(usage) = usage {
-                return Some(StreamEvent::Usage(usage));
+            match usage {
+                Some(u) => events.push(StreamEvent::Usage(u)),
+                None => events.push(StreamEvent::Done),
             }
-            Some(StreamEvent::Done)
+            events
         }
-        "message_stop" => Some(StreamEvent::Done),
-        _ => None,
+        "message_stop" => vec![StreamEvent::Done],
+        _ => Vec::new(),
     }
 }
 
@@ -865,7 +910,11 @@ impl AnthropicClient {
 struct AnthropicRequest {
     model: String,
     max_tokens: u32,
-    temperature: f32,
+    /// Omitted entirely when `None` — Claude Opus 5.5 / Sonnet 5.5 reject any
+    /// non-default sampling parameter with 400, so callers opt out by leaving
+    /// it unset instead of sending the historical `0.7`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    temperature: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     system: Option<String>,
     messages: Vec<AnthropicMessage>,
@@ -931,10 +980,10 @@ impl LLMClient for AnthropicClient {
             .as_deref()
             .map(anthropic_tools)
             .filter(|t| !t.is_empty());
-        let output_config = request
-            .response_format
-            .as_ref()
-            .and_then(anthropic_output_config);
+        let output_config = anthropic_output_config(
+            request.response_format.as_ref(),
+            request.reasoning.as_ref().and_then(|r| r.effort),
+        );
         let extra_body = request.extra_body.clone();
         let messages: Vec<AnthropicMessage> = request
             .into_anthropic_messages()
@@ -1044,6 +1093,8 @@ impl LLMClient for AnthropicClient {
         let temperature = request.temperature;
         let system = request.system.clone();
         let extra_body = request.extra_body.clone();
+        let output_config =
+            anthropic_output_config(None, request.reasoning.as_ref().and_then(|r| r.effort));
         let messages: Vec<AnthropicMessage> = request
             .into_anthropic_messages()
             .into_iter()
@@ -1058,9 +1109,11 @@ impl LLMClient for AnthropicClient {
             messages,
             stream: true,
             // Streaming is text-only here: the SSE parser emits text deltas and
-            // does not reassemble streamed tool-use blocks.
+            // does not reassemble streamed tool-use blocks. `effort` still
+            // applies to streaming, so it rides in `output_config` (no
+            // `format` — streaming has no schema enforcement).
             tools: None,
-            output_config: None,
+            output_config,
         };
 
         let resp = self
@@ -1111,7 +1164,7 @@ impl LLMClient for AnthropicClient {
                             let _ = tx.send(Ok(StreamEvent::Done)).await;
                             return;
                         }
-                        if let Some(event) = parse_anthropic_sse(&current_event, data) {
+                        for event in parse_anthropic_sse(&current_event, data) {
                             let is_done = matches!(event, StreamEvent::Done);
                             if tx.send(Ok(event)).await.is_err() || is_done {
                                 return;
@@ -1224,32 +1277,69 @@ mod tests {
     #[test]
     fn anthropic_content_block_delta() {
         let data = r#"{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hello"}}"#;
-        let event = parse_anthropic_sse("content_block_delta", data).unwrap();
-        match event {
-            StreamEvent::Delta { content } => assert_eq!(content, "Hello"),
-            _ => panic!("expected Delta, got {:?}", event),
+        let events = parse_anthropic_sse("content_block_delta", data);
+        match events.as_slice() {
+            [StreamEvent::Delta { content }] => assert_eq!(content, "Hello"),
+            _ => panic!("expected one Delta, got {:?}", events),
         }
     }
 
     #[test]
     fn anthropic_message_delta_usage() {
         let data = r#"{"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":5}}"#;
-        let event = parse_anthropic_sse("message_delta", data).unwrap();
-        match event {
-            StreamEvent::Usage(usage) => assert_eq!(usage.completion_tokens, 5),
-            _ => panic!("expected Usage, got {:?}", event),
+        let events = parse_anthropic_sse("message_delta", data);
+        match events.as_slice() {
+            [StreamEvent::Stopped { reason }, StreamEvent::Usage(usage)] => {
+                assert_eq!(reason, "end_turn");
+                assert_eq!(usage.completion_tokens, 5);
+            }
+            _ => panic!("expected Stopped + Usage, got {:?}", events),
+        }
+    }
+
+    #[test]
+    fn anthropic_message_delta_max_tokens_surfaces_stop_reason() {
+        let data = r#"{"type":"message_delta","delta":{"stop_reason":"max_tokens"},"usage":{"output_tokens":4096}}"#;
+        let events = parse_anthropic_sse("message_delta", data);
+        match events.as_slice() {
+            [StreamEvent::Stopped { reason }, StreamEvent::Usage(_)] => {
+                assert_eq!(reason, "max_tokens")
+            }
+            _ => panic!("expected Stopped + Usage, got {:?}", events),
+        }
+    }
+
+    #[test]
+    fn anthropic_message_delta_refusal_surfaces_stop_reason() {
+        let data = r#"{"type":"message_delta","delta":{"stop_reason":"refusal"},"usage":{"output_tokens":12}}"#;
+        let events = parse_anthropic_sse("message_delta", data);
+        match events.as_slice() {
+            [StreamEvent::Stopped { reason }, StreamEvent::Usage(_)] => {
+                assert_eq!(reason, "refusal")
+            }
+            _ => panic!("expected Stopped + Usage, got {:?}", events),
+        }
+    }
+
+    #[test]
+    fn anthropic_message_delta_without_stop_reason_stays_usage_only() {
+        let data = r#"{"type":"message_delta","delta":{},"usage":{"output_tokens":5}}"#;
+        let events = parse_anthropic_sse("message_delta", data);
+        match events.as_slice() {
+            [StreamEvent::Usage(_)] => {}
+            _ => panic!("expected Usage only, got {:?}", events),
         }
     }
 
     #[test]
     fn anthropic_message_stop() {
-        let event = parse_anthropic_sse("message_stop", r#"{"type":"message_stop"}"#).unwrap();
-        assert!(matches!(event, StreamEvent::Done));
+        let events = parse_anthropic_sse("message_stop", r#"{"type":"message_stop"}"#);
+        assert!(matches!(events.as_slice(), [StreamEvent::Done]));
     }
 
     #[test]
     fn anthropic_unknown_event_ignored() {
-        assert!(parse_anthropic_sse("ping", "{}").is_none());
+        assert!(parse_anthropic_sse("ping", "{}").is_empty());
     }
 
     fn sample_tool() -> ToolDefinition {
@@ -1297,11 +1387,74 @@ mod tests {
 
     #[test]
     fn anthropic_output_config_only_for_json_schema() {
-        assert!(anthropic_output_config(&ResponseFormat::Text).is_none());
-        assert!(anthropic_output_config(&ResponseFormat::Json).is_none());
+        assert!(anthropic_output_config(Some(&ResponseFormat::Text), None).is_none());
+        assert!(anthropic_output_config(Some(&ResponseFormat::Json), None).is_none());
+        assert!(anthropic_output_config(None, None).is_none());
         let schema = serde_json::json!({"type": "object"});
-        let cfg = anthropic_output_config(&ResponseFormat::JsonSchema { schema }).unwrap();
+        let cfg = anthropic_output_config(Some(&ResponseFormat::JsonSchema { schema }), None);
+        let cfg = cfg.unwrap();
         assert_eq!(cfg["format"]["type"], "json_schema");
+    }
+
+    #[test]
+    fn anthropic_output_config_carries_effort() {
+        let cfg = anthropic_output_config(None, Some(ReasoningEffort::High)).unwrap();
+        assert_eq!(cfg["effort"], "high");
+        assert!(cfg.get("format").is_none());
+        // Schema and effort merge into one object (two keys, not two configs).
+        let schema = serde_json::json!({"type": "object"});
+        let cfg = anthropic_output_config(
+            Some(&ResponseFormat::JsonSchema { schema }),
+            Some(ReasoningEffort::XHigh),
+        )
+        .unwrap();
+        assert_eq!(cfg["effort"], "xhigh");
+        assert_eq!(cfg["format"]["type"], "json_schema");
+        // Wire values must match the Anthropic effort vocabulary exactly.
+        for (variant, wire) in [
+            (ReasoningEffort::Low, "low"),
+            (ReasoningEffort::Medium, "medium"),
+            (ReasoningEffort::High, "high"),
+            (ReasoningEffort::XHigh, "xhigh"),
+            (ReasoningEffort::Max, "max"),
+        ] {
+            let cfg = anthropic_output_config(None, Some(variant)).unwrap();
+            assert_eq!(cfg["effort"], wire);
+        }
+    }
+
+    #[test]
+    fn anthropic_request_omits_temperature_when_none() {
+        let body = AnthropicRequest {
+            model: "claude-opus-5-5".into(),
+            max_tokens: 64,
+            temperature: None,
+            system: None,
+            messages: vec![],
+            stream: false,
+            tools: None,
+            output_config: None,
+        };
+        let json = serde_json::to_value(&body).unwrap();
+        assert!(json.get("temperature").is_none());
+        assert!(json.get("output_config").is_none());
+    }
+
+    #[test]
+    fn anthropic_request_serializes_temperature_and_effort_when_set() {
+        let body = AnthropicRequest {
+            model: "claude-sonnet-4-6".into(),
+            max_tokens: 64,
+            temperature: Some(0.5),
+            system: None,
+            messages: vec![],
+            stream: false,
+            tools: None,
+            output_config: anthropic_output_config(None, Some(ReasoningEffort::Max)),
+        };
+        let json = serde_json::to_value(&body).unwrap();
+        assert_eq!(json["temperature"], serde_json::json!(0.5f32));
+        assert_eq!(json["output_config"]["effort"], "max");
     }
 
     #[test]
@@ -1435,7 +1588,7 @@ mod tests {
         let body = AnthropicRequest {
             model: "m".into(),
             max_tokens: 8,
-            temperature: 0.7,
+            temperature: Some(0.7),
             system: Some("sys".into()),
             messages: vec![],
             stream: false,
@@ -1764,9 +1917,9 @@ mod tests {
     #[test]
     fn anthropic_sse_thinking_delta_extracted() {
         let data = r#"{"delta":{"type":"thinking_delta","thinking":"a thought"}}"#;
-        let event = parse_anthropic_sse("content_block_delta", data).unwrap();
-        match event {
-            StreamEvent::ReasoningDelta { content } => assert_eq!(content, "a thought"),
+        let events = parse_anthropic_sse("content_block_delta", data);
+        match events.as_slice() {
+            [StreamEvent::ReasoningDelta { content }] => assert_eq!(content, "a thought"),
             other => panic!("expected ReasoningDelta, got {other:?}"),
         }
     }

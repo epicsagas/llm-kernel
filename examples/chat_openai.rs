@@ -24,7 +24,7 @@ async fn main() {
         .complete(llm_kernel::llm::LLMRequest {
             system: Some("You are a helpful assistant. Reply in one sentence.".into()),
             messages: vec![ChatMessage::user("What is llm-kernel?")],
-            temperature: 0.7,
+            temperature: Some(0.7),
             max_tokens: Some(256),
             ..Default::default()
         })

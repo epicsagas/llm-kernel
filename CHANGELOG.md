@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.32.0] - 2026-10-15
+
+### Changed
+
+- **BREAKING** `llm`: `LLMRequest::temperature` is now `Option<f32>`. `None` omits the parameter from the Anthropic request body entirely; `Some(t)` sends `t` as before. The default remains `Some(0.7)` on both the struct and the builder, so existing call sites only break where they used struct literals (`temperature: 0.7` → `temperature: Some(0.7)`). Required for Claude Opus 5.5 / Sonnet 5.5, which return 400 for any non-default sampling parameter (`temperature`, `top_p`, `top_k`) — the migration path is `LLMRequest::builder().maybe_temperature(None)` or `temperature: None`. The OpenAI path is behavior-unchanged: `None` still sends the historical `0.7` there.
+- `llm`: `LLMRequestBuilder::build()` default is unchanged (`Some(0.7)`); new `maybe_temperature(Option<f32>)` method expresses the omit case from the builder.
+- `llm`: `ReasoningConfig::effort` is now forwarded by `AnthropicClient` as `output_config.effort` (previously ignored) in both `complete` and `stream_complete`, merged with the `ResponseFormat::JsonSchema` → `output_config.format` mapping into one object. Wire values are the shared `ReasoningEffort` serialization (`low`/`medium`/`high`/`xhigh`/`max` — the Anthropic effort vocabulary; `none`/`minimal` are OpenAI-only and forwarded verbatim, which the API rejects rather than the kernel silently dropping).
+
+### Added
+
+- `llm`: `StreamEvent::Stopped { reason }` — emitted before `Done` when Anthropic's `message_delta` carries `delta.stop_reason` (`"max_tokens"`, `"refusal"`, …). Previously a truncated (`max_tokens`) or refused stream was indistinguishable from a complete one in streaming mode. The non-streaming path already exposed this as `LLMResponse::finish_reason`.
+
+### Fixed
+
+- `docs`: `LLMRequest::extra_body` doc claimed `AnthropicClient` ignores it; both clients have always merged it (last-write-wins). Doc now matches the code.
+
 ## [0.31.7] - 2026-10-07
 
 ### Added

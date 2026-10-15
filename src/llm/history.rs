@@ -184,7 +184,7 @@ impl ConversationHistory {
         LLMRequest {
             system,
             messages,
-            temperature: 0.7,
+            temperature: Some(0.7),
             max_tokens: None,
             model: None,
             response_format: None,
