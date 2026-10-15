@@ -237,8 +237,17 @@ pub enum ResponseFormat {
 #[serde(rename_all = "lowercase")]
 pub enum ReasoningEffort {
     /// Disable reasoning entirely (gpt-5.1+ only).
+    ///
+    /// OpenAI-only: the Anthropic effort vocabulary has no `none` (adaptive
+    /// thinking is always on for Claude 5.5-class models), and
+    /// [`AnthropicClient`](crate::llm::AnthropicClient) forwards effort
+    /// verbatim, so the API rejects this value with 400 there.
     None,
     /// Minimal reasoning (gpt-5+ only).
+    ///
+    /// OpenAI-only: the Anthropic effort vocabulary starts at `low`, so
+    /// [`AnthropicClient`](crate::llm::AnthropicClient) forwarding this
+    /// verbatim is rejected with 400 there.
     Minimal,
     /// Low effort — latency-sensitive tasks.
     Low,
