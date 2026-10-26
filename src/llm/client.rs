@@ -762,6 +762,21 @@ fn parse_openai_sse(data: &str) -> Option<StreamEvent> {
     None
 }
 
+/// Sum of the input-side token fields of an Anthropic `usage` object
+/// (`input_tokens` + both cache fields). `None` when none are present.
+fn anthropic_input_tokens(u: &serde_json::Value) -> Option<u32> {
+    let fields = [
+        "input_tokens",
+        "cache_creation_input_tokens",
+        "cache_read_input_tokens",
+    ];
+    let values: Vec<u64> = fields
+        .iter()
+        .filter_map(|f| u.get(*f).and_then(|n| n.as_u64()))
+        .collect();
+    (!values.is_empty()).then(|| values.iter().sum::<u64>() as u32)
+}
+
 /// Parse an Anthropic streaming JSON chunk into zero or more StreamEvents.
 /// A `message_delta` can carry both a stop reason and final usage, so one
 /// chunk may yield several events.
@@ -771,6 +786,20 @@ fn parse_anthropic_sse(event_type: &str, data: &str) -> Vec<StreamEvent> {
     };
 
     match event_type {
+        // Input-side usage (incl. prompt-cache tokens) only arrives here.
+        "message_start" => {
+            let Some(u) = v.get("message").and_then(|m| m.get("usage")) else {
+                return Vec::new();
+            };
+            let prompt = anthropic_input_tokens(u).unwrap_or(0);
+            let completion = u.get("output_tokens").and_then(|n| n.as_u64()).unwrap_or(0) as u32;
+            vec![StreamEvent::Usage(TokenUsage {
+                prompt_tokens: prompt,
+                completion_tokens: completion,
+                total_tokens: prompt + completion,
+                reasoning_tokens: None,
+            })]
+        }
         "content_block_delta" => {
             let Some(delta) = v.get("delta") else {
                 return Vec::new();
@@ -813,10 +842,14 @@ fn parse_anthropic_sse(event_type: &str, data: &str) -> Vec<StreamEvent> {
                 });
             }
             let usage = v.get("usage").and_then(|u| {
+                // Input fields are cumulative when present; absent means 0 so
+                // consumers merging Usage events keep the message_start value.
+                let prompt = anthropic_input_tokens(u).unwrap_or(0);
+                let completion = u.get("output_tokens")?.as_u64()? as u32;
                 Some(TokenUsage {
-                    prompt_tokens: 0,
-                    completion_tokens: u.get("output_tokens")?.as_u64()? as u32,
-                    total_tokens: 0,
+                    prompt_tokens: prompt,
+                    completion_tokens: completion,
+                    total_tokens: prompt + completion,
                     reasoning_tokens: None,
                 })
             });
@@ -1327,6 +1360,68 @@ mod tests {
         let events = parse_anthropic_sse("message_delta", data);
         match events.as_slice() {
             [StreamEvent::Usage(_)] => {}
+            _ => panic!("expected Usage only, got {:?}", events),
+        }
+    }
+
+    #[test]
+    fn anthropic_message_start_usage_includes_cache_tokens() {
+        let data = r#"{"type":"message_start","message":{"id":"msg_1","usage":{"input_tokens":10,"cache_creation_input_tokens":200,"cache_read_input_tokens":3000,"output_tokens":1}}}"#;
+        let events = parse_anthropic_sse("message_start", data);
+        match events.as_slice() {
+            [StreamEvent::Usage(u)] => {
+                assert_eq!(u.prompt_tokens, 3210);
+                assert_eq!(u.completion_tokens, 1);
+                assert_eq!(u.total_tokens, 3211);
+            }
+            _ => panic!("expected one Usage, got {:?}", events),
+        }
+    }
+
+    #[test]
+    fn anthropic_message_start_usage_missing_fields_default_to_zero() {
+        let data = r#"{"type":"message_start","message":{"usage":{"input_tokens":42}}}"#;
+        let events = parse_anthropic_sse("message_start", data);
+        match events.as_slice() {
+            [StreamEvent::Usage(u)] => {
+                assert_eq!(u.prompt_tokens, 42);
+                assert_eq!(u.completion_tokens, 0);
+                assert_eq!(u.total_tokens, 42);
+            }
+            _ => panic!("expected one Usage, got {:?}", events),
+        }
+    }
+
+    #[test]
+    fn anthropic_message_start_without_usage_ignored() {
+        let data = r#"{"type":"message_start","message":{"id":"msg_1"}}"#;
+        assert!(parse_anthropic_sse("message_start", data).is_empty());
+    }
+
+    #[test]
+    fn anthropic_message_delta_with_cumulative_input_usage() {
+        let data = r#"{"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"input_tokens":10,"cache_read_input_tokens":90,"output_tokens":25}}"#;
+        let events = parse_anthropic_sse("message_delta", data);
+        match events.as_slice() {
+            [StreamEvent::Stopped { .. }, StreamEvent::Usage(u)] => {
+                assert_eq!(u.prompt_tokens, 100);
+                assert_eq!(u.completion_tokens, 25);
+                assert_eq!(u.total_tokens, 125);
+            }
+            _ => panic!("expected Stopped + Usage, got {:?}", events),
+        }
+    }
+
+    #[test]
+    fn anthropic_message_delta_output_only_usage() {
+        let data = r#"{"type":"message_delta","delta":{},"usage":{"output_tokens":7}}"#;
+        let events = parse_anthropic_sse("message_delta", data);
+        match events.as_slice() {
+            [StreamEvent::Usage(u)] => {
+                assert_eq!(u.prompt_tokens, 0);
+                assert_eq!(u.completion_tokens, 7);
+                assert_eq!(u.total_tokens, 7);
+            }
             _ => panic!("expected Usage only, got {:?}", events),
         }
     }
