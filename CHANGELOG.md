@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `llm`: `AnthropicClient::complete` (non-streaming) now counts prompt-cache tokens in `TokenUsage::prompt_tokens` (`input_tokens + cache_creation_input_tokens + cache_read_input_tokens`), matching the streaming path fixed in 0.32.3. Previously cached prompts were under-reported as `input_tokens` only.
+
 ## [0.32.3] - 2026-10-26
 
 ### Fixed

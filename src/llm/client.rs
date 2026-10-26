@@ -999,6 +999,17 @@ struct AnthropicContentBlock {
 struct AnthropicUsage {
     input_tokens: u32,
     output_tokens: u32,
+    #[serde(default)]
+    cache_creation_input_tokens: u32,
+    #[serde(default)]
+    cache_read_input_tokens: u32,
+}
+
+impl AnthropicUsage {
+    /// Total input tokens, counting prompt-cache writes and reads.
+    fn prompt_tokens(&self) -> u32 {
+        self.input_tokens + self.cache_creation_input_tokens + self.cache_read_input_tokens
+    }
 }
 
 #[async_trait]
@@ -1104,9 +1115,9 @@ impl LLMClient for AnthropicClient {
             },
             model: chat_resp.model,
             usage: TokenUsage {
-                prompt_tokens: chat_resp.usage.input_tokens,
+                prompt_tokens: chat_resp.usage.prompt_tokens(),
                 completion_tokens: chat_resp.usage.output_tokens,
-                total_tokens: chat_resp.usage.input_tokens + chat_resp.usage.output_tokens,
+                total_tokens: chat_resp.usage.prompt_tokens() + chat_resp.usage.output_tokens,
                 reasoning_tokens: None,
             },
             tool_calls,
@@ -1972,6 +1983,17 @@ mod tests {
         assert_eq!(resp.content[1].block_type, "tool_use");
         assert_eq!(resp.content[1].name.as_deref(), Some("get_weather"));
         assert_eq!(resp.content[1].input.as_ref().unwrap()["location"], "Paris");
+    }
+
+    #[test]
+    fn anthropic_response_usage_includes_cache_tokens() {
+        let raw = r#"{"type":"message","model":"claude-opus-5-5","content":[],"stop_reason":"end_turn","usage":{"input_tokens":10,"cache_creation_input_tokens":200,"cache_read_input_tokens":3000,"output_tokens":5}}"#;
+        let resp: AnthropicResponse = serde_json::from_str(raw).unwrap();
+        assert_eq!(resp.usage.prompt_tokens(), 3210);
+
+        let raw = r#"{"type":"message","model":"claude-opus-5-5","content":[],"stop_reason":"end_turn","usage":{"input_tokens":12,"output_tokens":8}}"#;
+        let resp: AnthropicResponse = serde_json::from_str(raw).unwrap();
+        assert_eq!(resp.usage.prompt_tokens(), 12);
     }
 
     #[test]
