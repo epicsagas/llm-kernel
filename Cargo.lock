@@ -2706,7 +2706,7 @@ checksum = "4744e383959f0db86ede514b809b1c53251889093803c05267acc7d4e7030d70"
 
 [[package]]
 name = "llm-kernel"
-version = "0.32.3"
+version = "0.32.4"
 dependencies = [
  "anyhow",
  "async-trait",
