@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.32.3] - 2026-10-26
+
+### Fixed
+
+- `llm`: `AnthropicClient::stream_complete` now reports input tokens. `message_start` usage was dropped, so streaming `TokenUsage` always had `prompt_tokens: 0` and `total_tokens: 0`. `prompt_tokens` is now `input_tokens + cache_creation_input_tokens + cache_read_input_tokens` (missing fields count as 0), and `message_delta` fills it the same way when cumulative input fields are present. `total_tokens` is `prompt + completion` in both events.
+
 ## [0.32.0] - 2026-10-15
 
 ### Changed
