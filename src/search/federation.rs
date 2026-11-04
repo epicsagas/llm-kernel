@@ -1,6 +1,6 @@
 //! Cross-engine search federation over multiple vector backends.
 //!
-//! Federation queries several [`AsyncVectorIndex`](crate::embedding::AsyncVectorIndex)
+//! Federation queries several `crate::embedding::AsyncVectorIndex`
 //! backends concurrently and merges their results with the existing fusion
 //! functions ([`rrf_fuse`],
 //! [`weighted_sum_fuse`]).
@@ -33,7 +33,7 @@ pub enum FusionStrategy {
     /// Reciprocal Rank Fusion with constant `k` (typically 60). Rank-based, so
     /// no score normalization is required across backends.
     ///
-    /// In [`FederatedSearch`] each backend's
+    /// In `FederatedSearch` (feature `federation`) each backend's
     /// `with_backend` weight scales its rank credit (all `1.0` reduces to plain
     /// RRF). [`federate_results`] fuses uniformly — pass weighted positional
     /// lists to [`rrf_fuse_weighted`](crate::search::rrf_fuse_weighted) directly.
@@ -57,7 +57,7 @@ impl Default for FusionStrategy {
 /// Fuse pre-fetched result lists with no I/O.
 ///
 /// Lets a synchronous backend (e.g. the in-memory
-/// [`TurbovecIndex`](crate::embedding::TurbovecIndex)) participate in
+/// `TurbovecIndex`, feature `vector-index`) participate in
 /// federation: the caller searches it directly, then folds its list in here
 /// alongside lists gathered from async backends (or any source). All lists
 /// contribute equally here — per-list weights are a one-call away with
