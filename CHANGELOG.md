@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.33.0] - 2026-11-04
+
+### Changed
+
+- **BREAKING** `store`/`graph`/`cache`: `rusqlite` requirement bumped 0.40 to 0.41 (libsqlite3-sys ^0.38 to ^0.39). Public signatures expose `rusqlite::Connection` (`store::init_schema`, `MigrationFn`, the graph free functions, `AsyncGraph::new`, `SqliteGraph::with_tx`), so consumers must be on rusqlite 0.41 as well; the `links = "sqlite3"` rule forbids mixing both versions in one build. No source-level API changes; the crate's own call surface (`Connection`, `params!`, `ToSql`, `query_map`, `query_row`, `unchecked_transaction`) is unchanged between the two versions.
+- `vector-index`: `turbovec` bumped 0.9.0 to 1.1.2. The wrapped `IdMapIndex::search_with_allowlist` no longer panics on an empty or unknown-ID allowlist and returns `Err` instead; `TurbovecIndex::search_filtered` maps that to `Err(KernelError::Embedding)`. Empty allowlists were already rejected before the call, so only the unknown-ID case changes behavior (previous behavior was a panic).
+- `vector-index`: deprecated `IdMapIndex::dim` usage replaced with `dim_opt()` in the `load` cross-check; wrapper API unchanged.
+
 ## [0.32.4] - 2026-10-26
 
 ### Fixed
