@@ -106,8 +106,9 @@ impl TurbovecIndex {
         }
 
         // Cross-validate: loaded index vs sidecar metadata.
-        let inner_dim = inner.dim();
-        if inner_dim != 0 && inner_dim != meta.dim {
+        if let Some(inner_dim) = inner.dim_opt()
+            && inner_dim != meta.dim
+        {
             return Err(KernelError::Embedding(format!(
                 "index-meta mismatch: index dim={inner_dim}, meta dim={}",
                 meta.dim
@@ -220,7 +221,10 @@ impl VectorIndex for TurbovecIndex {
         if self.inner.is_empty() || allowlist.is_empty() {
             return Ok(vec![]);
         }
-        let (scores, ids) = self.inner.search_with_allowlist(query, k, Some(allowlist));
+        let (scores, ids) = self
+            .inner
+            .search_with_allowlist(query, k, Some(allowlist))
+            .map_err(|e| KernelError::Embedding(format!("filtered search failed: {e}")))?;
         Ok(scores
             .into_iter()
             .zip(ids)
