@@ -55,6 +55,9 @@ pub fn search_nodes(conn: &Connection, query: &str, limit: usize) -> Result<Vec<
 /// FTS results keep their BM25 order and come first; CJK-only hits follow.
 /// Without `graph-cjk` this is exactly [`search_nodes`].
 pub fn search_nodes_hybrid(conn: &Connection, query: &str, limit: usize) -> Result<Vec<GraphNode>> {
+    // `out` is only mutated in the `graph-cjk` block below; without the feature
+    // the function is exactly `search_nodes` and the binding is never touched.
+    #[cfg_attr(not(feature = "graph-cjk"), allow(unused_mut))]
     let mut out = search_nodes(conn, query, limit)?;
 
     #[cfg(feature = "graph-cjk")]
