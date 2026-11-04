@@ -8,21 +8,21 @@
 //!
 //! | Feature       | Module       | Description                                         |
 //! |---------------|-------------|-----------------------------------------------------|
-//! | `provider`    | [`provider`]  | Provider catalog, model descriptors, pricing — **default** |
-//! | `client-async`| [`llm`]       | Async LLM client (OpenAI, Anthropic) with SSE streaming |
-//! | `discovery`   | [`discovery`] | Dynamic model discovery (models.dev, Ollama, OpenAI-compat) |
-//! | `secrets`     | [`secrets`]   | SecretVault — dotenv-style credential management |
-//! | `store`       | [`store`]     | SQLite init helpers (WAL, PRAGMA, schema versioning) |
-//! | `config`      | [`config`]    | TOML config loader with auto-create from template |
-//! | `graph`       | [`graph`]     | Knowledge graph — SQLite, FTS5, smart recall, BFS traversal |
-//! | `mcp`         | [`mcp`]       | MCP server framework — JSON-RPC 2.0, stdio transport |
-//! | `tokens`      | [`tokens`]    | Token estimation with Unicode-script heuristics |
-//! | `install`     | [`install`]   | AI tool installation wizard (Claude, Cursor, Copilot, etc.) |
-//! | `search`      | [`search`]    | Hybrid search with Reciprocal Rank Fusion |
-//! | `embedding`   | [`embedding`] | Embedding provider trait + cosine similarity |
-//! | `telemetry`   | [`telemetry`] | Telemetry framework — enum-gated events, no PII |
-//! | `safety`      | [`safety`]    | Secret masking, error classification, output sanitization |
-//! | `dlp`         | [`dlp`]       | Data-loss prevention — content scan, provider data policy |
+//! | `provider`    | `provider`    | Provider catalog, model descriptors, pricing — **default** |
+//! | `client-async`| `llm`       | Async LLM client (OpenAI, Anthropic) with SSE streaming |
+//! | `discovery`   | `discovery` | Dynamic model discovery (models.dev, Ollama, OpenAI-compat) |
+//! | `secrets`     | `secrets`   | SecretVault — dotenv-style credential management |
+//! | `store`       | `store`     | SQLite init helpers (WAL, PRAGMA, schema versioning) |
+//! | `config`      | `config`    | TOML config loader with auto-create from template |
+//! | `graph`       | `graph`     | Knowledge graph — SQLite, FTS5, smart recall, BFS traversal |
+//! | `mcp`         | `mcp`       | MCP server framework — JSON-RPC 2.0, stdio transport |
+//! | `tokens`      | `tokens`    | Token estimation with Unicode-script heuristics |
+//! | `install`     | `install`   | AI tool installation wizard (Claude, Cursor, Copilot, etc.) |
+//! | `search`      | `search`    | Hybrid search with Reciprocal Rank Fusion |
+//! | `embedding`   | `embedding` | Embedding provider trait + cosine similarity |
+//! | `telemetry`   | `telemetry` | Telemetry framework — enum-gated events, no PII |
+//! | `safety`      | `safety`    | Secret masking, error classification, output sanitization |
+//! | `dlp`         | `dlp`       | Data-loss prevention — content scan, provider data policy |
 //!
 //! ## Quick start
 //!

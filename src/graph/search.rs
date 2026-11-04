@@ -47,7 +47,7 @@ pub fn search_nodes(conn: &Connection, query: &str, limit: usize) -> Result<Vec<
 /// FTS5's `trigram` tokenizer cannot match queries shorter than three
 /// characters, which silently breaks most CJK lookups (a 2-syllable Korean query
 /// like `"매수"` returns nothing even when many nodes contain it). With the
-/// `graph-cjk` feature the substring path in [`crate::graph::cjk::search_nodes_cjk`] covers exactly
+/// `graph-cjk` feature the substring path in `crate::graph::cjk::search_nodes_cjk` covers exactly
 /// that gap, so the union is strictly better than either source alone:
 /// FTS contributes ranked multi-character hits, CJK contributes short and
 /// mid-word ones.

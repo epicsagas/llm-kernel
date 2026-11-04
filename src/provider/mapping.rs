@@ -3,8 +3,8 @@
 //!
 //! `resolve` answers "which models.dev provider key holds the canonical model
 //! list for a given catalog provider id". This drives the catalog sync tooling
-//! ([`crate::provider::sync`]) and runtime enrichment of discovery results
-//! ([`crate::discovery`]).
+//! (`crate::provider::sync`, feature `catalog-sync`) and runtime enrichment of
+//! discovery results (`crate::discovery`, feature `discovery`).
 
 /// How a catalog provider id maps to a models.dev provider key.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
