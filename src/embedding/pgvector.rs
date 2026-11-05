@@ -26,6 +26,51 @@ struct ScoreRow {
     score: f64,
 }
 
+/// Row filter for `search_where` on [`PgVectorIndex`] and [`PgSparseVectorIndex`]:
+/// a SQL boolean expression evaluated per candidate row, so the allowed set never
+/// leaves the database. Prefer it to `search_filtered` when the allowed IDs are
+/// many: an allowlist is fetched client-side and bound as one array per query.
+///
+/// `predicate` is interpolated verbatim, so it must be **trusted SQL written by
+/// the caller, never user input**. It sees the vector row as `v` (`v.id`,
+/// `v.vec`) and the text values of `binds` as `$3`, `$4`, ... (`$1` is the query
+/// vector, `$2` the limit). Example: `EXISTS (SELECT 1 FROM chunks c WHERE
+/// c.id = v.id AND c.category = $3)` with `binds: &["statute"]`.
+#[derive(Debug, Clone, Copy)]
+pub struct SqlFilter<'a> {
+    /// Trusted SQL boolean expression over the vector row `v`.
+    pub predicate: &'a str,
+    /// Text values bound as `$3`, `$4`, ... in `predicate`.
+    pub binds: &'a [&'a str],
+}
+
+/// Shared body of the `search_where` methods. `sql` uses `$1` (query literal)
+/// and `$2` (limit); `filter.binds` follow as `$3..`.
+async fn fetch_where(
+    pool: &PgPool,
+    sql: &str,
+    q: String,
+    k: usize,
+    filter: &SqlFilter<'_>,
+    what: &str,
+) -> Result<Vec<SearchHit>> {
+    let mut query = sqlx::query_as::<_, ScoreRow>(sql).bind(q).bind(k as i64);
+    for b in filter.binds {
+        query = query.bind(*b);
+    }
+    let rows = query
+        .fetch_all(pool)
+        .await
+        .map_err(|e| KernelError::Embedding(format!("{what}: {e}")))?;
+    Ok(rows
+        .into_iter()
+        .map(|r| SearchHit {
+            id: r.id as u64,
+            score: r.score as f32,
+        })
+        .collect())
+}
+
 /// f32 슬라이스 → pgvector 문자열 리터럴 `[1,2,3]` (text → vector 입력 캐스트).
 /// `pgvector::Vector`의 sqlx `Type` 바인드가 의존 환경에 따라 충돌해 문자열로 회피.
 fn vec_literal(v: &[f32]) -> String {
@@ -214,6 +259,33 @@ impl PgVectorIndex {
             .await
             .map_err(|e| KernelError::Embedding(format!("pgvector remove_in_tx: {e}")))?;
         Ok(())
+    }
+
+    /// Top-`k` by cosine similarity among rows matching `filter`, evaluated
+    /// inside PostgreSQL (see [`SqlFilter`]). With pgvector >= 0.8
+    /// `hnsw.iterative_scan` enabled the HNSW scan continues until `k` rows pass;
+    /// without it a selective predicate can return fewer than `k`.
+    pub async fn search_where(
+        &self,
+        query: &[f32],
+        k: usize,
+        filter: &SqlFilter<'_>,
+    ) -> Result<Vec<SearchHit>> {
+        let ty = self.sql_type();
+        let sql = format!(
+            "SELECT v.id, 1 - (v.vec <=> $1::{ty}) AS score FROM {} v WHERE ({}) \
+             ORDER BY v.vec <=> $1::{ty}, v.id LIMIT $2",
+            self.table, filter.predicate
+        );
+        fetch_where(
+            &self.pool,
+            &sql,
+            vec_literal(query),
+            k,
+            filter,
+            "pgvector search_where",
+        )
+        .await
     }
 }
 
@@ -545,6 +617,33 @@ impl PgSparseVectorIndex {
             .collect())
     }
 
+    /// Top-`k` by inner product among rows matching `filter`, evaluated inside
+    /// PostgreSQL (see [`SqlFilter`]). An empty query matches nothing.
+    pub async fn search_where(
+        &self,
+        query: &SparseVector,
+        k: usize,
+        filter: &SqlFilter<'_>,
+    ) -> Result<Vec<SearchHit>> {
+        if query.is_empty() {
+            return Ok(Vec::new());
+        }
+        let sql = format!(
+            "SELECT v.id, -(v.vec <#> $1::sparsevec) AS score FROM {} v WHERE ({}) \
+             ORDER BY v.vec <#> $1::sparsevec, v.id LIMIT $2",
+            self.table, filter.predicate
+        );
+        fetch_where(
+            &self.pool,
+            &sql,
+            sparse_literal(query, self.dim),
+            k,
+            filter,
+            "pgvector sparse search_where",
+        )
+        .await
+    }
+
     /// Remove vectors by external ID.
     pub async fn remove(&self, ids: &[u64]) -> Result<()> {
         if ids.is_empty() {
@@ -818,6 +917,77 @@ mod tests {
             .execute(idx.pool())
             .await
             .ok();
+    }
+
+    /// `search_where`: the predicate joins a side table inside PG, and text binds
+    /// start at `$3`. Dense and sparse indexes share the same filter.
+    #[tokio::test]
+    async fn search_where_joins_side_table() {
+        let Some(url) = pg_url() else {
+            eprintln!("skip pgvector search_where test: LLMKERNEL_PG_URL unset");
+            return;
+        };
+        let table = format!("lk_test_sw_{}", line!());
+        let sp_table = format!("{table}_sp");
+        let tags = format!("{table}_tags");
+        let idx = PgVectorIndex::new(&url, &table, 3).await.expect("new");
+        let sp = PgSparseVectorIndex::new(&url, &sp_table, 10)
+            .await
+            .expect("new sparse");
+        idx.add(
+            &[
+                vec![1.0, 0.0, 0.0],
+                vec![0.9, 0.1, 0.0],
+                vec![0.0, 1.0, 0.0],
+            ],
+            &[10, 20, 30],
+        )
+        .await
+        .expect("add");
+        let a = SparseVector::new(vec![0, 3], vec![1.0, 0.5]).unwrap();
+        let b = SparseVector::new(vec![0, 7], vec![0.5, 1.0]).unwrap();
+        sp.add(&[a.clone(), b], &[10, 20])
+            .await
+            .expect("add sparse");
+        sqlx::query(&format!(
+            "CREATE TABLE {tags} (id BIGINT PRIMARY KEY, tag TEXT NOT NULL)"
+        ))
+        .execute(idx.pool())
+        .await
+        .expect("create tags");
+        sqlx::query(&format!(
+            "INSERT INTO {tags} VALUES (10, 'x'), (20, 'y'), (30, 'y')"
+        ))
+        .execute(idx.pool())
+        .await
+        .expect("insert tags");
+
+        let pred = format!("EXISTS (SELECT 1 FROM {tags} t WHERE t.id = v.id AND t.tag = $3)");
+        let filter = SqlFilter {
+            predicate: &pred,
+            binds: &["y"],
+        };
+        // Nearest to [1,0,0] is 10, but it is tagged x: 20 must come first.
+        let hits = idx
+            .search_where(&[1.0, 0.0, 0.0], 2, &filter)
+            .await
+            .unwrap();
+        assert_eq!(hits.iter().map(|h| h.id).collect::<Vec<_>>(), vec![20, 30]);
+        let hits = sp.search_where(&a, 5, &filter).await.unwrap();
+        assert_eq!(hits.iter().map(|h| h.id).collect::<Vec<_>>(), vec![20]);
+        assert!(
+            sp.search_where(&SparseVector::default(), 5, &filter)
+                .await
+                .unwrap()
+                .is_empty()
+        );
+
+        for t in [&tags, &table, &sp_table] {
+            sqlx::query(&format!("DROP TABLE IF EXISTS {t}"))
+                .execute(idx.pool())
+                .await
+                .ok();
+        }
     }
 
     #[test]

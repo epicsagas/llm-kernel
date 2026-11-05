@@ -119,7 +119,7 @@ pub use qdrant::QdrantVectorIndex;
 pub use elastic::ElasticsearchVectorIndex;
 
 #[cfg(feature = "pgvector")]
-pub use pgvector::{PgSparseVectorIndex, PgVectorIndex, PgVectorOpts};
+pub use pgvector::{PgSparseVectorIndex, PgVectorIndex, PgVectorOpts, SqlFilter};
 
 #[cfg(feature = "vector-index")]
 pub use turbovec::{IndexMeta, TurbovecIndex};
