@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.33.1] - 2026-11-06
+
+### Added
+
+- `pgvector`: `PgVectorIndex::search_where` and `PgSparseVectorIndex::search_where` take a `SqlFilter` (trusted SQL predicate over the vector row `v`, text binds from `$3`) and filter inside PostgreSQL. Use them instead of `search_filtered` when the allowed set is large: the allowlist path fetches every allowed ID client-side and binds it as one array per query, which took 29 s (225k IDs) to 121 s (2M IDs) per query on a 3.2M-row corpus under memory pressure, while a correlated `EXISTS` join keeps the HNSW index scan and returned in about 2 s. `SqlFilter` is re-exported from `embedding`.
+
 ## [0.33.0] - 2026-11-04
 
 ### Changed
