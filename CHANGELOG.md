@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.33.2] - 2026-11-23
+
+### Security
+
+- Removed the three stale `cargo-audit` ignore entries for `zip` advisories (RUSTSEC-2026-0367, RUSTSEC-2026-0368, RUSTSEC-2026-0369), since `Cargo.lock` holds a `zip` 9.x release and all three are patched in 9.0.0 and later; the ignore list is now empty.
+- Updated `url` 2.5.8 to 2.5.9 in `Cargo.lock` for RUSTSEC-2026-0592 (stack overflow in `Url::origin()` on nested `blob:` URLs).
+
+### Changed
+
+- CI: `macos-check` moved from the retired `macos-14` runner to `macos-15`.
+
 ## [0.33.1] - 2026-11-06
 
 ### Added
