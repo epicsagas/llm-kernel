@@ -18,7 +18,5 @@ ignore = [
   # advisories cover ZipArchive::extract() symlink handling, which candle never
   # calls (it only opens .npz and .pth archives by entry name). candle-core 0.11 pins zip ^8.6, so no
   # upgrade path exists until a newer candle release moves to zip 9.
-  "RUSTSEC-2026-0367",
   "RUSTSEC-2026-0368",
-  "RUSTSEC-2026-0369",
 ]
