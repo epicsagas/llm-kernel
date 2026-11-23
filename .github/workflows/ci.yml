@@ -175,9 +175,10 @@ jobs:
 
   macos-check:
     # macos-latest (Xcode 26.5 / clang 21) dropped libclang_rt.osx.a, which
-    # ort's static archive links against (#57). Pin macos-14 (Xcode 15.x)
-    # until the 26.5 image stabilizes; see #57.
-    runs-on: macos-14
+    # ort's static archive links against (#57). macos-14 runners are no longer
+    # offered; pin macos-15 (Xcode 16.x) and rely on the clang_rt link-path
+    # step below until the 26.5 image stabilizes; see #57.
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
